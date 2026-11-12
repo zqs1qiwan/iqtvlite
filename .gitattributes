@@ -1,0 +1,19 @@
+# 统一行尾 —— 消除 Windows 上的 CRLF 噪音
+* text=auto eol=lf
+
+# PowerShell 脚本必须是 CRLF（Windows 传统）
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Shell 脚本保持 LF
+*.sh text eol=lf
+
+# 二进制
+*.aar binary
+*.so binary
+*.apk binary
+*.ttf binary
+*.otf binary
+*.png binary
+*.jpg binary
