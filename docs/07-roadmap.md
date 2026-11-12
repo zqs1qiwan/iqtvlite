@@ -16,25 +16,52 @@
 - [ ] 验证 D-pad → `Key.*Arrow` 映射（参考 rusttv 结论）
 - [ ] **在真实 Android TV 盒子/Chromecast with Google TV 上**测量冷启动、空闲 PSS、APK 体积
 
-### M0.2 ★ 视频层合成（**最高风险项，对应 ADR-008**）
-- [ ] ExoPlayer 解码到 `SurfaceView`
-- [ ] Slint UI 与 SurfaceView 正确叠放，控制条在全屏时**不消失**
-- [ ] 对比三种方案并选型：
-  - (a) SurfaceView + 独立透明原生窗口
-  - (b) TextureView + Slint 同窗
-  - (c) Rust UI 作为 View 嵌入 Activity 布局（`rust-mobile/android-view`）
-- [ ] 用 `dumpsys SurfaceFlinger --list` / Tracer 验证 layer 层级
+### M0.2 ★ 视频层合成（**最高风险项，对应 ADR-008 / `06-android-tv.md` §1**）
+
+**这是整个项目的成败点。** Slint 的 Android 窗口硬编码不透明 → SurfaceView 视频层无法穿透。
+
+必须回答的问题（按顺序试）：
+
+- [ ] **Q1（决定 P1 可行性）**：Slint 能否渲染进**我们自建的** SurfaceView（而非 `NativeActivity` 创建的那个）？
+      - 途径：`slint::platform::set_platform()` 自定义 `Platform`（只有一个 required method：`create_window_adapter`）
+      - 途径：`android-activity` 0.6 的 `game-activity` feature（`i-slint-backend-android-activity` 有此 feature，但**未接入 `slint` 公开 feature，兼容性未验证**）
+      - 途径：fork `slint` + `android-activity`（改 `transparent` 标志 + 窗口获取）
+- [ ] **Q2**：视频 SurfaceView 与 Slint 层的 Z-order 怎么排？
+      - API 36+：`setCompositionOrder(-2)`；API 30–35：`setZOrderMediaOverlay(true)`
+      - 同值时相对顺序**未定义** → 必须保证数值不同
+- [ ] **Q3（无论选哪条路都要做）**：ExoPlayer 解码到 `SurfaceView`，全屏时控制层不消失
+      - 用 `dumpsys SurfaceFlinger --list` / Tracer 验证 layer 层级
+- [ ] **Q4**：P2 路径的降级验证 —— 原生 Activity（SurfaceView + ExoPlayer）+ 200 行 OSD 是否可用
+
+**三条路线的判定标准**：
+
+| 路线 | 通过标准 | 不通过的降级 |
+|---|---|---|
+| P1 | Q1 = 是，且 Q2/Q3 通过 | 转 P2 |
+| P2 | Q4 通过 | 转 P4（Compose TV） |
+| P3 | — | 仅作为最后手段（丢 HDR/DRM） |
 
 ### M0.3 双引擎原型
-- [ ] ExoPlayer 播放 HLS + MPEG-TS，测首帧时间
-- [ ] libmpv AAR 接入，Rust 侧 `libmpv2` 驱动，Render API 嵌 EGL
+
+- [ ] ExoPlayer **1.11.1** 播放 HLS + MPEG-TS，测首帧时间
+- [ ] **MPEG-TS 无 AUD / 无 IDR 的两个 flag**（`FLAG_DETECT_ACCESS_UNITS` / `FLAG_ALLOW_NON_IDR_KEYFRAMES`）—— 不开就会卡在 buffering
+- [ ] LoadControl 调优（1500/6000/500/1000）+ `setTargetOffsetMs(3000)` + OkHttp 保温连接池
+- [ ] libmpv AAR 接入，Rust 侧 `rsmpv` 驱动，Render API 嵌 EGL
+- [ ] 验证 `hwdec=mediacodec`（**不是** `mediacodec-copy`，copy 路径正是 Mali 绿屏根源）
 - [ ] mpv 兜底路径：人为触发 ExoPlayer 失败 → 自动切 mpv → 成功
 - [ ] 确认 mpv 在目标 TV 盒子上的实际表现（**可能需要接受它在某些 GPU 上不可用**）
 
-### M0.4 结论
-产出 `docs/spikes/` 下的实测报告 + 拍板 ADR-008 / ADR-010。
+### M0.4 中文字体与焦点
 
-**退出条件**：一段真实 IPTV 流能在真机上稳定播放 10 分钟，遥控器全程可用，冷启动 < 1.5 s。
+- [ ] 内置中文字体，通过 `slint::fontique_011::shared_collection()` 注册 → 中文频道名**无豆腐块**
+- [ ] 媒体按键（`MediaPlayPause` / `ChannelUp` / `ChannelDown` / `Info`）在 Kotlin 层拦截 → 转发 Rust
+- [ ] `Key.Back` **必须被消费**（U+F748），否则 Android 直接退出应用
+- [ ] 自研焦点层：网格坐标 + 行列步进（Slint 无空间导航，源码已确认）
+
+### M0.5 结论
+产出 `docs/spikes/` 下的实测报告 + 拍板 ADR-008。
+
+**退出条件**：一段真实 IPTV 流能在真机上稳定播放 10 分钟，遥控器全程可用，冷启动 < 1.5 s，中文无豆腐块。
 
 ---
 
@@ -145,13 +172,18 @@ M1 ───┴──────────────────┼──�
 
 | 风险 | 影响 | 应对 | 兜底 |
 |---|---|---|---|
-| **Slint + SurfaceView 合成失败** | 架构重做 | M0.2 优先 spike，三方案并行验证 | 降级到 (b) TextureView，或 UI 层改用 Compose |
-| **mpv 在目标 GPU 上不可用** | 兜底路径失效 | 明确告知用户「该内容需要 mpv 变体」 | 只发 `lite` 变体，长尾交给外部播放器 |
-| **供应商限流导致起播失败** | 用户体感差 | UA 伪装 + 连接节流 + 故障切换组 | 提供「备用线路」配置 |
-| **Slint 焦点手感做不对** | TV 体验差 | 早期真机测试，参考 rusttv | 用现成 TV UI 模板规范 |
+| **Slint 窗口不透明 → 视频层无法穿透** | 架构重做 | M0.2 优先 spike，四条路径并行验证 | P2（原生播放屏）→ P4（Compose TV） |
+| **中文豆腐块**（国产 ROM fonts.xml 缺陷） | 中文 UI 不可用 | 内置中文字体 + fontique 运行时注册 | 无（必须解决） |
+| **媒体按键被 Slint 丢弃** | 遥控器 play/pause/频道键失效 | Kotlin 层拦截转发 | 无（必须解决） |
+| **Mali 驱动的 GL context 泄漏**（slint#14397，1.85 MB/次） | 长跑内存增长 | 监测内存；必要时用 `renderer-skia-opengl` 而非 wgpu | 降低 UI 重绘频率 |
+| **mpv 在目标 GPU 上不可用** | 兜底路径失效 | 明确告知用户「该内容需要兼容播放器」 | 只发 `lite` 变体，长尾交给外部播放器 |
+| **mpv 捆绑增加 Play 拒审风险** | 上不了架 | 默认发 `lite` 变体（无 libmpv） | `full` 变体走 F-Droid / GitHub |
+| **供应商限流导致起播失败** | 用户体感差 | UA 伪装 + 连接节流 + 故障切换组 + 自动退避 | 提供「备用线路」配置 |
+| **Slint 焦点手感做不对** | TV 体验差 | 早期真机测试，网格化焦点模型 | 用现成 TV UI 模板规范 |
 | **体积超标** | 定位失守 | CI 体积门禁 + `lite` 变体 | 放弃 Skia（换 egui，需重估焦点成本） |
 | **GPL 分发义务处理不当** | 法律风险 | 固定版本 + 生成 notices + 附源码 tarball | 改发 `lite` 变体（不含 mpv） |
 | **M3U/XMLTV 供应商格式千奇百怪** | 解析失败 | 宽松解析 + 未知属性保留 + fixture 库 | 让用户手工编辑 |
+| **EPG 匹配串台**（同名频道跨国家） | 节目单错乱 | 有 id 的频道绝不用名字匹配 + 手动修正器 | 只显示 id 匹配的节目 |
 
 ---
 

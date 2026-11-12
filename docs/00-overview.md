@@ -103,12 +103,45 @@ TiviMate 是目前 Android TV 上体验最好的 IPTV 播放器，EPG 网格是�
 |---|---|
 | `01-competitive-landscape.md` | 现有 Rust / 商业 IPTV 播放器调研与对标结论 |
 | `02-architecture.md` | 总体架构、模块边界、数据流、线程模型 |
-| `03-tech-selection.md` | 逐项技术选型对比与决策依据（含被否决方案） |
+| `03-tech-selection.md` | 逐项技术选型对比与决策依据（含被否决方案）+ ADR 索引 |
 | `04-data-model.md` | SQLite schema、EPG 索引策略、稳定 ID 方案 |
 | `05-playback.md` | 双引擎设计、故障自愈矩阵、性能调优参数 |
-| `06-android-tv.md` | Android TV 平台适配（焦点、Surface 合成、媒体会话） |
+| `06-android-tv.md` | Android TV 平台适配（**Surface 合成方案 = 最大风险**） |
 | `07-roadmap.md` | 里程碑拆分、验收标准、风险清单 |
-| `08-build-release.md` | 构建、签名、CI、分 ABI 产物策略 |
+| `08-build-release.md` | 构建、签名、CI、体积预算、许可合规 |
+| `09-protocols.md` | 协议层实现指南（M3U / Xtream / XMLTV / Catch-up / 供应商怪癖） |
+| `research/domain-protocols-reference.md` | 协议调研原始记录（78 KB，含完整引用与置信度标注） |
+
+---
+
+## 5b. 三个决定项目成败的技术事实
+
+> 这三条都是调研中**推翻了初始假设**的发现，直接决定了架构形态。
+
+### 事实 1 — Slint 的 Android 窗口是**不透明**的
+
+Slint 后端硬编码 `transparent = false`，`Surface` 从不设为 `PixelFormat.TRANSLUCENT`，且**没有任何 API 能把 `ANativeWindow` 交给 Slint**。
+
+→ **SurfaceView 视频层无法穿透 Slint 窗口显示。** 这是 **alpha** 问题，不是 Z-order 问题。
+
+四条出路：**P1** patch Slint（+让 Slint 渲染进自建 SurfaceView）/ **P2** Slint 只做浏览屏 + 原生播放屏 / **P3** GL underlay（丢 HDR/DRM）/ **P4** 换 Compose for TV。
+→ 建议 **v1 走 P2，M0 spike 并行验证 P1**。详见 `06-android-tv.md` §1。
+
+### 事实 2 — Xtream 面板的怪癖比想象中深
+
+- `get_short_episodes` / `action=get_episodes` **不存在**（用 `get_series_info`）
+- EPG 的 `title`/`description` 是 **base64**（XMLTV 才是明文）
+- 时移起点是**供应商本地墙钟时间**，必须用 `server_info.timezone` 换算
+- 归档比直播**滞后 30 秒 ~ 2 分钟** → 请求时长要 **+5 分钟**
+- 很多播放列表用**未公开的私有语法**（JioTV 的 `{{H}}`、中国移动的 `${(b)yyyyMMddHHmmss}`）→ 必须防御性实现
+
+→ 详见 `09-protocols.md`。
+
+### 事实 3 — `crispy-*` 全家桶是 **CC-BY-NC-SA 4.0（非商业）**
+
+技术质量很高（TypeScript 实战库 `@iptv/playlist` / `ektotv/xtream-api` 的 Rust 移植），但**与 GPL-3.0 不兼容**，会让产品永久锁定为非商业。
+
+→ **决策：作为参考研究，不作为依赖引入。** 用 `cargo deny` 在 CI 里做许可门禁，防止误引入。
 
 ---
 

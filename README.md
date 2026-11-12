@@ -40,15 +40,17 @@
 
 | 文档 | 内容 |
 |---|---|
-| [00-overview.md](docs/00-overview.md) | 项目总览、目标、指标、许可策略 |
+| [00-overview.md](docs/00-overview.md) | 项目总览、目标、指标、三个决定成败的技术事实 |
 | [01-competitive-landscape.md](docs/01-competitive-landscape.md) | Rust/商业 IPTV 播放器生态调研 |
 | [02-architecture.md](docs/02-architecture.md) | 总体架构、模块边界、线程模型 |
-| [03-tech-selection.md](docs/03-tech-selection.md) | 逐项技术选型与被否决方案 |
+| [03-tech-selection.md](docs/03-tech-selection.md) | 逐项技术选型与被否决方案 + ADR 索引 |
 | [04-data-model.md](docs/04-data-model.md) | SQLite schema 与数据模型 |
 | [05-playback.md](docs/05-playback.md) | 双引擎与故障自愈 |
-| [06-android-tv.md](docs/06-android-tv.md) | Android TV 平台适配 |
+| [06-android-tv.md](docs/06-android-tv.md) | **Surface 合成方案（最大风险）** + 平台适配 |
 | [07-roadmap.md](docs/07-roadmap.md) | 里程碑与验收标准 |
-| [08-build-release.md](docs/08-build-release.md) | 构建、签名、体积预算 |
+| [08-build-release.md](docs/08-build-release.md) | 构建、签名、体积预算、许可合规 |
+| [09-protocols.md](docs/09-protocols.md) | 协议层实现指南（M3U / Xtream / XMLTV / Catch-up） |
+| [research/](docs/research/) | 调研原始记录（含完整引用与置信度标注） |
 
 ---
 

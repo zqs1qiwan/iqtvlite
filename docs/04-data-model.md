@@ -37,21 +37,37 @@ provider_id = 供应商侧 ID（Xtream 的 stream_id / M3U 的 tvg-id 或行内�
 ### 2.3 三级 ID 策略
 
 ```rust
+// xxhash-rust 0.8.19, feature "xxh3" → xxhash_rust::xxh3::xxh3_64
+fn stable_id(source_id: i64, provider_key: &str) -> i64 {
+    let mut buf = Vec::with_capacity(16 + provider_key.len());
+    buf.extend_from_slice(&source_id.to_le_bytes());
+    buf.push(0x1F);                       // 单元分隔符：id 中不可能出现
+    buf.extend_from_slice(provider_key.as_bytes());
+    ((xxh3_64(&buf) & 0x7FFF_FFFF_FFFF_FFFF) as i64) | 1  // 折叠成正 i64
+}
+```
+
+- `0x1F` 分隔符避免 `source=1,key="23"` 与 `source=12,key="3"` 碰撞。
+- 掩到 63 位并置 bit 0 → 始终是正数 SQLite `INTEGER`。100 万 id 下碰撞概率 ≈ 5×10⁻⁸。
+- **`UNIQUE (source_id, provider_key)` 才是真正的护栏**；哈希冲突时加盐重算。
+- `provider_key` 取值：Xtream 直播 → 数字 `stream_id`；点播 → `stream_id`；剧集 → 集 `id`；M3U → 清洗后的 `tvg-id`，否则 URL 的哈希，否则名称。
+
+**参考实现**：ynotv 的 `generateStableStreamId()` = `` `${sourceId}_${sanitizedTvgId}` ``，冲突时加 DJB2 URL 哈希后缀，再加 `_1`/`_2`…；清洗规则 `tvgId.replace(/[^a-zA-Z0-9._-]/g,'_')`。其注释原话：*"This ensures favorites, custom groups, and EPG remain matched after re-sync."*
+
+**增强建议**：在 `stable_id` 之外再加一张 `channel_alias` 表（`tvg-id` / 规范化名 / logo 哈希 → `channel_id`），这样频道被供应商改名后收藏仍能存活，也能跨两个源搬运同一 EPG id。
+
+**三级 ID 策略（补充）**：
+
+```rust
 pub struct ChannelKey {
     source_id: SourceId,      // UUID
     provider_id: ProviderId,  // tvg-id | stream_id | name|group
     ordinal: u32,             // 同源内重复时的序号
 }
-
-impl ChannelKey {
-    /// 全局稳定 ID —— 收藏/历史用它
-    pub fn global_id(&self) -> GlobalId {
-        GlobalId(xxh3_128(source_id.bytes, provider_id.bytes, ordinal))
-    }
-}
 ```
 
-**关键**：`ordinal` 只在**完全重复**时递增，且由「provider_id + url」的稳定排序决定 → 重新同步后顺序稳定。
+- `provider_id` 缺失时用 `name|group-title` 做二级键，再缺失用 URL 的哈希。
+- `ordinal` 只在**完全重复**时递增，且由「provider_id + url」的稳定排序决定 → 重新同步后顺序稳定。
 
 ---
 
@@ -191,37 +207,113 @@ CREATE INDEX idx_streams_channel ON channel_streams(channel_id, priority);
 
 ### 3.5 节目单（EPG）
 
+> **建模要点**：节目单的数据量比频道大 2–3 个数量级。150 000 频道 × ~90 节目/天 × 7 天 ≈ **9400 万行 ≈ 11 GB**。
+> → **必须限制保留窗口**（默认 3 天），并用**时间优先索引**支撑网格查询。
+
 ```sql
+-- EPG 源（一个播放列表可以挂多个 EPG 源）
+CREATE TABLE epg_sources (
+    id            TEXT PRIMARY KEY,
+    source_id     TEXT NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
+    origin        TEXT NOT NULL,          -- 'manual' | 'xtream' | 'm3u_header'
+    url           TEXT NOT NULL,
+    enabled       INTEGER NOT NULL DEFAULT 1,
+    priority      INTEGER NOT NULL DEFAULT 30,   -- manual 10 < m3u_header 20 < xtream 30
+    time_interpret TEXT NOT NULL DEFAULT 'as_written',
+    time_shift_minutes INTEGER NOT NULL DEFAULT 0,
+    last_success_at INTEGER,
+    last_error    TEXT,
+    programme_count INTEGER NOT NULL DEFAULT 0
+);
+
+-- 指南里的频道（可能匹配不到任何播放列表频道）
+CREATE TABLE epg_channels (
+    id            TEXT PRIMARY KEY,
+    epg_source_id TEXT NOT NULL REFERENCES epg_sources(id) ON DELETE CASCADE,
+    key           TEXT NOT NULL,          -- XMLTV <channel id>（或 display-name 兜底）
+    first_start   INTEGER,
+    last_stop     INTEGER,
+    programme_count INTEGER NOT NULL DEFAULT 0,
+    UNIQUE (epg_source_id, key)
+);
+CREATE INDEX idx_epgchan_key ON epg_channels(key);
+
+-- 指南频道的多语言名（用于按名匹配）
+CREATE TABLE epg_channel_names (
+    epg_channel_id TEXT NOT NULL REFERENCES epg_channels(id) ON DELETE CASCADE,
+    position       INTEGER NOT NULL,
+    name           TEXT NOT NULL,
+    name_key       TEXT NOT NULL,         -- 规范化后（去空格/小写/去符号）
+    PRIMARY KEY (epg_channel_id, position)
+) WITHOUT ROWID;
+CREATE INDEX idx_epgname_key ON epg_channel_names(name_key);
+
+-- 节目
 CREATE TABLE programmes (
-    id          INTEGER PRIMARY KEY,
-    source_id   TEXT NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
-    epg_id      TEXT NOT NULL,      -- 来自哪个 EPG 源（多源合并用）
-    tvg_id      TEXT NOT NULL,      -- XMLTV channel id
-    channel_id  TEXT,               -- 解析出的本地频道（可能为 NULL = 未匹配）
-    start_ts    INTEGER NOT NULL,   -- Unix epoch 秒 (UTC)
+    id          INTEGER PRIMARY KEY,      -- ← rowid 别名，FTS5 需要它（见 §3.7 警告）
+    epg_channel_id TEXT NOT NULL REFERENCES epg_channels(id) ON DELETE CASCADE,
+    start_ts    INTEGER NOT NULL,         -- Unix epoch 秒 (UTC)
     stop_ts     INTEGER NOT NULL,
-    -- 内容
     title       TEXT NOT NULL,
     sub_title   TEXT,
     description TEXT,
     category    TEXT,
     episode_num TEXT,
-    season      INTEGER,
-    episode     INTEGER,
+    catchup_id  TEXT,                     -- 非 DTD 属性，Kodi 会读
     icon_url    TEXT,
     rating      TEXT,
-    credits     TEXT,               -- JSON
+    credits     TEXT,                     -- JSON
     previously_shown INTEGER NOT NULL DEFAULT 0,
-    -- 原始
+    clumpidx    TEXT,                     -- "0/1"，同一时段多节目时排序
     raw         TEXT,
-    UNIQUE (source_id, epg_id, tvg_id, start_ts, title)
+    UNIQUE (epg_channel_id, start_ts, title)
 );
-CREATE INDEX idx_prog_channel_time ON programmes(channel_id, start_ts);
-CREATE INDEX idx_prog_tvg_time      ON programmes(source_id, tvg_id, start_ts);
-CREATE INDEX idx_prog_time         ON programmes(start_ts, stop_ts);
+-- 【关键】网格查询要的是【时间切片】，所以主索引是时间优先，不是频道优先
+CREATE INDEX idx_prog_time ON programmes(start_ts, epg_channel_id);
+CREATE INDEX idx_prog_stop ON programmes(stop_ts);
+CREATE INDEX idx_prog_chan ON programmes(epg_channel_id, start_ts);
 ```
 
-> **`UNIQUE` 里带 `title`**：同一频道同一时刻偶尔会有两个条目（供应商数据噪声），带 title 避免被误合并。
+**频道 ↔ 指南的匹配关系单独建表**（故意不做硬外键 —— 指南可能来自另一个源）：
+
+```sql
+CREATE TABLE epg_matches (
+    channel_id     TEXT PRIMARY KEY REFERENCES channels(id) ON DELETE CASCADE,
+    epg_channel_id TEXT REFERENCES epg_channels(id) ON DELETE SET NULL,
+    match_source   TEXT NOT NULL,   -- 'id' | 'tvg_name' | 'name' | 'manual'
+    confidence     REAL NOT NULL DEFAULT 1.0
+);
+```
+
+**匹配规则（照搬 better-iptv 的严格策略，这是血的教训）**：
+
+| 优先级 | 规则 | 分数 |
+|---|---|---|
+| 1 | `tvg-id` 精确匹配 `<channel id>`（大小写不敏感 + Unicode 规范化） | 1.00 |
+| 2 | `tvg-name` == `<display-name>`（空格→`_` 变体也算） | 0.90 |
+| 3 | 显示名 == `<display-name>` —— **仅当该频道没有 id 时才允许** | 0.75 |
+| 4 | 手动指定 | 1.00（永不被覆盖） |
+
+> ⚠️ **「有 id 的频道绝不用名字匹配」** —— 否则「另一个国家的同名频道」会串台。
+> ⚠️ 指南给两个频道同名的，**丢弃并计数，绝不随便挑一个**。
+> ⚠️ 匹配率低于阈值时在设置页提示（「EPG 匹配率 23%，可能是 tvg-id 不匹配」+ 提供手动修正器）。
+
+### 3.5b Failover 组
+
+```sql
+CREATE TABLE failover_groups (
+    group_id   TEXT PRIMARY KEY,
+    name       TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+);
+CREATE TABLE failover_members (
+    stream_id TEXT PRIMARY KEY REFERENCES channel_streams(id) ON DELETE CASCADE,
+    group_id  TEXT NOT NULL REFERENCES failover_groups(group_id) ON DELETE CASCADE,
+    priority  INTEGER NOT NULL          -- 归一化为 0,1,2,… 不留空档
+) WITHOUT ROWID;
+CREATE INDEX idx_fm_group ON failover_members(group_id, priority);
+```
+> **一个频道最多属于一个组** —— 必须在**应用层预检**（否则 UNIQUE 约束会回滚整个事务）。
 
 ### 3.6 收藏 / 历史 / 录制
 
@@ -277,28 +369,48 @@ CREATE TABLE reminders (
 ### 3.7 搜索（FTS5）
 
 ```sql
+-- 外部内容表模式 + trigger 维护
 CREATE VIRTUAL TABLE channels_fts USING fts5(
-    name, tvg_name, group_title, tvg_id,
-    content='',
-    tokenize='unicode61 remove_diacritics 2'
+    name, tvg_name, group_title, logo,
+    content='channels', content_rowid='id',
+    tokenize='unicode61 remove_diacritics 2 tokenchars ''_-.\'''
 );
--- content='' → 独立存储（不依赖外部表），用 triggers 手工维护
+CREATE TRIGGER ch_ai AFTER INSERT ON channels BEGIN
+  INSERT INTO channels_fts(rowid,name,tvg_name,group_title,logo)
+  VALUES (new.id,new.name,new.tvg_name,new.group_title,new.logo);
+END;
+CREATE TRIGGER ch_ad AFTER DELETE ON channels BEGIN
+  INSERT INTO channels_fts(channels_fts,rowid,name,tvg_name,group_title,logo)
+  VALUES ('delete',old.id,old.name,old.tvg_name,old.group_title,old.logo);
+END;
+CREATE TRIGGER ch_au AFTER UPDATE ON channels BEGIN
+  INSERT INTO channels_fts(channels_fts,rowid,name,tvg_name,group_title,logo)
+  VALUES ('delete',old.id,old.name,old.tvg_name,old.group_title,old.logo);
+  INSERT INTO channels_fts(rowid,name,tvg_name,group_title,logo)
+  VALUES (new.id,new.name,new.tvg_name,new.group_title,new.logo);
+END;
+
 CREATE VIRTUAL TABLE programmes_fts USING fts5(
-    title, description,
-    content='',
+    title, sub_title, description, category,
+    content='programmes', content_rowid='id',
     tokenize='unicode61 remove_diacritics 2'
 );
+-- 同款 triggers（略）
 ```
 
-**中文分词问题**：`unicode61` 会把中文当成「一个长 token」（因为它按 Unicode 空白切分，中文没有空格）。三种解法：
+> ⚠️ **`WITHOUT ROWID` 与 FTS5 冲突**：`programmes` 若用 `WITHOUT ROWID` 就没有 rowid，`content='programmes', content_rowid='rowid'` 会失效。
+> **决策**：`programmes` **不用** `WITHOUT ROWID`，加 `id INTEGER PRIMARY KEY`（rowid 别名，8 字节/行，可忽略）。
+> `epg_channel_names` / `channel_category` / `failover_members` 保留 `WITHOUT ROWID`（复合主键本身就是查找键）。
+
+**中文分词问题**：`unicode61` 按 Unicode 空白切分，中文没有空格 → 整句变成一个 token。
 
 | 方案 | 说明 |
 |---|---|
-| **A. `trigram` tokenizer** | SQLite 3.34+ 内置。支持子串匹配，中文可用（3 字以上）。SQLite 3.34+ 默认编译进 rusqlite bundled |
+| **A. `trigram` tokenizer** | SQLite 3.34+ 内置。支持子串匹配，中文可用（3 字以上） |
 | **B. 自定义 tokenizer** | 用 `tokenchars` 扩展 + 预分词写入 shadow 表 |
 | **C. 双索引** | `unicode61`（英文/编号）+ `trigram`（中文子串），查询时并集 |
 
-**决策：采用 C（双 FTS 表）** —— 中文用 trigram 索引做子串查询，英文用 unicode61 索引做词查询，查询结果 UNION。简单且覆盖好。
+**决策：采用 C（双 FTS 表）** —— 中文用 trigram 索引做子串查询，英文用 unicode61 索引做词查询，结果 UNION。简单且覆盖好。
 
 > trigram 需要查询串 **≥ 3 字符**。对 1–2 字的中文查询，走 `LIKE 'x%'` 前缀匹配 + 频道数不大时的线性扫描兜底。
 
@@ -328,21 +440,38 @@ CREATE INDEX idx_sync_log_source ON sync_log(source_id, started_at DESC);
 
 ## 4. EPG 网格的查询设计
 
-### 4.1 场景
+### 4.0 原则：**绝不物化「网格表」**
 
-网格视图：可见 **20 个频道 × 6 小时**，每格 30 分钟 → 视口内 **20 × 12 = 240 个节目格**。但**当前节目**需要跨所有可见频道取。
+网格是**视图**，不是表。两步查询：
 
 ```sql
--- 1) 取可见频道的「当前 + 接下来 N 个」节目
-SELECT p.*
-FROM programmes p
-WHERE p.channel_id IN (?1)          -- 20 个频道
-  AND p.stop_ts > ?2                -- now - 30min（留出跨界重叠）
-  AND p.start_ts < ?3               -- now + 6h
-ORDER BY p.channel_id, p.start_ts;
+-- ① 取可见频道（20–200 行），keyset 分页，绝不 SELECT *
+SELECT id, name, epg_id FROM channels
+ WHERE source_id = ? AND hidden = 0
+ ORDER BY sort_order LIMIT ?;
+
+-- ② 一次时间切片扫描，关联到这些频道
+SELECT p.epg_channel_id, p.start_ts, p.stop_ts, p.title, p.description
+  FROM programmes p
+  JOIN epg_matches m ON m.epg_channel_id = p.epg_channel_id
+ WHERE m.channel_id IN (?,?,…)
+   AND p.start_ts < ?            -- 窗口上界
+   AND p.stop_ts  > ?            -- 窗口下界
+ ORDER BY p.epg_channel_id, p.start_ts;
 ```
 
-**索引**：`idx_prog_channel_time (channel_id, start_ts)` → 20 次索引范围扫描，每次几十行。**亚毫秒**。
+**索引**：`idx_prog_time(start_ts, epg_channel_id)` 服务 `start_ts < ?` 的上界；`stop_ts > ?` 是过滤条件。
+**扫描窗口要夹紧**：`start_ts >= :window_start - 3600`（超过 1 小时的节目很少见）。
+
+### 4.1 场景预算
+
+| 视图 | 规模 | 查询 | 目标 |
+|---|---|---|---|
+| 可见区 | 20 频道 × 6 h | 单条 IN 查询，~240–500 行 | < 16 ms |
+| 整日 | 100 频道 × 24 h | 跳过 join，直接 `WHERE start_ts BETWEEN` 后在内存里建网格 | < 30 ms |
+| 全量日 | 150 000 频道 | 不可能也不需要 —— 只对**可见频道**做时间切片 |
+
+> better-iptv 的做法印证了这一点：整日网格直接 `SELECT epg_channel_id,start,stop,title FROM programme WHERE start>=? AND start<?`，在内存里组装。
 
 ### 4.2 避免 N+1
 
@@ -353,23 +482,84 @@ let mut by_channel: HashMap<ChannelId, Vec<Programme>> = ...;
 for p in rows { by_channel.entry(p.channel_id).or_default().push(p); }
 ```
 
-### 4.3 全量节目表视图（整日 24h × 100 频道 = 4800 格）
+### 4.3 未匹配频道（EPG 有但播放列表没有）
 
-- 一次查询取 `100 频道 × 24h`，约 2000–5000 行 → 几毫秒。
-- **UI 侧虚拟化**：只构建可见区域的组件，滚动时按需查询/复用。
-- **网格滚动时预取**：提前 1 屏预取（滚动方向感知）。
+`epg_matches` 表里没有对应行的 → 保留在 `programmes` / `epg_channels` 里，但 UI 中不显示。
+**记录匹配率**（`matched / total`），低于阈值时在设置页提示并提供手动修正器。
 
-### 4.4 未匹配频道（EPG 有但播放列表没有）
+### 4.4 EPG 数据量与保留策略
+
+| 项 | 数值 |
+|---|---|
+| 150 000 频道 × ~90 节目/天 × 7 天 | ≈ **9400 万行 ≈ 11 GB** |
+| **默认保留窗口** | **3 天** |
+| 清理规则 | 「结束时间早于该频道首个新节目起点，且已结束超过 1 天」的行才删 |
+
+---
+
+## 4.5 同步与导入
+
+### 4.5.1 播放列表同步（增量）
 
 ```
-channels.tvg_id  ←→  programmes.tvg_id
+1. 取 playlist_url 的 ETag / Last-Modified
+   ├─ 未变化 → 跳过
+   └─ 变化   → 下载
+2. 解析（流式，不整体载入内存）
+3. 与本地比对：
+   - provider_id 存在        → UPDATE（保留 hidden / user_order / favourites）
+   - provider_id 不存在      → INSERT
+   - 本地有但本次没有        → 标记 last_seen_at 不更新（软删除，N 天后清理）
+4. 重建 FTS 索引（增量）
+5. 写入 sync_log
 ```
 
-匹配规则：
-1. 精确匹配 `tvg_id`（大小写不敏感 + Unicode 规范化）。
-2. 失败时 `tvg_name` ≈ `channels.name` 模糊匹配（`strsim` 或归一化编辑距离）。
-3. 仍未匹配 → 保留在 `programmes` 里但 `channel_id = NULL`，UI 中不显示。
-4. **记录匹配率**（`matched / total`），低于阈值时在设置页提示「EPG 匹配率 23%，可能是 tvg-id 不匹配」——这是用户最常见的 EPG 投诉来源。
+**关键**：更新时**绝不能**覆盖 `hidden`、`user_order`、`favourites` 关联。这三样是用户数据。
+
+### 4.5.2 EPG 同步（增量 + 过期清理）
+
+```
+1. 下载 XMLTV（流式解析，边下边入库）
+2. 对每个 programme：已存在 → 跳过；否则 → INSERT
+3. 清理：DELETE FROM programmes WHERE stop_ts < now - retention_days
+4. 更新 EPG 匹配率统计
+```
+
+### 4.5.3 导入配方（实测有效，来自 better-iptv）
+
+大批量导入用 **staging DB + ATTACH + 逐频道事务交换**，不要直接往主库插：
+
+```
+主库连接   : journal_mode=WAL; synchronous=NORMAL; foreign_keys=OFF;
+             temp_store=MEMORY; cache_size=-2048; wal_autocheckpoint=0; journal_size_limit=4MiB
+staging DB : ATTACH 'ingest.db' AS ingest   (journal_mode=OFF, synchronous=OFF)
+staging 表 : seq INTEGER PRIMARY KEY, knum INTEGER, start, stop, keep, title, description, category
+             + INDEX (knum)
+交换       : INSERT OR FAIL INTO programmes SELECT … FROM ingest.epg_ingest
+             WHERE knum = ? AND keep = 1     -- 每个频道一个事务，块大小 20 000 行
+```
+
+> **`foreign_keys=OFF` 是刻意的**：开着 FK 时，SQLite 会给每条插入子表的记录分配 statement journal，在 `temp_store=memory` 下会把所有复用页留在内存里。
+> 实测：4.3 万 ~ 43 万节目的交换事务约 50–135 ms。
+
+### 4.5.4 调度
+
+| 任务 | 默认周期 | 触发时机 |
+|---|---|---|
+| 播放列表同步 | 24 h | 应用启动（**后台，不阻塞**）+ 定时 |
+| EPG 同步 | 6 h | 应用启动（**后台，不阻塞**）+ 定时 |
+| 手动刷新 | — | 用户长按 |
+
+**关键设计**：启动时**绝不**同步等待。流程是：
+
+```
+App 启动
+  ├─ 立即：读本地 SQLite → 渲染 UI（< 200 ms）
+  ├─ 立即：后台任务启动 EPG/playlist 同步（tokio task，不阻塞 UI）
+  └─ 同步完成 → 发事件 → UI 局部刷新（Slint 的 model 增量更新）
+```
+
+这与 TiviMate 的根本差异，也是「启动快」的来源。
 
 ---
 
@@ -395,70 +585,18 @@ pub trait SecretStore: Send + Sync {
 
 ---
 
-## 6. 同步流程
-
-### 5.1 播放列表同步（增量）
-
-```
-1. 取 playlist_url 的 ETag / Last-Modified
-   ├─ 未变化 → 跳过
-   └─ 变化   → 下载
-2. 解析（流式，不整体载入内存）
-3. 与本地比对：
-   - provider_id 存在        → UPDATE（保留 hidden / user_order / favourites）
-   - provider_id 不存在      → INSERT
-   - 本地有但本次没有        → 标记 last_seen_at 不更新（软删除，N 天后清理）
-4. 重建 FTS 索引（增量）
-5. 写入 sync_log
-```
-
-**关键**：更新时**绝不能**覆盖 `hidden`、`user_order`、`favourites` 关联。这三样是用户数据。
-
-### 5.2 EPG 同步（增量 + 过期清理）
-
-```
-1. 下载 XMLTV（流式解析，边下边入库）
-2. 对每个 programme：
-   - 已存在（source_id, epg_id, tvg_id, start_ts, title 相同）→ 跳过
-   - 否则 → INSERT
-3. 清理：DELETE FROM programmes
-   WHERE source_id = ? AND epg_id = ?
-     AND stop_ts < now - retention_days
-4. 更新 EPG 匹配率统计
-```
-
-### 5.3 调度
-
-| 任务 | 默认周期 | 触发时机 |
-|---|---|---|
-| 播放列表同步 | 24 h | 应用启动（**后台，不阻塞**）+ 定时 |
-| EPG 同步 | 6 h | 应用启动（**后台，不阻塞**）+ 定时 |
-| 手动刷新 | — | 用户下拉/长按 |
-
-**关键设计**：启动时**绝不**同步等待。流程是：
-
-```
-App 启动
-  ├─ 立即：读本地 SQLite → 渲染 UI（< 200 ms）
-  ├─ 立即：后台任务启动 EPG/playlist 同步（tokio task，不阻塞 UI）
-  └─ 同步完成 → 发事件 → UI 局部刷新（Slint 的 model 增量更新）
-```
-
-这与 TiviMate 的根本差异，也是「启动快」的来源。
-
----
-
-## 7. 性能目标
+## 6. 性能目标
 
 | 操作 | 目标 | 措施 |
 |---|---|---|
 | 应用启动 → 首屏 | < 200 ms | 只读 SQLite，不读网络 |
 | 15 万频道导入 | < 30 s | 流式解析 + 批量事务（1000/批）+ WAL |
 | 15 万频道列表首屏 | < 50 ms | 索引 + 虚拟列表 |
-| EPG 网格 100 频道 × 6h | < 16 ms | 单条 IN 查询 + 索引 |
-| EPG 全量导入 (100k 节目) | < 60 s | 流式解析 + `INSERT OR IGNORE` |
-| 单频道节目查询 | < 1 ms | `idx_prog_channel_time` |
+| EPG 网格 100 频道 × 6h | < 16 ms | 单条 IN 查询 + `idx_prog_time` |
+| EPG 全量导入 (100k 节目) | < 60 s | 流式解析 + staging DB 交换 |
+| 单频道节目查询 | < 1 ms | `idx_prog_chan` |
 | 收藏切换 | < 5 ms | 主键索引 |
+| 15 万频道 × 3 天 EPG 落库体积 | < 5 GB | 3 天保留窗口 |
 
 ---
 

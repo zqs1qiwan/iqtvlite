@@ -21,17 +21,49 @@
 
 **理由**：
 1. **Slint 是唯一有 Android TV 落地实证的纯 Rust GUI**（`rusttv` spike 全部问题得到肯定答案）。
-2. **体积可控**：Skia 是 ~10 MB 地板，但整个 APK 能做到 11–15 MB，且**不含 WebView**。对比 Tauri 方案要带一个 WebView 运行时（Android TV 上 WebView 版本参差，冷启动差异可达数百毫秒）。
+2. **体积可控**：Skia 是 ~10 MB 地板，但整个 APK 能做到 11.5 MB，且**不含 WebView**。对比 Tauri 方案要带一个 WebView 运行时（Android TV 上 WebView 版本参差，冷启动差异可达数百毫秒）。
 3. **无 JS 运行时、无 V8/JSC**，冷启动没有「引擎预热」环节。
-4. **Slint 的 focus 是声明式且可控**：`FocusScope` + `focus-changed` 回调，足够构建可靠的 TV 焦点模型。
-5. **中文字体**：Android 后端用系统字体（Roboto + 系统 CJK 回退），无需自己打包字体。
+4. **中文字体**：Android 后端用系统字体（Roboto + 系统 CJK 回退），无需自己打包字体。
 
-**Slint 的三个已知代价（接受）**：
+**但有六个必须知道的硬事实（全部来自源码/issue 验证）**：
+
+| # | 事实 | 影响 |
+|---|---|---|
+| 1 | **Android 上只能用 Skia**（`i-slint-backend-android-activity` 无条件依赖 `i-slint-renderer-skia`；FemtoVG 因 fontconfig 问题被显式排除）。`BackendSelector` 会拒绝 `renderer != "skia"` | 没得选，也不用选 |
+| 2 | **wgpu-on-Android = Skia-on-wgpu，且只编译 Vulkan**（无 GLES 回退） | **TV 设备上不要依赖 wgpu**。用 `require_opengl_es()` 更稳 |
+| 3 | **NDK 必须 r30+**（skia-safe 0.157 用了新 libc++ 符号，NDK < r30 启动即崩，slint#14824） | 构建环境硬约束 |
+| 4 | **媒体按键被静默丢弃** —— `MediaPlayPause` / `ChannelUp` / `ChannelDown` / `Info` / `Guide` 在 Slint 的映射表里全是 `None` | **必须自己在 Kotlin 层拦截并转发到 Rust** |
+| 5 | **无空间焦点导航** —— 源码确认只有线性 tab 焦点链（`ForwardFocus`/`PreviousFocus` 已被移除） | 必须自研焦点层（见 §6） |
+| 6 | **Android 上 `import` 打包字体不生效**（slint#11725，维护者明确不支持） | **中文 UI 必须用 fontique 运行时 API 注册字体**，见下 |
+
+**中文排版的坑（必须处理）**：
+- fontique 的 Android 后端读 `/system/etc/fonts.xml` 构建 CJK 回退链。
+- 但**部分国产 ROM 的 fonts.xml 有问题** → 中文渲染成豆腐块（slint#11693，OnePlus/ColorOS 实测：「测试」不显示但「字体渲染」正常）。
+- → **必须内置一份中文字体**（如 Noto Sans SC / 思源黑体），并通过 fontique 运行时 API 注册：
+
+```toml
+slint = { version = "=1.18.1", features = ["backend-android-activity-06", "unstable-fontique-011"] }
+```
+```rust
+use slint::fontique_011::fontique;
+
+let bytes = std::fs::read("/data/data/tv.iqtvlite.app/fonts/NotoSansSC-Regular.otf")?;
+let blob = fontique::Blob::new(std::sync::Arc::new(bytes));
+let mut collection = slint::fontique_011::shared_collection();
+let fonts = collection.register_fonts(blob, None);
+collection.append_fallbacks(
+    fontique::FallbackKey::new(fontique::Script::from_str_unchecked("Hani"), None),
+    fonts.iter().map(|x| x.0),
+);
+```
+> 注意 `fontique_0NN` 的后缀**每次 fontique 升级都会变**（1.16/1.17 是 `010`，1.18.1 是 `011`，master 是 `012`）→ **必须精确锁定 Slint 版本**。
+
+**Slint 的三个代价（接受）**：
 - Skia 是 APK 体积地板（~10 MB）→ 接受。
-- **无内置空间导航**（只能"上一个/下一个"）→ 自研焦点层，见 §6。
-- Android 后端**固定用 Skia**，不能用 wgpu → 接受。
+- 无空间导航 → 自研焦点层。
+- Android 窗口**不透明** → 见 §2b，这是最大的架构约束。
 
-**为什么不是 Compose TV**：虽然 `androidx.tv` 的焦点/遥控器支持开箱即用最省事，但那会让 UI 层脱离 Rust，与「全 Rust + 未来跨端」的架构目标冲突，且引入完整 Compose 运行时（内存 + 冷启动）。
+**为什么不是 Compose TV**：虽然 `androidx.tv` 的焦点/遥控器支持开箱即用最省事，但那会让 UI 层脱离 Rust，与「全 Rust + 未来跨端」的架构目标冲突，且引入完整 Compose 运行时（内存 + 冷启动）。**但如果 Slint 的视频合成问题无法解决，Compose TV 是 B 计划**（见 §2b）。
 
 **为什么不是 Tauri**：WebView 在 Android TV 上体验参差（不同厂商 WebView 版本差异大、冷启动慢、焦点导航需要大量 JS 补丁）。
 
@@ -102,6 +134,30 @@ TvFocusScope (Rust)
 **被否决：纯 Rust 自研传输层**。Limpido 用这条路线做到 25 MB Android TV APK，但需要自实现 TS PAT/PMT/PES 解析、PCR 跟踪、HLS 调度、fMP4 解析 —— 工程量以**人年**计，且直接威胁「稳定性」目标。**v2 再评估**，v1 优先把产品做对。
 
 **被否决：纯 libmpv**。Android TV 上不可靠。
+
+---
+
+## 2b. 🔴 视频合成架构：Slint 的硬约束（**最重要的未决项**）
+
+> 完整分析见 `06-android-tv.md` §1。这里只给决策摘要。
+
+**问题**：Slint 的 Android 后端硬编码 `transparent = false`，Surface 从不设为 `PixelFormat.TRANSLUCENT`，且**没有任何 API 能把 `ANativeWindow`/`Surface` 交给 Slint**。
+→ **SurfaceView 视频层无法穿透 Slint 窗口。** 这不是 Z-order 问题，是 **alpha** 问题。
+
+**四条路径**：
+
+| 路径 | 做法 | HDR | DRM | 工作量 | 风险 |
+|---|---|---|---|---|---|
+| **P1** patch Slint 透明标志 + 让 Slint 渲染进我们自建的 SurfaceView | fork `slint`（~2 行）+ 可能要动 `android-activity` 的窗口获取 | ✅ | ✅ | 高 | 🟠 供应链（Skia 预编译二进制）、上游冲突 |
+| **P2** Slint 只做浏览屏 + 原生播放屏 | 浏览全 Slint；播放 = SurfaceView + ExoPlayer + 约 200 行 Kotlin OSD | ✅ | ✅ | 中 | 🟠 OSD 非 Rust；两 Activity |
+| **P3** GL underlay | ExoPlayer → SurfaceTexture → OES 纹理 → `set_rendering_notifier(BeforeRendering)` | ❌ | ❌ | 中高 | 🔴 HDR/DRM 受损，Slint 无文档支持 |
+| **P4** 换 Compose for TV | Kotlin UI + Rust core | ✅ | ✅ | 低 | 🔴 丢掉 Rust UI 的轻量优势 |
+
+**建议**：**v1 走 P2，M0 spike 并行验证 P1**。
+- P2 零 patch、零上游耦合，1–2 周可确定跑通，能保证交付。
+- P1 是「Slint 一统」的必经之路，但必须先验证「Slint 能否渲染进我们自建的 SurfaceView」—— 这是 M0 的第一号任务。
+
+**降级链**：P2 → P4（Compose TV）→ P3。
 
 ---
 
@@ -196,13 +252,17 @@ pub trait FocusScope {
 
 ```toml
 # UI
-slint = "1.18"                      # + backend-android-activity-06
-slint-build = "1.18"
+slint = { version = "=1.18.1",           # ← 必须精确锁定（内部 crate 有 patch 级 breaking change）
+          features = ["backend-android-activity-06", "unstable-fontique-011"] }
+slint-build = "=1.18.1"
+# Android 后端只用 Skia（不可选）；wgpu-on-Android 仅 Vulkan，不建议用于 TV
+# 构建要求: NDK r30+（skia-safe 0.157）, rustup target add aarch64-linux-android
 
 # Android 桥
-android-activity = "0.6"            # Activity 生命周期 + 原生窗口
+android-activity = "0.6"            # Activity 生命周期 + 原生窗口；Slint 重导出为 slint::android::android_activity
 jni = "0.22"                        # 仅在 Kotlin 桥层用
-ndk = "0.8"                         # ANativeWindow 互操作
+ndk = "0.9"                         # ANativeWindow 互操作 (rwh_06)
+android-build = "0.1"               # javac + d8 驱动（Slint 的 build.rs 也用）
 
 # 领域
 serde = { version = "1.0", features = ["derive"] }

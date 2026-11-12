@@ -10,102 +10,121 @@
 
 `SurfaceView` 不是普通 View —— 它在 SurfaceFlinger 里是**独立 layer**，默认位于应用窗口**之下**。我们要让 Rust/Slint 的原生 UI 画在视频**之上**。
 
-### 1.2 澄清：`gatherTransparentRegion` 不是解法
+### 1.2 🔴 阻断性事实：Slint 的 Android 窗口是**不透明**的
 
-很多技术博客（含我最初引用的那篇）建议「覆写 `gatherTransparentRegion` 让 SurfaceFlinger 尊重覆盖层」。**这是错的。**
+Slint 的 Android 后端 `internal/backends/android-activity/androidwindowadapter.rs`：
 
-AOSP `core/java/android/view/SurfaceView.java` 的实现：
-
-```java
-@Override
-public boolean gatherTransparentRegion (Region region) {
-    if (isAboveParent() || ! mDrawFinished) {
-        return super.gatherTransparentRegion(region);
-    }
-    boolean opaque = true;
-    if ((mPrivateFlags & PFLAG_SKIP_DRAW) == 0) {
-        opaque = super.gatherTransparentRegion(region);   // 本 View 自己绘制 → 从 region 移除
-    } else if (region != null) {
-        int w = getWidth(); int h = getHeight();
-        if (w > 0 && h > 0) {
-            getLocationInWindow(mLocation);
-            region.op(l, t, l+w, t+h, Region.Op.UNION);   // 打洞
-        }
-    }
-    return opaque;
-}
+```rust
+PollEvent::Main(MainEvent::InitWindow { .. }) => {
+    if let Some(w) = self.app.native_window() {
+        ...
+        self.renderer.set_window_handle(
+            Arc::new(w),
+            Arc::new(DummyDisplayHandle),
+            size,
+            self.requested_graphics_api.borrow().clone(),
+            false,           // ← transparent = false，【硬编码】
+        )?;
 ```
 
-它的作用是**窗口级优化**：告诉 SurfaceFlinger「我这块矩形是透明的，别覆盖写不透明黑」。
-它**不控制 Z-order、不创建第二个窗口、不让覆盖层出现在 SurfaceView 之上**。覆写不当会得到黑屏或丢失视频层。
+配套事实：
+- Skia 渲染器**本身支持**透明（`set_transparent()`；wgpu surface 支持 `CompositeAlphaMode::PreMultiplied/PostMultiplied`）—— 但 Android 后端从不启用。
+- `javahelper.rs` / `androidwindowadapter.rs` 里搜索 `transparent` / `PixelFormat` / `TRANSLUCENT` / `setFormat` / `Surface` / `holder` → **零命中**。Surface 从不被设为 `PixelFormat.TRANSLUCENT`。
+- `Window` 元素在 Slint 语言里**没有** `transparent` 属性（只有 `background`）。
+- **没有任何 API 可以把 `ANativeWindow` / `Surface` / MediaCodec 输出 Surface 交给 Slint。**（GitHub issue 搜 `surfaceview OR MediaCodec OR SurfaceTexture` 在 slint-ui/slint 下无相关结果。）
 
-### 1.3 真正的机制：Z-order
+### 1.3 结论：这不是 Z-order 问题，是 **alpha** 问题
 
-| API | 语义 |
-|---|---|
-| `setZOrderOnTop(true)` | Surface 在**父窗口之上**（`TYPE_APPLICATION_MEDIA_OVERLAY`）→ 窗口内**没有任何东西**能画在它上面 |
-| `setZOrderMediaOverlay(true)` | Surface 在**其他 SurfaceView 之上**、但在**父窗口之下**（传统做法） |
-| **`setCompositionOrder(int)`**（**API 36 / Android 16**） | 现代通用 API。正值 = 父窗口之上，负值 = 父窗口之后；**同值时相对顺序未定义**。前两者在 API 36 **已废弃** |
+即使我们把视频 SurfaceView 正确地排在 Slint SurfaceView 之下（Z-order 可以通过 `setZOrderMediaOverlay` / `setCompositionOrder` 控制），**Slint 的 SurfaceView 是不透明的** → 它会整块盖住视频。
 
-**关键事实**：同一 Activity 内的两个 SurfaceView，**若都用负的 composition order，它们的相对顺序由数值大小决定**（大者在上）；**相同数值则顺序未定义**。
+> **澄清一个常见误解**：很多资料（包括我最初引用的技术博客）说「覆写 `gatherTransparentRegion` 让 SurfaceFlinger 尊重覆盖层」—— **这是错的**。
+>
+> AOSP `SurfaceView.java` 里，`gatherTransparentRegion` 的作用是**窗口级优化**：告诉 SurfaceFlinger「我这块矩形是透明的，别覆盖写不透明黑」。它**不控制 Z-order、不创建第二个窗口、不让覆盖层出现在 SurfaceView 之上**。覆写不当会得到黑屏或丢失视频层。
+>
+> 真正的 Z-order 机制是：
+>
+> | API | 语义 |
+> |---|---|
+> | `setZOrderOnTop(true)` | Surface 在**父窗口之上** → 窗口内**没有任何东西**能画在它上面 |
+> | `setZOrderMediaOverlay(true)` | Surface 在**其他 SurfaceView 之上**、但在**父窗口之下**（传统做法） |
+> | **`setCompositionOrder(int)`**（**API 36 / Android 16**） | 现代通用 API。正值 = 父窗口之上，负值 = 父窗口之后；**同值时相对顺序未定义**。前两者在 API 36 **已废弃** |
 
-### 1.4 四个候选方案对比
+### 1.4 四条可行路径
 
-| 方案 | 做法 | 视频可见 | UI 可见 | 开销 | TV 稳健性 | 结论 |
-|---|---|---|---|---|---|---|
-| **(a) 两窗口** | 视频 Activity + UI Activity（`TYPE_APPLICATION_MEDIA_OVERLAY` + `FLAG_TRANSLUCENT`） | ✅ | ✅ | 双窗口双缓冲 | ❌ **差**：焦点/D-pad 在两窗口间路由脆弱；需 `SYSTEM_ALERT_WINDOW` 权限（Play 政策风险） | ❌ 排除 |
-| **(b) TextureView** | `player.setVideoTextureView(tv)` | ✅ | ✅ | **功耗 +30%**（ExoPlayer#1084：390mA vs 295mA）；GPU→CPU→GPU 拷贝；**丢失原生 HDR** | ⚠️ 可用但 4K/HDR 受损 | ⚠️ 仅兜底 |
-| **(c) SurfaceControl.Transaction** | `buildReparentTransaction()` / `applyTransactionOnDraw()` | ✅ | ✅ | 低 | ✅ Media3 有官方 demo（`demos/surface`），可在不中断播放的前提下 reparent | ✅ 高级场景（PiP/多画面/离屏） |
-| **(d) 同 Activity 内兄弟 View** | `FrameLayout`：`SurfaceView`（视频）+ 原生 UI View（**兄弟节点，在其上**） | ✅ | ✅ | 低（单窗口） | ✅ **最佳** | ✅ **采用** |
+| 方案 | 做法 | HDR | DRM | 工作量 | 风险 |
+|---|---|---|---|---|---|
+| **P1 主路径：patch Slint 的透明标志** | fork Slint，把 `transparent: false` 改成 `true`（+ 自建 SurfaceView 设 `PixelFormat.TRANSLUCENT`）。视频 SurfaceView 作为兄弟节点在下方 | ✅ | ✅ | 中（需维护 fork） | 🟠 Slint 上游可能合并/冲突；`binary-cache` 的预编译 Skia 仍可用 |
+| **P2 备选：Slint 只做浏览屏 + 原生播放屏** | 浏览（频道/EPG/设置）用 Slint；播放用原生 Activity（SurfaceView + ExoPlayer + 极简 OSD）。Rust 通过 C-ABI 驱动全部播放状态 | ✅ | ✅ | 中（OSD 约 200 行 Kotlin） | 🟠 OSD 非 Rust；两个 Activity 切换 |
+| **P3 GL underlay** | ExoPlayer → `SurfaceTexture` → OES 外部纹理 → `set_rendering_notifier(BeforeRendering)` 里画在 Slint 场景之下。单 Activity、单 GL 上下文 | ❌ | ❌ | 中高（需自建 EGL/GLES 管道，Slint 无文档支持） | 🔴 HDR/DRM 受损 |
+| **P4 换框架** | Compose for TV + Rust core | ✅ | ✅ | 低（现成方案） | 🔴 丢掉 Rust UI 的轻量/启动优势 |
 
-Android 文档明确支持 (d)：
-> *"The view hierarchy will take care of correctly compositing with the Surface any siblings of the SurfaceView that would normally appear on top of it."*
+> **P3 细节**：`slint::Window::set_rendering_notifier(cb)` 是 1.18.1 的公开 API，回调拿到 `RenderingState::{RenderingSetup, BeforeRendering, AfterRendering}` + `&GraphicsAPI`，官方 `examples/opengl_underlay` 就是这么做的。ExoPlayer 输出到 `SurfaceTexture`，在 `BeforeRendering` 里用 `glEGLImageTargetTexture2DOES` 导入并画全屏 quad。Slint 维护者 `tronical` 对「内置 video 支持」的表态是：*"we want to have enablers/interfaces to permit connecting different multimedia frameworks... with the wgpu API we have an interface for efficiently feeding video frames into Slint"* —— 即**方向正确但无内置支持**。
 
-### 1.5 采用方案 (d) 的具体结构
-
-```xml
-<!-- res/layout/activity_main.xml -->
-<FrameLayout android:id="@+id/root"
-    android:layout_width="match_parent" android:layout_height="match_parent"
-    android:keepScreenOn="true">
-
-    <!-- 视频层：SurfaceView -->
-    <SurfaceView android:id="@+id/video_surface"
-        android:layout_width="match_parent" android:layout_height="match_parent" />
-
-    <!-- UI 层：Rust/Slint 原生 View，作为兄弟节点在其上 -->
-    <iqtvlite.ui.SlintView android:id="@+id/slint_ui"
-        android:layout_width="match_parent" android:layout_height="match_parent" />
-</FrameLayout>
-```
-
-**Z-order 设置**：
-```kotlin
-// API 36+ (Android 16)
-if (Build.VERSION.SDK_INT >= 36) {
-    videoSurface.setCompositionOrder(-2)   // 负值 = 在父窗口之后
-} else {
-    @Suppress("DEPRECATION")
-    videoSurface.setZOrderMediaOverlay(true)  // 传统路径：在其他 SurfaceView 之上、父窗口之下
-}
-```
-
-**注意**：Slint 1.18 的 Android 后端走 `android-activity` 的 `NativeActivity`，**渲染到一个由平台胶水创建的 SurfaceView**，我们无法从 Rust 设置它的 composition order。**因此采用 (d) 需要我们自己写 Kotlin Activity + 一个 `SlintView`（自定义 `View`）**，而不是用 Slint 的 `NativeActivity` 后端。
-
-**这是 M0 spike 必须验证的核心项。**备选：Slint 是否提供把 UI 渲染到自定义 `Surface`/`ANativeWindow` 的 API（`slint::platform::android`），若有则可让 Slint 渲染进我们自己的 SurfaceView，从而完全掌控 Z-order。
-
-### 1.6 备选：两个 SurfaceView 同窗口
-
-如果 Slint 无法嵌入 View，则：
+### 1.5 P1 的具体改动（P1 需要改什么）
 
 ```
-Activity window
- ├─ SurfaceView #1 (video)   compositionOrder = -2   ← ExoPlayer 输出
- └─ SurfaceView #2 (Slint)   compositionOrder = -1   ← Rust UI
+Slint 侧（fork，~2 行）:
+  internal/backends/android-activity/androidwindowadapter.rs
+    self.renderer.set_window_handle(..., false)  →  true
+
+Kotlin 侧（我们自己的 Activity）:
+  1. 自建 FrameLayout content view
+  2. 建两个 SurfaceView:
+       - videoSurface  (ExoPlayer 输出)  → 保持默认（在最下）
+       - slintSurface  (我们给 Slint)    →  holder.setFormat(PixelFormat.TRANSLUCENT)
+                                                   且 setZOrderMediaOverlay(true) / setCompositionOrder(-1)
+  3. 需要把 slintSurface 的 ANativeWindow 交给 Slint
+     → 这需要 android-activity 允许「自定义窗口」；当前 0.6 的 AndroidApp::native_window()
+       固定指向 NativeActivity 的窗口。← 【这一条尚未验证可行】
 ```
 
-两个都在父窗口之后，靠 composition order 定序。**Rust UI 必须带 alpha 渲染**，让视频从洞里透出来。
-风险：Slint 的 SurfaceView 由平台胶水创建，我们无法设置其 composition order → 可能需要 patch `slint` 或 `android-activity`。
+**⚠️ 最后一条是 P1 的真正难点**：不仅要 patch Slint 的透明标志，还要让 Slint 渲染到**我们提供的** SurfaceView 而不是 `NativeActivity` 创建的那个。后者可能需要 patch `android-activity` 或 `i-slint-backend-android-activity` 的窗口获取逻辑。
+
+### 1.6 P2 的具体结构（最稳，零 patch）
+
+```
+Activity A: "Browse"  (Slint / NativeActivity)
+   频道列表 / EPG 网格 / 搜索 / 设置 / 收藏
+   → 100% Rust，Slint 原生
+
+Activity B: "Player"  (Kotlin Activity)
+   FrameLayout
+     ├── SurfaceView (video, ExoPlayer)   ← setCompositionOrder(-2) / setZOrderMediaOverlay
+     └── OSDOverlayView (Compose/Kotlin)  ← 频道 logo / 标题 / 进度条 / 暂停指示
+   → 播放逻辑 100% Rust（经 C-ABI），OSD 仅 200 行 Kotlin
+
+播放状态流：
+  Rust PlaybackCoordinator ──C-ABI──▶ Kotlin PlayerBridge ──▶ ExoPlayer
+        ▲                                            │
+        └──────────── 事件回调 (状态/首帧/错误) ◀──────┘
+```
+
+**P2 的代价**：
+1. OSD 是 Kotlin（违反「全 Rust」，但只占播放 UI 的很小一部分）。
+2. 浏览 → 播放 是 Activity 切换（可用 `overridePendingTransition` / 共享元素动画抹平）。
+3. **实际上，很多 TV 应用就是这么做的**（TiviMate 自己的播放界面也用原生 PlayerView）。
+
+### 1.7 决策建议
+
+**推荐 P2 作为 v1 默认路径，P1 作为 v1.1 优化路径。**
+
+理由：
+- P2 **零 patch、零上游耦合**，可在 M0 spike 内（1–2 周）确定跑通。
+- P1 需要同时 patch 两个上游 crate（`slint` + `android-activity`/`i-slint-backend-android-activity`），且要自己构建 Slint + 处理 Skia 预编译二进制的供应链，**风险与工期都远超预期**。
+- P2 唯一的实质损失是 OSD 用 Kotlin —— 可以后续用「Rust 渲染 OSD 到 `TextureView`」或「P1」替换。
+
+**但**：P2 需要接受「播放屏与浏览屏是两种技术栈」这一事实。如果目标是「Slint 一统」，则 P1 是必经之路，M0 必须先验证「Slint 能否渲染进我们自建的 SurfaceView」这一条。
+
+### 1.8 附：Android 官方支持的其他合成手段（供多画面/PiP 场景）
+
+| 手段 | API | 用途 |
+|---|---|---|
+| `SurfaceControl.Transaction.setBufferTransform()` | **API 33+** | 设置 buffer 的旋转/缩放，**不是 Z-order API** |
+| `AttachedSurfaceControl.applyTransactionOnDraw(t)` | API 31+ | 与下一次绘制原子地应用 transaction |
+| `AttachedSurfaceControl.buildReparentTransaction(child)` | API 31+ | reparent SurfaceControl |
+| `SurfaceView.setCompositionOrder(int)` | API 36 | 通用 Z-order |
+
+Media3 1.11 的 `demos/surface` 演示了用 `SurfaceControl` 把视频 surface 任意 reparent（可在不中断播放的情况下换到离屏），**多画面 / 画中画 / 后台播放**时用得上。
 
 ---
 
