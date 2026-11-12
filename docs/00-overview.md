@@ -173,3 +173,24 @@ Slint 后端硬编码 `transparent = false`，`Surface` 从不设为 `PixelForma
 | Rust crates | MIT / Apache-2.0 | 兼容 |
 
 **结论**：应用整体发布为 **GPL-3.0-or-later**，随包分发 libmpv 时需附完整源码与构建脚本链接（GPL §6）。Slint 走 royalty-free 路线避免强制 GPL 传染到 UI 代码（若选 GPL 版则 UI 也必须 GPL——实际上我们本来就是 GPL，所以选 GPL 版更省事；**但 royalty-free + About 页归属标注更利于未来闭源商业化**）。
+
+---
+
+## 8. 实现进度
+
+> 领域层（纯 Rust，零 Android 依赖）**已实现并通过 127 个测试**。
+> 详见 [`crates/README.md`](../crates/README.md)。
+
+| 层 | Crate | 状态 |
+|---|---|---|
+| 协议层 | `iqtvlite-core`（M3U / XMLTV / Xtream / Catch-up 模板 / 稳定 ID / 时间） | ✅ 71 测试 |
+| 存储层 | `iqtvlite-store`（SQLite + FTS5 + 迁移） | ✅ 3 测试 |
+| EPG 层 | `iqtvlite-epg`（频道↔指南匹配算法） | ✅ 10 测试 |
+| 网络层 | `iqtvlite-net`（UA 管理 / 连接池保温） | ✅ 4 测试 |
+| 播放层 | `iqtvlite-player`（回退状态机 / 故障自愈） | ✅ 13 测试 |
+| 焦点层 | `iqtvlite-tvfocus`（自研空间导航） | ✅ 7 测试 |
+| 集成测试 | `iqtvlite-tests`（真实形态 fixture） | ✅ 19 测试 |
+| **UI 层** | `iqtvlite-app`（Slint） | ⬜ 待 M0 spike |
+| **Android 胶水** | `iqtvlite-capi` + Kotlin | ⬜ 待 M0 spike |
+
+**下一步（`docs/07-roadmap.md` 的 M0）**：Surface 合成方案验证、中文字体、媒体按键拦截、NDK 构建链路。

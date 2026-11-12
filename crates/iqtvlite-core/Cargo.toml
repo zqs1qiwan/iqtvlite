@@ -1,0 +1,22 @@
+[package]
+name = "iqtvlite-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "iqtvlite 领域层：IPTV 数据模型、M3U/Xtream/XMLTV 解析、Catch-up 模板引擎。零 Android 依赖。"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+quick-xml = { workspace = true }
+url = { workspace = true }
+jiff = { workspace = true }
+xxhash-rust = { workspace = true }
+base64 = { workspace = true }
+percent-encoding = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }

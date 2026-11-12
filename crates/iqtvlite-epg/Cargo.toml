@@ -1,0 +1,16 @@
+[package]
+name = "iqtvlite-epg"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "iqtvlite EPG 层：频道匹配算法、节目单同步调度、网格查询。"
+
+[dependencies]
+iqtvlite-core = { workspace = true }
+iqtvlite-store = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+unicode-normalization = "0.1"

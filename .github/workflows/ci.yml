@@ -1,0 +1,91 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  # 体积门禁的基线（KB），随 release 更新
+  CORE_LIB_BUDGET_KB: 4096
+
+jobs:
+  # ── 核心层：最快反馈，不需要任何 Android 工具链 ──────────────────────
+  core:
+    name: core (build + test + lint)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: fmt
+        run: cargo fmt --all -- --check
+      - name: clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: test
+        run: cargo test --workspace --locked
+      - name: license audit
+        # 防止误引入 CC-BY-NC-SA 类非商业协议（见 docs/03 ADR-007）
+        run: |
+          cargo install cargo-deny --locked
+          cargo deny check licenses
+
+  # ── Android 构建（需要 NDK）────────────────────────────────────────
+  android:
+    name: android (arm64-v8a)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+      - uses: Swatinem/rust-cache@v2
+      - uses: android-actions/setup-android@v3
+      - name: setup NDK
+        uses: nttld/setup-ndk@v1
+        with:
+          # ★ Slint 1.18 依赖 skia-safe 0.157，用了 NDK r30 之后才有的 libc++ 符号
+          #   （slint#14824：NDK < r30 启动即崩）
+          ndk-version: r30
+      - name: install cargo-ndk
+        run: cargo install cargo-ndk --locked
+      - name: build core cdylib
+        run: |
+          cargo ndk \
+            -t arm64-v8a \
+            -o android/app/src/main/jniLibs \
+            build --release --locked -p iqtvlite-capi
+      - name: build APK
+        run: ./android/gradlew -p android :app:assembleRelease
+      - name: upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: iqtvlite-arm64
+          path: android/app/build/outputs/apk/release/*.apk
+      - name: size gate
+        run: ./.github/scripts/size-gate.sh android/app/build/outputs/apk/release/*.apk
+
+  # ── 每周探测 libmpv-android 上游新版本 ──────────────────────────────
+  libmpv-watch:
+    name: libmpv upstream watch
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+      - name: check upstream
+        run: |
+          LATEST=$(curl -s https://api.github.com/repos/jarnedemeulemeester/libmpv-android/releases/latest \
+                    | grep -o '"tag_name": *"[^"]*"' | head -1 | cut -d'"' -f4)
+          PINNED=$(grep -oP 'libmpv-android/\releases/tag/\K[^"]+' android/app/build.gradle.kts 2>/dev/null || echo "")
+          echo "upstream=$LATEST pinned=$PINNED"
+          if [ -n "$LATEST" ] && [ "$LATEST" != "$PINNED" ]; then
+            echo "::notice::libmpv-android 有新版本 $LATEST（当前固定 $PINNED）"
+            git checkout -b chore/libmpv-$LATEST
+            sed -i "s|libmpv-android/releases/tag/$PINNED|libmpv-android/releases/tag/$LATEST|" android/app/build.gradle.kts
+            git commit -am "chore: bump libmpv-android to $LATEST"
+            git push origin HEAD
+          fi

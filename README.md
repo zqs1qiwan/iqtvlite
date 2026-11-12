@@ -22,17 +22,33 @@
 
 ## 状态
 
-🚧 **开发中** —— 当前处于 M0（技术可行性 Spike）阶段。
+🚧 **开发中** —— 领域层已完成，UI 层待 M0 spike。
 
 | 模块 | 状态 |
 |---|---|
-| Slint + Android TV 链路 | ⬜ |
-| 视频层 Surface 合成（ADR-008，最高风险） | ⬜ |
-| 双引擎（Media3 + mpv） | ⬜ |
-| 协议层（M3U / Xtream / XMLTV） | ⬜ |
-| SQLite 存储 + FTS5 | ⬜ |
-| EPG 网格 | ⬜ |
-| DVR / 多画面 / Catch-up | ⬜ |
+| 协议层 `iqtvlite-core`（M3U/XMLTV/Xtream/Catch-up） | ✅ 71 测试 |
+| 存储层 `iqtvlite-store`（SQLite + FTS5） | ✅ 3 测试 |
+| EPG 层 `iqtvlite-epg`（匹配算法） | ✅ 10 测试 |
+| 网络层 `iqtvlite-net`（UA / 连接池） | ✅ 4 测试 |
+| 播放层 `iqtvlite-player`（回退状态机） | ✅ 13 测试 |
+| 焦点层 `iqtvlite-tvfocus`（空间导航） | ✅ 7 测试 |
+| 集成测试（真实形态 fixture） | ✅ 19 测试 |
+| **Surface 合成方案**（ADR-008，最高风险） | ⬜ M0 spike |
+| Slint UI + Kotlin 胶水 | ⬜ M0 spike |
+| EPG 网格 / DVR / 多画面 / Catch-up UI | ⬜ M3+ |
+
+**合计 127 个测试，clippy `-D warnings` 零告警。**
+
+### 本地构建
+
+```powershell
+. .\scripts\dev-env.ps1     # 设置 PATH（cargo + MinGW-w64）
+cargo test --workspace
+cargo clippy --workspace --all-targets -- -D warnings
+```
+
+> 本机没有 Visual Studio（缺 `link.exe`），因此使用 MinGW-w64 + `x86_64-pc-windows-gnu` 工具链。
+> Android 交叉编译还需安装 JDK 17 + Android SDK + **NDK r30+**（Skia 0.157 的硬要求，见 `docs/06-android-tv.md`）。
 
 ---
 
