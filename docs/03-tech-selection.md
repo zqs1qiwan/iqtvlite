@@ -75,14 +75,29 @@ TvFocusScope (Rust)
 
 **理由**：
 1. **Android TV 上 mpv 不可作为主引擎**（Mali-G31 绿屏/黑屏，见 `01` §3 结论 1）。
-2. **ExoPlayer 在直播起播上明显更快**：内部优化过 HLS/TS 解析与缓冲策略，冷启动到首帧通常 < 1 秒。
-3. **mpv 兜底覆盖长尾**：Dolby Vision Profile 5 在非 DV 硬件上 ExoPlayer 解不了，需要 mpv + libplacebo `vo=gpu-next` 做色调映射。
+2. **ExoPlayer 在直播起播上明显更快**：内部优化过 HLS/TS 解析与缓冲策略。
+3. **mpv 兜底覆盖真实长尾**：Media3 的 `media3-exoplayer-rtsp` **不支持 HEVC** —— 若供应商用 RTSP 提供 H.265，只有 mpv/FFmpeg 能播。**这是保留 mpv 兜底最强的理由。**
 4. **双引擎可按频道手动覆盖**（照搬 OwnTV 的设计）：用户遇到某个频道 ExoPlayer 起不来，可以锁定该频道用 mpv。
 
-**mpv 后端的现实约束（必须写进文档）**：
-- libmpv 在 Android TV 上仍可能因 GPU 失败 → 兜底路径**不保证 100% 可用**，UI 必须如实告知。
-- mpv 需要 **Render API**（不能 `--wid` 嵌入，Android 上不工作）：用 `MPV_RENDER_PARAM_API_TYPE_OPENGL` + EGL 上下文共享。
-- 启用 `MPV_RENDER_PARAM_ADVANCED_CONTROL` 时**必须遵守线程规则**：渲染线程不得等待 mpv core，否则死锁。
+#### mpv 后端的六条现实约束（必须写进文档）
+
+| # | 约束 | 影响 |
+|---|---|---|
+| 1 | **不能用 `--wid` 嵌入** | 必须用 **Render API**（`MPV_RENDER_PARAM_API_TYPE_OPENGL` + EGL 上下文共享） |
+| 2 | **`gpu-next` 在 Render API 下不可用**（mpv#10810） | **失去 libplacebo 的 DV RPU 渲染、HDR 色调映射、高级缩放** —— mpv 兜底路径的最大短板 |
+| 3 | **`hwdec=mediacodec-copy` 是错误选项** | copy 路径正是 Mali 绿屏的根源（mpv-android#1088，至今未修）。正确：`hwdec=mediacodec`（HW+，零拷贝） |
+| 4 | **HW+ 无色调映射** | HDR→SDR 显示错误。`hwdec=mediacodec` + `vo=mediacodec_embed` 最稳但失去 OSD/字幕/GL 合成 |
+| 5 | **Android 上无原生 HDR** | mpv-android#874：需 Vulkan，而标准 APK 不含 Vulkan |
+| 6 | **mpv-android 已被 Play 以 Android TV 理由下架** | 捆绑 libmpv 会**增加我们被 Play 拒审的风险**（Jellyfin 也因此从 TV 构建移除了 mpv） |
+
+#### 产品策略调整：双变体
+
+| 变体 | 内容 | 定位 |
+|---|---|---|
+| **`iqtvlite-lite`** | 仅 Media3，**不含 libmpv** | 默认推荐。无 GPL 负担、无 Play 拒审风险、体积最小 |
+| **`iqtvlite`** | Media3 + libmpv 兜底 | 面向愿意 sideload 的高级用户，处理 RTSP/HEVC 等长尾 |
+
+**并且**：Dolby Vision Profile 5 的支持**不依赖 libmpv** —— 用 Rust 侧 `dolby_vision` crate（libdovi 的 Rust 实现）把 P5 转成 P8.1（带 HDR10 base layer），ExoPlayer 就能以 HDR10 播放。**纯 Rust，无 GPL 传染，绕开所有硬件限制。**
 
 **被否决：纯 Rust 自研传输层**。Limpido 用这条路线做到 25 MB Android TV APK，但需要自实现 TS PAT/PMT/PES 解析、PCR 跟踪、HLS 调度、fMP4 解析 —— 工程量以**人年**计，且直接威胁「稳定性」目标。**v2 再评估**，v1 优先把产品做对。
 
@@ -218,12 +233,34 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing-android = "0.3"             # 输出到 logcat
 
-# 播放（mpv 后端）
-libmpv2 = { version = "7", features = ["render"] }   # 或 rsmpv
+# 播放（mpv 后端，仅完整版变体）
+rsmpv = { version = "0.2", features = ["render"] }   # clean-room FFI, 无 bindgen/libclang
+                                       # ← 优于 libmpv2：后者用 bindgen，NDK 交叉编译需要 libclang
+libmpv2 = { version = "7", optional = true }          # 备选
+
+# Dolby Vision（纯 Rust 处理 DV P5 → P8.1，绕开 libmpv）
+dolby_vision = "0.6"                                   # dovi_tool 的 Rust 库
 ```
 
 **待定（需 PoC 对比）**：`crispy-m3u` / `crispy-xmltv` / `crispy-xtream` 是否直接采用，还是自研。
 评估维度：流式解析性能（XMLTV 文件常达 50–200 MB）、API 稳定性、错误处理质量、许可证。
+
+> ### ⚠️ ADR-007 最终结论：**自研，不采用 `crispy-*`**
+>
+> `crispy-*` 全家桶（`crispy-iptv-types` / `crispy-m3u` / `crispy-xmltv` / `crispy-xtream` / `crispy-stalker` / `crispy-catchup` / `crispy-stream-checker` / `crispy-iptv-tools` / `crispy-media-probe`）由 Mo Abualruz 维护，是 TypeScript 实战库（`@iptv/playlist`、`ektotv/xtream-api`）的 Rust 移植，**技术质量很高**。
+>
+> **但它们的许可证是 `CC-BY-NC-SA-4.0`（含 NonCommercial 条款）**，与 GPL-3.0-or-later **不兼容**（FSF 立场：CC BY-NC-SA 4.0 不是 GPL-compatible license），且：
+> - 会让整个产品**永久锁定为非商业**；
+> - 与 `iqtvlite-lite` 付费变体的商业化路径直接冲突；
+> - ShareAlike 条款要求衍生作品同样以 CC-BY-NC-SA 分发。
+>
+> **处置**：
+> 1. **不作为依赖引入**（`Cargo.toml` 里不出现 `crispy-*`）。
+> 2. **作为协议实现的高质量参考**研究：M3U 属性全集、Xtream 端点与字段名、catchup 模板语义、稳定 ID 策略、`StreamFormat`/`StreamProtocol` 分类逻辑。
+> 3. 我们按 **GPL-3.0-or-later** 独立实现同等能力的 `iqtvlite-core`。
+>
+> **注意**：协议本身（M3U 属性名、Xtream HTTP 端点、XMLTV 标签）是**行业规范与事实**，不受版权保护；受保护的是其代码表达。我们独立实现，不复制代码。
+
 
 ---
 
@@ -254,7 +291,10 @@ libmpv2 = { version = "7", features = ["render"] }   # 或 rsmpv
 | ADR-004 | Rust/Kotlin 边界 = C-ABI | ✅ 已定 |
 | ADR-005 | 存储 = rusqlite + FTS5 | ✅ 已定 |
 | ADR-006 | 自研 TV 焦点层 | ✅ 已定 |
-| ADR-007 | 协议层自研 vs 采用 `crispy-*` | 🔶 待 PoC |
-| ADR-008 | Slint 与视频 Surface 的合成方案 | 🔴 **待 spike（最高风险）** |
+| ADR-007 | 协议层**自研**（不采用 `crispy-*`） | ✅ 已定 —— 见下 |
+| ADR-008 | Slint 与视频 Surface 的合成方案 | ✅ **已定：Option D2**（Kotlin 持有 Activity，FrameLayout 内 SurfaceView + 原生 UI View 为兄弟节点，靠 Z-order 而非 gatherTransparentRegion） |
 | ADR-009 | EPG 增量同步算法 | 🔶 待设计 |
-| ADR-010 | mpv AAR 版本固定与源码分发义务 | 🔶 待定 |
+| ADR-010 | mpv AAR 版本固定与源码分发义务 | 🔶 待定（版本实际为 mpv 0.41.0 + FFmpeg 8.1，非 0.42/9.0） |
+| ADR-011 | **Dolby Vision 走 Rust `dolby_vision` crate 而非 libmpv** | ✅ 已定 —— 绕开 GPL、Play 拒审风险与 gpu-next 不可用三重限制 |
+| ADR-012 | **不发布系统 EPG**（`TvContract.Programs`），改用 Home Screen `PreviewChannel`/`PreviewProgram` | ✅ 已定 —— TIF 仅 OEM 可用（API 21–25） |
+| ADR-013 | **不使用 Android 系统 PiP** | ✅ 已定 —— TV 上媒体类应用被 `com.google.android.tv.pip.category` 明确禁止；改用应用内 mini-player |

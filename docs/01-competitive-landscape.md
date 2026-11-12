@@ -45,29 +45,64 @@
 
 ## 3. 从调研中提炼的六条硬结论
 
-### 结论 1 — mpv 的 OpenGL 管线在 Android TV 上不可靠
+### 结论 1 — mpv 在 Android TV 上不可靠（根因被修正）
 
-多份独立报告指向同一结论：
+多份独立报告指向同一结论，但**根因需要修正**：
 
-> Amlogic 盒子 + **Mali-G31** GPU 上，mpv 的 OpenGL 管线灾难性失败：
-> `mediacodec-copy` 返回四分之一分辨率帧 → 绿屏（mpv-android#1088）；
-> 零拷贝 MediaCodec 尝试要么启动失败要么直接重启设备；
-> mpv 的 GL 管线什么都不渲染，只有 `gpu-dumb-mode` 能出图（mpv-android#292）。
+> Amlogic 盒子 + **Mali-G31** GPU 上，mpv 播放异常：
+> `mediacodec-copy` 路径产生绿屏（mpv-android#1088，**至今未修**）；Mali kbase 驱动缺陷导致任何 GPU 滤镜都黑屏（mpv-android#292，closed as "can't fix"）；
+> `vo=mediacodec_embed` 或 `hwdec=mediacodec`（HW+，零拷贝）可正常。
 
-**根因**：Mali 驱动缺失 mpv 所需的 OpenGL 扩展；而 Android 的 MediaCodec API 本身有分辨率上限和不稳定的零拷贝行为。
+**根因不是「OpenGL 管线失败」，而是 `hwdec=mediacodec-copy`**（GPU→CPU→GPU 拷贝路径）在 Mali 驱动上产生损坏帧。
+补充：所谓「四分之一分辨率」**未能找到出处**；最接近的真实症状是 mpv-android#1137（4K TCL 电视上输出 1920×1080 + 丢帧）。
 
 **对策**：
 1. Android TV 主引擎必须是 **Media3/ExoPlayer**，解码到 **SurfaceView**。
-2. mpv 仅作**兜底**（Dolby Vision Profile 5 等 ExoPlayer 解不了的），并接受其在此平台上的局限。
+2. mpv 仅作**兜底**（RTSP/HEVC、Dolby Vision P5 等 ExoPlayer 解不了的），并接受其在此平台上的局限。
 3. 放弃「mpv Vulkan + wgpu」路线——Android 上 Vulkan 支持覆盖率不够，是 not-a-starter。
 
-### 结论 2 — UI 层必须处理 SurfaceFlinger 透明区
+### 结论 1b — ⚠️ mpv 在 Play 商店上对 Android TV 是**负资产**
 
-**问题**：SurfaceView 在全屏时，`SurfaceFlinger` 会把该区域视为「空」，直接丢掉覆盖其上的透明 UI 层 → **播放器控制条消失**。
+mpv-android 官方 release notes（2024-06-05）：
 
-**对策**：覆写 `View.gatherTransparentRegion()`，强制 SurfaceFlinger 认可覆盖层。
+> *"Google rejected the last update, again. They keep contesting minor issues with Android TV... As a result **this mpv-android has been depublished from the Play Store for Android TV.**"*
+> *"Android TV is supported, but only available on F-Droid or by installing the APK manually."*
 
-> 但这是 Android **View** 体系的概念。Slint 走 `android-activity` 的原生窗口路径，需要另一套方案 —— 这是本项目 **最大的技术风险点**，详见 `06-android-tv.md`。
+**推论**：若我们要上 Google Play（Android TV 分发的主渠道），**捆绑 libmpv 会显著增加被拒风险**。Jellyfin 也因此从 Android TV 构建中移除了 mpv 选项。
+→ 直接影响我们的 `lite` / 完整版双变体策略（见 `03` §2）。
+
+### 结论 1c — `gpu-next` 在 Render API 下不可用（致命限制）
+
+mpv issue #10810（仍开放）：
+
+> *"As of now, `--vo=libmpv` with the OpenGL backend has features roughly equivalent to `--vo=gpu`. Features only available in gpu-next are currently not available when using the rendering API."*
+
+mpv 维护者 haasn 确认：*"gpu-next can be used for embedding with the `--wid` option… but not with the rendering API."*
+
+**这意味着**：通过 Render API 嵌入（Android 上唯一可行的嵌入方式）**无法使用 libplacebo 的 gpu-next**，也就失去了正确的 Dolby Vision RPU 渲染、HDR 色调映射和高级缩放算法。
+**对策**：改用 Rust 侧的 `dolby_vision` crate（libdovi 的 Rust 实现）做 DV Profile 5 → 8.1 转换，再交给 ExoPlayer 播放。**完全绕开 libmpv 的许可与硬件限制。**
+
+### 结论 2 — UI 层必须处理 SurfaceView 的 Z-order
+
+**问题**：SurfaceView 是独立的 SurfaceFlinger layer，**默认在应用窗口之下**。要让原生（Slint/GL）UI 画在视频之上，需要处理 Z-order。
+
+**澄清一个常见误解**：很多资料（包括我最初引用的技术博客）说「覆写 `gatherTransparentRegion` 让 SurfaceFlinger 尊重覆盖层」—— **这是错的**。
+
+AOSP `SurfaceView.java` 源码里，`gatherTransparentRegion` 的作用是**窗口级优化**：告诉 SurfaceFlinger「我这块矩形是透明的，别覆盖写不透明黑」。它**不控制 Z-order、不创建第二个窗口、也不让覆盖层出现在 SurfaceView 之上**。
+
+**真正的机制是 Z-order**：
+
+| API | 语义 |
+|---|---|
+| `setZOrderOnTop(true)` | Surface 在**父窗口之上**（`TYPE_APPLICATION_MEDIA_OVERLAY`）→ 窗口里**没有任何东西**能画在它上面 |
+| `setZOrderMediaOverlay(true)` | Surface 在**其他 SurfaceView 之上**、但在**父窗口之下** ← 传统做法 |
+| **`setCompositionOrder(int)`**（**API 36 / Android 16**） | 现代通用 API。正值 = 在父窗口之上，负值 = 在父窗口之后；**同值时相对顺序未定义**。`setZOrderOnTop`/`setZOrderMediaOverlay` 在 API 36 **已废弃** |
+
+**关键事实**：同一 Activity 内的两个 SurfaceView，**若都用负的 composition order，它们的相对顺序由数值大小决定**（大者在上）；**相同数值则顺序未定义**。这是布局设计的第一原则。
+
+**对策**：用 Kotlin 自己持有 Activity，`FrameLayout` 里放 `SurfaceView`（视频）+ 原生 UI View（兄弟节点，在其上）。
+Android 文档明确支持：「The view hierarchy will take care of correctly compositing with the Surface any siblings of the SurfaceView that would normally appear on top of it.」
+（详见 `06-android-tv.md`）
 
 ### 结论 3 — Rust + Slint 在 Android TV 上已被验证可行
 

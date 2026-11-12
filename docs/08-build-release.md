@@ -59,10 +59,16 @@ iqtvlite/
 └─────────────────────────────────────────────────────────────┘
 ┌─ 第 1 层：libmpv-android AAR (预编译) ─────────────────────┐
 │  来源: github.com/jarnedemeulemeester/libmpv-android       │
-│  版本: v1.0.0 (mpv 0.42.0 / FFmpeg 9.0.2)                   │
-│  许可: GPL-3.0-or-later                                     │
+│  版本: v1.0.0 (2026-04-08)                                  │
+│        mpv 0.41.0 / FFmpeg 8.1 / libplacebo 7.360.1         │
+│  许可: 二进制为 GPL-3.0-or-later (仓库源码 MIT)             │
+│  体积: libmpv-release.aar ≈ 45.4 MiB (4 ABI)                │
+│  ⚠️ 未验证: .so 是否 16 KB 页对齐 (Android 15+ 要求)        │
 └─────────────────────────────────────────────────────────────┘
 ```
+
+> **版本澄清**：mpv **0.42.0** 已于 2026-11-05 上游发布，但**尚未进入任何 Android AAR**；FFmpeg 9.0 只在 upstream mpv-android（2026-08-11 起）出现。可用的 AAR 仍是 0.41.0 + FFmpeg 8.1。
+> **16 KB 页对齐**：Android 15+ 对部分目标强制要求 16 KB 对齐的 `.so`。`jarnedemeulemeester` v1.0.0 **未验证**；`yuroyami/libmpv-kotlin-multiplatform` 明确标注已对齐（可作备选）。**必须在 M0 spike 里验证。**
 
 ### 为什么第 1 层用预编译 AAR 而不自己编译
 
@@ -137,6 +143,7 @@ jobs:
     - cargo test --workspace --exclude iqtvlite-capi
     - cargo clippy -- -D warnings
     - cargo fmt --check
+    - cargo deny check           # license + advisory；allowlist 必须排除 CC-BY-NC-SA 类协议
 
   android-build:        # ubuntu
     - cargo ndk -t arm64-v8a,armeabi-v7a build --release -p iqtvlite-capi
@@ -151,6 +158,21 @@ jobs:
 ```
 
 **体积门禁（size gate）**：CI 里比对 APK 各部分体积与基线，超出阈值直接失败。轻量是产品承诺，必须有自动化守门。
+
+**许可门禁（license gate）**：`cargo deny` 的 `licenses.allow` 列表必须显式**排除** `CC-BY-NC-SA-*`（防止再次误引入 `crispy-*`）。
+
+### 5.1 两个变体的构建
+
+```bash
+# lite 变体（无 libmpv）
+cargo ndk -t arm64-v8a,armeabi-v7a build --release -p iqtvlite-capi
+./gradlew :app:assembleLiteRelease
+
+# 完整版（含 libmpv AAR）
+./gradlew :app:assembleFullRelease
+```
+
+用 Gradle 的 `productFlavors`：`lite`（无 `jniLibs` 里的 mpv）、`full`（含）。
 
 ---
 
@@ -170,18 +192,26 @@ jobs:
 
 | 组件 | 版本 | 许可证 | 源码 |
 |---|---|---|---|
-| mpv | 0.42.0 | GPL-2.0-or-later | github.com/mpv-player/mpv |
-| FFmpeg | 9.0.2 | GPL-3.0-or-later | github.com/FFmpeg/FFmpeg |
-| libplacebo | 7.387.0 | LGPL-2.1-or-later | code.videolan.org/videolan/libplacebo |
-| libdovi | 3.3.2 | MIT | github.com/quietvoid/dovi_tool |
-| Media3 | — | Apache-2.0 | github.com/androidx/media |
+| mpv | 0.41.0 | GPL-2.0-or-later | github.com/mpv-player/mpv |
+| FFmpeg | 8.1 | GPL-3.0-or-later | github.com/FFmpeg/FFmpeg |
+| libplacebo | 7.360.1 | LGPL-2.1-or-later | code.videolan.org/videolan/libplacebo |
+| dav1d | 1.5.3 | BSD-2-Clause | github.com/videolan/dav1d |
+| libass | 0.17.4 | ISC | github.com/libass/libass |
+| Media3 | 1.11.1 | Apache-2.0 | github.com/androidx/media |
 | Slint | 1.18.1 | Royalty-free 2.0 / GPL-3.0 | github.com/slint-ui/slint |
+| dolby_vision | 0.6.x | MIT / Apache-2.0 | github.com/quietvoid/dovi_tool |
+| rsmpv | 0.2.1 | MIT OR Apache-2.0 | github.com/ophymx/rsmpv |
 | Rust crates | 见 `docs/03` §7 | MIT / Apache-2.0 | — |
 
 **GPL §6 义务**：随 APK 分发的 libmpv/FFmpeg 需要提供**完整对应源码 + 构建脚本**。做法：
 - 在 GitHub Release 里附 `libmpv-source.tar.gz`（上游已提供 tarball）。
 - 应用内「开源许可」页链接到该 release。
 - 固定并记录构建版本（`buildscripts/include/depinfo.sh`）。
+
+> ⚠️ **两个法律风险点（必须法务确认）**：
+> 1. **Slint 的许可选项是否与 GPL-3.0 兼容。** Slint 提供 `GPL-3.0-only` / `LicenseRef-Slint-Royalty-free-2.0` / `LicenseRef-Slint-Software-3.0`。Rust 没有 GPL 的链接例外 —— 若捆绑 libmpv，**整个 APK 必须 GPL-3.0-or-later**（Rust 部分也要开源）。Slint 的 royalty-free 选项**不是** GPL-3.0，与 GPL 的 libmpv 结合可能不兼容。
+>    → **实用解法**：`iqtvlite-lite` 变体（不含 libmpv）可以自由选择 Slint 许可；`iqtvlite` 完整版必须用 Slint 的 GPL 兼容选项。
+> 2. **`dev.jdtech.mpv:libmpv` 的 Maven POM 写 "License MIT" 是误导性的** —— 它描述的是包装层，二进制本身是 GPL-3.0-or-later。
 
 ---
 
