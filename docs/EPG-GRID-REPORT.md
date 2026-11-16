@@ -121,5 +121,30 @@ xml chars: 3869417
 | JNI 符号在 ARM64 .so 中 | ✅ 二进制字符串搜索确认 `Java_tv_iqtvlite_app_RustBridge_00024parseEpgGrid` / `parseM3u` / `version` 均存在 |
 | CI 构建 | ✅ 两个工作流 success；APK 11.73 MB（[v0.2.0-epg](https://github.com/zqs1qiwan/iqtvlite/releases/tag/v0.2.0-epg)） |
 | 真机/模拟器播放验证 | 🔄 模拟器 WHPX 加速可用（`-accel-check` 通过），1.46 GB 系统镜像分块下载中 |
+| 真实流可达性（非设备） | ✅ 见 §3.2 |
+| 第二个播放列表 URL 性质 | ✅ 见 §3.3 |
+
+### 3.2 真实流可达性验证
+
+用 curl 实测播放列表里的流 URL：
+
+| 流 | UA | 结果 |
+|---|---|---|
+| `CCTV1HD_1200.m3u8` | TiviMate | 403 |
+| 同上 | **VLC** | **200** ✅ |
+| 同上 | Mozilla | 403 |
+| `cctv3hd/2000/index.m3u8`（Migu） | 默认 | **200** ✅，master playlist 含 2 Mbps variant |
+
+→ 确认按频道 UA 是必需的，已实现。
+
+### 3.3 第二个 URL 的真实性质
+
+`http://iptv.laobaitv.net` **不是播放列表**，而是一个 IPTV 配置查询页面：
+- 返回 HTML（35 KB），带 `?isp=&region=&city=&ip=&port=` 参数
+- 页面里**没有直接的 .m3u 链接**（只有 Google Fonts 等资源）
+- 原来的正则会误匹配 Google Fonts URL（含 "api"）→ 已修复：
+  - 只匹配明确的 `.m3u`/`.m3u8` 或 `href/src/data-url` 中的 playlist 接口
+  - 找不到时**自动回退到主线路** `https://lbzs.laobaitv.net`（两者同源）
+  - 空列表会报错而不是静默显示空页面
 
 代码已推送到 GitHub，CI 验证后更新 release。

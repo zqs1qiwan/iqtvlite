@@ -37,13 +37,15 @@ for ($i = 0; $i -lt $totalChunks; $i++) {
     $part = Join-Path $tempDir ("part{0:D5}" -f $i)
     $expectedLen = $end - $start + 1
     $ok = $false
-    for ($attempt = 1; $attempt -le 12 -and -not $ok; $attempt++) {
-        # 不用 --fail（某些 curl 版本的 --retry-all-errors 组合有兼容问题），
-        # 只按最终文件大小判断；schannel 中断会导致文件偏小，重试即可。
-        curl.exe -sL --max-time 240 -r "$start-$end" -o $part $Url 2>$null | Out-Null
-        $exists = Test-Path -LiteralPath $part
-        $len = if ($exists) { (Get-Item -LiteralPath $part).Length } else { 0 }
-        if ($exists -and $len -eq $expectedLen) {
+    $partAbs = [IO.Path]::GetFullPath($part)
+    for ($attempt = 1; $attempt -le 15 -and -not $ok; $attempt++) {
+        # 每次写到临时文件再移动，避免部分写入被误判为完成
+        $tmpPart = "$partAbs.tmp"
+        if (Test-Path -LiteralPath $tmpPart) { Remove-Item -LiteralPath $tmpPart -Force }
+        & curl.exe -sL --max-time 240 -r "$start-$end" -o "$tmpPart" $Url 2>$null | Out-Null
+        $len = if (Test-Path -LiteralPath $tmpPart) { (Get-Item -LiteralPath $tmpPart).Length } else { 0 }
+        if ($len -eq $expectedLen) {
+            Move-Item -LiteralPath $tmpPart -Destination $partAbs -Force
             $ok = $true
         } else {
             Write-Host "  块 $i 第 $attempt 次失败 (size=$len/$expectedLen)，重试..."
