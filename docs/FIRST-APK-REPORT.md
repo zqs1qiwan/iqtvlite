@@ -10,15 +10,15 @@
 | 项 | 值 |
 |---|---|
 | **GitHub 仓库** | https://github.com/zqs1qiwan/iqtvlite |
-| **最新 Release** | https://github.com/zqs1qiwan/iqtvlite/releases/tag/v0.2.0-epg |
-| **APK 文件名** | `iqtvlite-0.2.0-epg.apk` |
-| **体积** | 11.73 MB |
+| **最新 Release** | https://github.com/zqs1qiwan/iqtvlite/releases/tag/v0.3.0-features |
+| **APK 文件名** | `iqtvlite-0.3.0-features.apk` |
+| **体积** | 12.07 MB |
 | **包名** | `tv.iqtvlite.app` |
 | **ABI** | arm64-v8a + armeabi-v7a（均含 Rust core `.so`） |
 | **minSdk / targetSdk** | 26 / 35 |
 | **启动器** | Leanback（Android TV）+ Launcher |
 | **CI 状态** | ✅ `CI` success · ✅ `Build Test APK` success（最后一次提交） |
-| **测试** | 145 passed，clippy -D warnings 零告警 |
+| **测试** | 148 passed，clippy -D warnings 零告警 |
 
 ---
 
@@ -40,8 +40,11 @@
 | **EPG 时间轴网格**（TiviMate 招牌功能） | ✅ | `EPG_RESULT matched=59 requested=69 guide=61 rows=61 programmes=550` |
 | 直播播放（Media3 + 硬解） | ✅ | `AudioTrack::start` + `OMXVDEC set native rate` |
 | 按频道 UA（VLC/TiviMate 映射） | ✅ | `playing CCTV-1 ... ua=VLC/3.0.20` + 播放成功 |
+| **★收藏 / 最近观看** | ✅ | `WATCHED ... recents=1`，UI 分组栏可见 |
+| **Catch-up 回看**（长按 EPG 节目） | ✅ | Rust 桥接 3 个单测；两个指定源无 catchup 元数据故提示不支持 |
 | 低延迟缓冲 + 后台播放 + 屏幕常亮 | ✅ | 代码实现 |
-| Rust core（解析/EPG/回退决策） | ✅ | 145 个测试 |
+| Rust core（解析/EPG/回退决策） | ✅ | 148 个测试 |
+| **ADR-008 Slint Surface spike** | ✅ | 源码级确认 Slint Android 窗口不透明，维持 P2 路线；见 `docs/spikes/ADR-008-slint-surface.md` |
 
 详细真机证据见 `docs/DEVICE-VERIFICATION.md`。
 
@@ -59,9 +62,9 @@
 
 | 限制 | 计划 |
 |---|---|
-| DVR 录制 / 多画面 / Catch-up UI | 下一里程碑 |
-| 多 EPG 源叠加 / 断点续播 | 下一里程碑 |
-| UI 是 Kotlin 原生 Views | Slint 迁移待 M0 spike（Surface 合成方案） |
+| DVR 录制 / 多画面 | 下一里程碑 |
+| 多 EPG 源叠加 | 下一里程碑 |
+| UI 是 Kotlin 原生 Views | ADR-008 spike 已确认 Slint Android 窗口不透明、无法注入自建 SurfaceView → 维持 P2 路线（见 spike 报告） |
 | 无 mpv 兜底（lite 变体） | 长尾编码按需加入 |
 
 ---
