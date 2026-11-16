@@ -190,7 +190,19 @@ Slint 后端硬编码 `transparent = false`，`Surface` 从不设为 `PixelForma
 | 播放层 | `iqtvlite-player`（回退状态机 / 故障自愈） | ✅ 13 测试 |
 | 焦点层 | `iqtvlite-tvfocus`（自研空间导航） | ✅ 7 测试 |
 | 集成测试 | `iqtvlite-tests`（真实形态 fixture） | ✅ 19 测试 |
-| **UI 层** | `iqtvlite-app`（Slint） | ⬜ 待 M0 spike |
-| **Android 胶水** | `iqtvlite-capi` + Kotlin | ⬜ 待 M0 spike |
+| **UI 层（v1 测试 APK）** | Kotlin 原生 Views + Media3 ExoPlayer | 🔨 进行中 |
+| **Android 胶水** | `iqtvlite-capi`（C-ABI → JNI） | 🔨 进行中 |
+| Slint UI（正式 v1） | `iqtvlite-app` | ⬜ 待 M0 spike（Surface 合成） |
 
-**下一步（`docs/07-roadmap.md` 的 M0）**：Surface 合成方案验证、中文字体、媒体按键拦截、NDK 构建链路。
+### v1 测试 APK 的务实取舍
+
+「更轻量、稳定、高性能、TiviMate 全部功能」是最终目标，但 Slint 的 Android 窗口硬编码不透明（见 `06-android-tv.md`），
+视频层无法穿透 → 真正跑通需要 fork Slint + 改 `android-activity` 窗口获取，风险与工期都远超一个测试 APK。
+
+**因此第一版测试 APK 采用 P2 路线**：Kotlin 原生 Views（频道列表/EPG/播放）+ Media3 ExoPlayer + **Rust core 通过 C-ABI/JNI 提供全部解析、EPG、稳定 ID、回退决策逻辑**。
+这样：
+1. 能立刻跑通真实播放列表（laobaitv 的两个源）并交付可安装的 APK；
+2. Rust core 的 127 个测试与数据层完全复用；
+3. Slint 迁移是后续 UI 层的替换，不影响底层架构。
+
+**下一步（`docs/07-roadmap.md` 的 M0）**：CI 构建 APK、Slint Surface 合成方案验证、中文字体、媒体按键拦截。

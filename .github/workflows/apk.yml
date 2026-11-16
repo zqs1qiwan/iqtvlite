@@ -1,0 +1,78 @@
+name: Build Test APK
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build-apk:
+    name: Build iqtvlite test APK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── Rust → Android .so ────────────────────────────────────────────
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi
+      - uses: Swatinem/rust-cache@v2
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk --locked
+
+      # ubuntu-latest 自带 NDK，但显式 setup 保证版本一致（r27 足够，
+      # 我们没用 Slint 的 Skia，所以不受 slint#14824 的 r30 要求限制）
+      - uses: nttld/setup-ndk@v1
+        id: ndk
+        with:
+          ndk-version: r27
+
+      - name: Build Rust core for Android
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+        run: |
+          cargo ndk \
+            -t arm64-v8a -t armeabi-v7a \
+            -o android/app/src/main/jniLibs \
+            build --release --locked -p iqtvlite-capi
+
+      # ── Android APK ───────────────────────────────────────────────────
+      - uses: actions/setup-java@v4
+        with:
+          distribution: microsoft
+          java-version: '17'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Make gradlew executable
+        run: chmod +x android/gradlew
+
+      - name: Build debug APK
+        working-directory: android
+        run: ./gradlew :app:assembleDebug --stacktrace
+
+      - name: Verify APK contains Rust .so
+        run: |
+          APK=android/app/build/outputs/apk/debug/app-debug.apk
+          echo "=== APK contents (jni) ==="
+          unzip -l "$APK" | grep -E '\.so$' || true
+          # 必须包含两个 ABI 的 Rust core
+          unzip -l "$APK" | grep -q 'lib/arm64-v8a/libiqtvlite_capi.so'
+          echo "✓ arm64-v8a Rust core present"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: iqtvlite-test-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 90
+
+      - name: Create GitHub Release (tag push only)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: android/app/build/outputs/apk/debug/app-debug.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

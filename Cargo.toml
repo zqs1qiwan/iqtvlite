@@ -7,6 +7,7 @@ members = [
     "crates/iqtvlite-net",
     "crates/iqtvlite-tvfocus",
     "crates/iqtvlite-player",
+    "crates/iqtvlite-capi",
     "crates/iqtvlite-tests",
 ]
 

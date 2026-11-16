@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android TV 需要 320x180 的 banner；这里用 vector 占位（CI 里会由脚本生成 PNG） -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="320dp" android:height="180dp"
+    android:viewportWidth="320" android:viewportHeight="180">
+    <path android:fillColor="#0C1116" android:pathData="M0,0h320v180h-320z"/>
+    <path android:fillColor="#2E7CF6" android:pathData="M20,70h60v12h-60zM20,95h40v12h-40z"/>
+    <path android:fillColor="#E8EDF2" android:pathData="M20,40h200v20h-200z"/>
+</vector>

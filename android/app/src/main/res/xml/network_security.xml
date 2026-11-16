@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- IPTV 供应商常用 HTTP 流，必须允许明文（只针对流媒体域名，不全局放开） -->
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

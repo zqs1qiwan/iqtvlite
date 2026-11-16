@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="IqtvTheme" parent="Theme.MaterialComponents.NoActionBar">
+        <item name="android:windowBackground">#0C1116</item>
+        <item name="android:colorBackground">#0C1116</item>
+        <item name="android:textColorPrimary">#E8EDF2</item>
+        <item name="android:textColorSecondary">#9AA7B4</item>
+        <item name="colorPrimary">#2E7CF6</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowFullscreen">true</item>
+    </style>
+</resources>

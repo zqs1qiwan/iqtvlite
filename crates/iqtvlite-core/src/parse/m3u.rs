@@ -274,9 +274,14 @@ where
 
     // 末尾残留的条目
     if let Some(mut entry) = pending.take() {
-        finalize_entry(&mut entry, &header, extgrp_group.as_deref());
-        stats.entries += 1;
-        on_entry(entry)?;
+        if entry.urls.is_empty() {
+            // 有 #EXTINF 但没有有效 URL（例如老白直播里用 `#http://...` 注释掉的失效频道）
+            stats.skipped += 1;
+        } else {
+            finalize_entry(&mut entry, &header, extgrp_group.as_deref());
+            stats.entries += 1;
+            on_entry(entry)?;
+        }
     }
 
     Ok((header, stats))

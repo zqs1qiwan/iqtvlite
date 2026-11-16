@@ -1,0 +1,24 @@
+[package]
+name = "iqtvlite-capi"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "iqtvlite C-ABI 桥：把 Rust core 的解析/EPG/回退决策暴露给 Kotlin (JNI)。"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+iqtvlite-core = { workspace = true }
+iqtvlite-store = { workspace = true }
+iqtvlite-epg = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+
+[target.'cfg(target_os = "android")'.dependencies]
+# 只需要 JNI 桥 —— 不需要 android-activity（那是 Slint 才用的，且需要 feature flag 才能编过）
+jni = "0.22"
+
+[profile.release]
+panic = "abort"
