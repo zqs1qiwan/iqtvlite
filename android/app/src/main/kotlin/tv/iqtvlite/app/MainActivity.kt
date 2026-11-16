@@ -61,6 +61,9 @@ class MainActivity : AppCompatActivity() {
     private var epgCache: String? = null
     private var showingEpg = false
 
+    /** 冷启动计时：进程启动 → UI 可交互 */
+    private val coldStartTime = System.currentTimeMillis()
+
     /** 换台计时：发起播放 → 首帧（衡量「丝滑」的核心指标） */
     private var zapStartTime = 0L
     private var zapCount = 0
@@ -126,6 +129,9 @@ class MainActivity : AppCompatActivity() {
             }
         }
         findViewById<Button>(R.id.btn_record).setOnClickListener { toggleRecording() }
+        findViewById<Button>(R.id.btn_settings).setOnClickListener {
+            startActivity(android.content.Intent(this, SettingsActivity::class.java))
+        }
         findViewById<Button>(R.id.btn_subtitle).setOnClickListener {
             val label = SubtitleManager.cycle(player, this)
             Toast.makeText(this, label, Toast.LENGTH_SHORT).show()
@@ -210,6 +216,7 @@ class MainActivity : AppCompatActivity() {
                 adapter.refresh()
                 Toast.makeText(this, if (added) "★ 已收藏 ${ch.name}" else "☆ 已取消收藏", Toast.LENGTH_SHORT).show()
             },
+            onLongPress = { ch -> showChannelMenu(ch) },
         )
         recycler.layoutManager = LinearLayoutManager(this)
         recycler.adapter = adapter
@@ -236,6 +243,10 @@ class MainActivity : AppCompatActivity() {
         swipe.setOnRefreshListener { loadSource(currentSource) }
 
         status.text = "Rust core: ${RustBridge.version()}"
+        // ① 同步加载缓存 → 频道列表立即可交互（冷启动秒开）
+        val cacheHit = loadFromCache(0)
+        Log.i(TAG, "COLD_START_CACHE hit=$cacheHit ms=${System.currentTimeMillis() - coldStartTime}")
+        // ② 后台拉网络 → 成功后刷新
         loadSource(0)
     }
 
@@ -319,13 +330,44 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /** 从本地缓存同步加载频道（冷启动秒开，零网络等待） */
+    private fun loadFromCache(index: Int): Boolean {
+        val cached = PlaylistCache.load(this, index) ?: return false
+        val result = try {
+            RustBridge.parsePlaylist(cached, (index + 1).toLong())
+        } catch (e: Exception) { return false }
+        if (result.channels.isEmpty()) return false
+        applyPlaylist(result, cached, true)
+        return true
+    }
+
+    private fun applyPlaylist(result: PlaylistResult, rawContent: String, fromCache: Boolean) {
+        allChannels = result.channels
+        epgUrls = result.epgUrls
+        adapter.setCustomGroups(TiviMatePrefs.customGroups(this@MainActivity))
+        val order = TiviMatePrefs.channelOrder(this@MainActivity)
+        if (order.isNotEmpty()) {
+            val rank = order.withIndex().associate { it.value to it.index }
+            allChannels = result.channels.sortedBy { rank[it.id] ?: Int.MAX_VALUE }
+        }
+        val hidden = TiviMatePrefs.hiddenChannels(this@MainActivity)
+        if (hidden.isNotEmpty()) allChannels = allChannels.filterNot { hidden.contains(it.id) }
+        adapter.submit(allChannels)
+        adapter.setLists(FavoritesStore.favorites(this@MainActivity), FavoritesStore.recents(this@MainActivity))
+        adapter.refresh()
+        buildGroupChips(result.groups)
+        status.text = "已加载 ${allChannels.size} 个频道 · ${result.groups.size} 个分组${if (fromCache) "（缓存）" else ""}"
+        if (!fromCache) PlaylistCache.save(this@MainActivity, currentSource, rawContent)
+        Log.i(TAG, "PLAYLIST_APPLIED channels=${allChannels.size} fromCache=$fromCache COLD_START_MS=${System.currentTimeMillis() - coldStartTime}")
+    }
+
     private fun loadSource(index: Int) {
         val src = SOURCES[index]
         epgCache = null
         swipe.isRefreshing = true
         status.text = "正在加载 ${src.name}…"
         lifecycleScope.launch {
-            val result = withContext(Dispatchers.IO) {
+            val loaded: Pair<PlaylistResult?, String> = withContext(Dispatchers.IO) {
                 try {
                     val req = Request.Builder().url(src.url).build()
                     val body = http.newCall(req).execute().use { resp ->
@@ -356,23 +398,22 @@ class MainActivity : AppCompatActivity() {
                     }
                     val result = RustBridge.parsePlaylist(content, (index + 1).toLong())
                     if (result.channels.isEmpty()) throw Exception("播放列表无频道")
-                    result
+                    result to content
                 } catch (e: Exception) {
                     Log.e(TAG, "load failed", e)
-                    null
+                    null to ""
                 }
             }
+            val result = loaded.first
+            val networkContent = loaded.second
             swipe.isRefreshing = false
             if (result != null && result.channels.isNotEmpty()) {
-                allChannels = result.channels
-                epgUrls = result.epgUrls
-                adapter.submit(result.channels)
-                buildGroupChips(result.groups)
-                status.text = "已加载 ${result.channels.size} 个频道 · ${result.groups.size} 个分组 · EPG 源 ${result.epgUrls.size}"
-                Log.i(TAG, "PLAYLIST_RESULT channels=${result.channels.size} groups=${result.groups.size} epgUrls=${result.epgUrls}")
-                // 后台预取 EPG（不切换 tab）—— 冷启动时本地缓存优先，后续切 EPG tab 秒开
+                applyPlaylist(result, networkContent, false)
+                Log.i(TAG, "PLAYLIST_RESULT channels=${result.channels.size} epgUrls=${result.epgUrls}")
                 if (epgUrls.isNotEmpty()) loadEpg()
             } else {
+                // 网络失败时用缓存继续工作
+                if (allChannels.isEmpty()) loadFromCache(index)
                 status.text = "加载失败，请检查网络或下拉重试"
                 Toast.makeText(this@MainActivity, "加载失败", Toast.LENGTH_SHORT).show()
             }
@@ -394,6 +435,62 @@ class MainActivity : AppCompatActivity() {
         val api = Regex("""(?:href|src|data-url|action)=["'](https?://[^"']*(?:get\.php|playlist|\.m3u)[^"']*)["']""", RegexOption.IGNORE_CASE)
         api.find(html)?.groups?.get(1)?.value?.let { return it }
         return null
+    }
+
+    /** 频道长按操作菜单（TiviMate 风格） */
+    private fun showChannelMenu(ch: Channel) {
+        val fav = if (FavoritesStore.isFavorite(this, ch.id)) "☆ 取消收藏" else "★ 收藏"
+        val lock = if (TiviMatePrefs.isLocked(this, ch.id)) "🔓 解锁频道" else "🔒 锁定频道"
+        val hide = if (TiviMatePrefs.isHidden(this, ch.id)) "👁 显示频道" else "🚫 隐藏频道"
+        val actions = arrayOf(fav, lock, hide, "⏰ 设置提醒", "✏️ 移动到分组…")
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle(ch.name)
+            .setItems(actions) { _, which ->
+                when (which) {
+                    0 -> {
+                        FavoritesStore.toggleFavorite(this, ch.id)
+                        adapter.setLists(FavoritesStore.favorites(this), FavoritesStore.recents(this))
+                        adapter.refresh()
+                    }
+                    1 -> {
+                        TiviMatePrefs.toggleLocked(this, ch.id)
+                        Toast.makeText(this, lock, Toast.LENGTH_SHORT).show()
+                    }
+                    2 -> {
+                        TiviMatePrefs.toggleHidden(this, ch.id)
+                        applyHiddenFilter()
+                        Toast.makeText(this, hide, Toast.LENGTH_SHORT).show()
+                    }
+                    3 -> {
+                        TiviMatePrefs.addReminder(this, TiviMatePrefs.Reminder(
+                            ch.tvgId ?: ch.providerId, ch.name,
+                            System.currentTimeMillis() / 1000 + 300, // 示例：5 分钟后
+                        ))
+                        Toast.makeText(this, "已设置提醒（设置页可管理）", Toast.LENGTH_SHORT).show()
+                    }
+                    4 -> showGroupPicker(ch)
+                }
+            }
+            .setNegativeButton("取消", null).show()
+    }
+
+    private fun showGroupPicker(ch: Channel) {
+        val groups = (allChannels.map { it.group }.distinct().sorted().take(20)).toTypedArray()
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("移动 ${ch.name} 到分组")
+            .setItems(groups) { _, which ->
+                TiviMatePrefs.setCustomGroup(this, ch.tvgId ?: ch.providerId, groups[which])
+                Toast.makeText(this, "已移动到 ${groups[which]}（刷新后生效）", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("取消", null).show()
+    }
+
+    private fun applyHiddenFilter() {
+        val hidden = TiviMatePrefs.hiddenChannels(this)
+        val visible = allChannels.filterNot { hidden.contains(it.id) }
+        adapter.submit(visible)
+        adapter.setLists(FavoritesStore.favorites(this), FavoritesStore.recents(this))
+        adapter.refresh()
     }
 
     private fun buildGroupChips(groups: List<String>) {
@@ -420,9 +517,26 @@ class MainActivity : AppCompatActivity() {
 
     private var urlIndex = 0
     private fun play(ch: Channel) {
+        // 家长控制：锁定频道需 PIN
+        if (TiviMatePrefs.isLocked(this, ch.id) && TiviMatePrefs.isParentalEnabled(this)) {
+            val input = EditText(this).apply { inputType = android.text.InputType.TYPE_CLASS_NUMBER }
+            androidx.appcompat.app.AlertDialog.Builder(this)
+                .setTitle("家长控制")
+                .setMessage("频道 ${ch.name} 已锁定，请输入 PIN")
+                .setView(input)
+                .setPositiveButton("确定") { _, _ ->
+                    if (input.text.toString() == TiviMatePrefs.getPin(this)) playUnlocked(ch)
+                    else Toast.makeText(this, "PIN 错误", Toast.LENGTH_SHORT).show()
+                }
+                .setNegativeButton("取消", null).show()
+            return
+        }
+        playUnlocked(ch)
+    }
+
+    private fun playUnlocked(ch: Channel) {
         currentPos = allChannels.indexOfFirst { it.id == ch.id }.let { if (it >= 0) it else currentPos }
         urlIndex = 0
-        // 记录最近观看（用 Rust 稳定 ID，重新同步后仍有效）
         FavoritesStore.markWatched(this, ch.id)
         adapter.setLists(FavoritesStore.favorites(this), FavoritesStore.recents(this))
         adapter.refresh()

@@ -11,6 +11,7 @@ import coil.load
 class ChannelAdapter(
     private val onSelect: (Channel) -> Unit,
     private val onToggleFavorite: (Channel) -> Unit,
+    private val onLongPress: (Channel) -> Unit,
 ) : RecyclerView.Adapter<ChannelAdapter.VH>() {
 
     private var items: List<Channel> = emptyList()
@@ -46,7 +47,10 @@ class ChannelAdapter(
             "__favorites__" -> items.filter { favIds.contains(it.id) }
             "__recents__" -> recentIds.mapNotNull { id -> items.find { it.id == id } }
             null -> items
-            else -> items.filter { ch -> ch.group == group }
+            else -> items.filter { ch ->
+                val effectiveGroup = customGroups[ch.tvgId ?: ch.providerId] ?: ch.group
+                effectiveGroup == group
+            }
         }.filter { ch ->
             query.isBlank() ||
                 ch.name.contains(query, ignoreCase = true) ||
@@ -54,6 +58,10 @@ class ChannelAdapter(
         }
         notifyDataSetChanged()
     }
+
+    /** 自定义分组覆盖（tvgId → 组名） */
+    private var customGroups: Map<String, String> = emptyMap()
+    fun setCustomGroups(groups: Map<String, String>) { customGroups = groups }
 
     /** 列表变化后重新应用当前过滤（收藏切换后调用）。 */
     fun refresh() = filter(currentQuery, currentGroupFilter)
@@ -92,9 +100,9 @@ class ChannelAdapter(
             setSelected(position)
             onSelect(ch)
         }
-        // 长按 → 收藏/取消收藏（TiviMate 风格）
+        // 长按 → 频道操作菜单（TiviMate 风格）
         holder.itemView.setOnLongClickListener {
-            onToggleFavorite(ch)
+            onLongPress(ch)
             true
         }
         // D-pad 焦点支持（TV 遥控器）
