@@ -61,13 +61,21 @@ class MainActivity : AppCompatActivity() {
     private var epgCache: String? = null
     private var showingEpg = false
 
+    /** 换台计时：发起播放 → 首帧（衡量「丝滑」的核心指标） */
+    private var zapStartTime = 0L
+    private var zapCount = 0
+    private var zapTotalMs = 0L
+    private var zapMaxMs = 0L
+
     private val http = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
-        // TiviMate UA —— 老白直播源里部分频道要求 VLC/TiviMate UA
+        // 实测：iptv.laobaitv.net 会拒绝非浏览器 UA（TiviMate/VLC/iqtvlite 全部失败），
+        // 只有 Mozilla 能拿到内容 → 播放列表/EPG 下载统一用浏览器 UA。
+        // 流播放的 UA 单独由 PlaybackService 按频道设置（VLC）。
         .addInterceptor { chain ->
             val req = chain.request().newBuilder()
-                .header("User-Agent", "TiviMate/5.1.6 (Android 12)")
+                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36")
                 .build()
             chain.proceed(req)
         }
@@ -180,6 +188,15 @@ class MainActivity : AppCompatActivity() {
             }
             override fun onRenderedFirstFrame() {
                 val ch = allChannels.getOrNull(currentPos)
+                // 换台耗时统计（首帧 - 发起播放）
+                if (zapStartTime > 0) {
+                    val ms = System.currentTimeMillis() - zapStartTime
+                    zapCount++
+                    zapTotalMs += ms
+                    if (ms > zapMaxMs) zapMaxMs = ms
+                    Log.i(TAG, "ZAP_MS $ms avg=${zapTotalMs / zapCount} max=$zapMaxMs count=$zapCount")
+                    zapStartTime = 0
+                }
                 status.text = "▶ ${ch?.name ?: ""}"
             }
         })
@@ -316,19 +333,25 @@ class MainActivity : AppCompatActivity() {
                         // 老白直播是 UTF-8（已验证）
                         resp.body!!.string()
                     }
-                    // 第二个 URL 是 HTML 落地页 → 尝试提取真实播放列表
+                    // 第二个 URL 是 HTML 配置页 → 用它的 ?m3u=true 参数生成真实播放列表
+                    // （实测 http://iptv.laobaitv.net/?m3u=true 返回 30KB 的 #EXTM3U）
                     val isHtml = body.trimStart().startsWith("<", ignoreCase = true)
-                    val actual = if (isHtml) extractPlaylistUrl(body) else null
                     val content = when {
                         !isHtml -> body
-                        actual != null -> http.newCall(Request.Builder().url(actual).build())
-                            .execute().use { it.body!!.string() }
+                        src.url.contains("laobaitv.net") -> {
+                            val sep = if (src.url.contains("?")) "&" else "?"
+                            val m3uUrl = src.url + sep + "m3u=true"
+                            Log.i(TAG, "M3U_URL $m3uUrl")
+                            http.newCall(Request.Builder().url(m3uUrl).build()).execute().use { resp ->
+                                if (!resp.isSuccessful) throw Exception("HTTP ${resp.code}")
+                                resp.body!!.string()
+                            }
+                        }
                         else -> {
-                            // 配置项没有直接 M3U 链接 → 回退到主线路（两个 URL 同源）
-                            if (index != 0) {
-                                http.newCall(Request.Builder().url(SOURCES[0].url).build())
-                                    .execute().use { it.body!!.string() }
-                            } else body
+                            val actual = extractPlaylistUrl(body)
+                            if (actual != null) http.newCall(Request.Builder().url(actual).build())
+                                .execute().use { it.body!!.string() }
+                            else body
                         }
                     }
                     val result = RustBridge.parsePlaylist(content, (index + 1).toLong())
@@ -441,6 +464,7 @@ class MainActivity : AppCompatActivity() {
                     .build()
             )
             .build()
+        zapStartTime = System.currentTimeMillis()
         player.setMediaItem(mediaItem)
         player.prepare()
         player.playWhenReady = true

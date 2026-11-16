@@ -8,6 +8,7 @@ import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.extractor.DefaultExtractorsFactory
 import androidx.media3.extractor.text.DefaultSubtitleParserFactory
 import androidx.media3.session.MediaSession
@@ -90,8 +91,22 @@ class PlaybackService : MediaSessionService() {
                 DefaultSubtitleParserFactory(),
             ).experimentalParseSubtitlesDuringExtraction(true)
 
+            // ── 低延迟 LoadControl：换台速度关键 ──────────────────────
+            // Media3 默认 minBuffer=50s / maxBuffer=50s，对 IPTV 直播过大。
+            // 实测优化值（见 docs/05-playback.md）：
+            val loadControl = DefaultLoadControl.Builder()
+                .setBufferDurationsMs(
+                    1_500,   // minBufferMs
+                    6_000,   // maxBufferMs
+                    500,     // bufferForPlaybackMs
+                    1_000,   // bufferForPlaybackAfterRebufferMs
+                )
+                .setPrioritizeTimeOverSizeThresholds(true)
+                .build()
+
             return ExoPlayer.Builder(context)
                 .setMediaSourceFactory(mediaSourceFactory)
+                .setLoadControl(loadControl)
                 .build()
                 .apply {
                     setAudioAttributes(
