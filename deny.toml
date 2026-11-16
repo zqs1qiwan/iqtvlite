@@ -25,6 +25,9 @@ allow = [
     "LGPL-2.1-or-later",
     "GPL-3.0-or-later",
     "OFL-1.1",
+    # webpki-roots 附带的数据许可（社区数据许可，宽松）与 Boost 软件许可
+    "CDLA-Permissive-2.0",
+    "BSL-1.0",
 ]
 confidence-threshold = 0.8
 # 允许列表里声明但当前未用到的协议只警告不失败（避免每次依赖变动都要改 allowlist）
