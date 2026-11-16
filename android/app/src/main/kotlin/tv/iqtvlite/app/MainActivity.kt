@@ -234,12 +234,24 @@ class MainActivity : AppCompatActivity() {
                         // 老白直播是 UTF-8（已验证）
                         resp.body!!.string()
                     }
-                    // 第二个 URL 是 HTML 落地页 → 提取里面的真实播放列表链接
-                    val actual = if (body.trimStart().startsWith("<")) extractPlaylistUrl(body, src.url) else src.url
-                    val content = if (actual == src.url) body else {
-                        http.newCall(Request.Builder().url(actual).build()).execute().use { it.body!!.string() }
+                    // 第二个 URL 是 HTML 落地页 → 尝试提取真实播放列表
+                    val isHtml = body.trimStart().startsWith("<", ignoreCase = true)
+                    val actual = if (isHtml) extractPlaylistUrl(body) else null
+                    val content = when {
+                        !isHtml -> body
+                        actual != null -> http.newCall(Request.Builder().url(actual).build())
+                            .execute().use { it.body!!.string() }
+                        else -> {
+                            // 配置项没有直接 M3U 链接 → 回退到主线路（两个 URL 同源）
+                            if (index != 0) {
+                                http.newCall(Request.Builder().url(SOURCES[0].url).build())
+                                    .execute().use { it.body!!.string() }
+                            } else body
+                        }
                     }
-                    RustBridge.parsePlaylist(content, (index + 1).toLong())
+                    val result = RustBridge.parsePlaylist(content, (index + 1).toLong())
+                    if (result.channels.isEmpty()) throw Exception("播放列表无频道")
+                    result
                 } catch (e: Exception) {
                     Log.e(TAG, "load failed", e)
                     null
@@ -260,14 +272,21 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** 从 laobaitv.net 的 HTML 落地页里找真实 M3U 地址。 */
-    private fun extractPlaylistUrl(html: String, base: String): String {
-        val regex = Regex("""https?://[^"''<>\s]+\.m3u8?[^"''<>\s]*""")
-        regex.find(html)?.value?.let { return it }
-        // 备选：找 /api/ 或 m3u 生成接口
-        val api = Regex("""(https?://[^"''<>\s]*(?:m3u|playlist|api)[^"''<>\s]*)""", RegexOption.IGNORE_CASE)
-        api.find(html)?.value?.let { return it }
-        return base
+    /**
+     * 从 laobaitv.net 的 HTML 落地页里找真实 M3U 地址。
+     *
+     * 注意：http://iptv.laobaitv.net 实际上是一个**IPTV 配置查询页**（带 isp/region/city 参数），
+     * 页面里没有直接的 .m3u 链接。硬的正则要避免误匹配到 Google Fonts（含 "api"）等资源。
+     * 找不到真实播放列表时返回 null，调用方自动回退到第一个源（lbzs.laobaitv.net）。
+     */
+    private fun extractPlaylistUrl(html: String): String? {
+        // ① 明确的 .m3u / .m3u8 链接（排除字体/CDN 资源）
+        val direct = Regex("""https?://[^"''<>\s\\]+\.m3u8?(?:\?[^"''<>\s\\]*)?""", RegexOption.IGNORE_CASE)
+        direct.find(html)?.value?.let { if (!it.contains("googleapis")) return it }
+        // ② 显式标注的播放列表生成接口（data-* 属性 / href）
+        val api = Regex("""(?:href|src|data-url|action)=["'](https?://[^"']*(?:get\.php|playlist|\.m3u)[^"']*)["']""", RegexOption.IGNORE_CASE)
+        api.find(html)?.groups?.get(1)?.value?.let { return it }
+        return null
     }
 
     private fun buildGroupChips(groups: List<String>) {

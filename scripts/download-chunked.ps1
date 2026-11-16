@@ -35,13 +35,18 @@ for ($i = 0; $i -lt $totalChunks; $i++) {
     $start = $i * $chunkSize
     $end = [math]::Min($start + $chunkSize - 1, $TotalSize - 1)
     $part = Join-Path $tempDir ("part{0:D5}" -f $i)
+    $expectedLen = $end - $start + 1
     $ok = $false
-    for ($attempt = 1; $attempt -le 5 -and -not $ok; $attempt++) {
-        curl.exe -sL --max-time 180 -r "$start-$end" -o $part $Url 2>$null | Out-Null
-        if ((Test-Path $part) -and ((Get-Item $part).Length -eq ($end - $start + 1))) {
+    for ($attempt = 1; $attempt -le 12 -and -not $ok; $attempt++) {
+        # 不用 --fail（某些 curl 版本的 --retry-all-errors 组合有兼容问题），
+        # 只按最终文件大小判断；schannel 中断会导致文件偏小，重试即可。
+        curl.exe -sL --max-time 240 -r "$start-$end" -o $part $Url 2>$null | Out-Null
+        $exists = Test-Path -LiteralPath $part
+        $len = if ($exists) { (Get-Item -LiteralPath $part).Length } else { 0 }
+        if ($exists -and $len -eq $expectedLen) {
             $ok = $true
         } else {
-            Write-Host "  块 $i 第 $attempt 次失败，重试..."
+            Write-Host "  块 $i 第 $attempt 次失败 (size=$len/$expectedLen)，重试..."
             Start-Sleep -Seconds 2
         }
     }
