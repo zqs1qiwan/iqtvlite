@@ -62,11 +62,8 @@ pub extern "C" fn iqt_parse_m3u(content: *const c_char, source_id: i64) -> *mut 
                 .entries
                 .iter()
                 .map(|e| {
-                    let key = m3u_provider_key(
-                        e.tvg_id.as_deref(),
-                        e.primary_url(),
-                        e.name.as_deref(),
-                    );
+                    let key =
+                        m3u_provider_key(e.tvg_id.as_deref(), e.primary_url(), e.name.as_deref());
                     let id = global_id(src, &key).as_sqlite_int();
                     let group = e.groups.first().cloned().unwrap_or_default();
                     serde_json::json!({

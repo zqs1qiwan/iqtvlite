@@ -40,7 +40,12 @@ fn laobaitv_header_epg_url_is_parsed() {
 fn laobaitv_channels_are_parsed() {
     let p = m3u::parse(SAMPLE).unwrap();
     // 4 个有效频道（失效的那条 URL 被注释掉 → 孤儿条目被跳过）
-    assert_eq!(p.entries.len(), 4, "实际: {:?}", p.entries.iter().map(|e| &e.name).collect::<Vec<_>>());
+    assert_eq!(
+        p.entries.len(),
+        4,
+        "实际: {:?}",
+        p.entries.iter().map(|e| &e.name).collect::<Vec<_>>()
+    );
 
     let cctv1 = p
         .entries
@@ -49,8 +54,15 @@ fn laobaitv_channels_are_parsed() {
         .expect("CCTV1 应存在");
     assert_eq!(cctv1.name.as_deref(), Some("CCTV-1 综合"));
     assert_eq!(cctv1.groups, vec!["央视频道"]);
-    assert!(cctv1.primary_url().unwrap().contains("CCTV1HD_1200.m3u8"), "URL 含 |User-Agent 后缀，解析时需保留原样由播放器剥离");
-    assert_eq!(cctv1.user_agent.as_deref(), Some("VLC"), "http-user-agent 属性应被提升");
+    assert!(
+        cctv1.primary_url().unwrap().contains("CCTV1HD_1200.m3u8"),
+        "URL 含 |User-Agent 后缀，解析时需保留原样由播放器剥离"
+    );
+    assert_eq!(
+        cctv1.user_agent.as_deref(),
+        Some("VLC"),
+        "http-user-agent 属性应被提升"
+    );
 }
 
 #[test]
@@ -72,7 +84,9 @@ fn laobaitv_groups_are_chinese() {
 fn commented_out_stream_is_skipped() {
     let p = m3u::parse(SAMPLE).unwrap();
     assert!(
-        !p.entries.iter().any(|e| e.name.as_deref() == Some("第一财经")),
+        !p.entries
+            .iter()
+            .any(|e| e.name.as_deref() == Some("第一财经")),
         "以 # 开头的 URL 行是注释，对应的 #EXTINF 应作为孤儿条目被跳过"
     );
 }
@@ -80,7 +94,11 @@ fn commented_out_stream_is_skipped() {
 #[test]
 fn playback_url_suffix_preserved_for_player() {
     let p = m3u::parse(SAMPLE).unwrap();
-    let cctv1 = p.entries.iter().find(|e| e.tvg_id.as_deref() == Some("CCTV1")).unwrap();
+    let cctv1 = p
+        .entries
+        .iter()
+        .find(|e| e.tvg_id.as_deref() == Some("CCTV1"))
+        .unwrap();
     // Kodi 风格的 |User-Agent=VLC 后缀必须保留 —— Kotlin 侧播放时会 split("|") 并剥离
     assert!(cctv1.primary_url().unwrap().contains("|User-Agent=VLC"));
 }
