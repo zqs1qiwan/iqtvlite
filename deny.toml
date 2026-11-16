@@ -27,6 +27,8 @@ allow = [
     "OFL-1.1",
 ]
 confidence-threshold = 0.8
+# 允许列表里声明但当前未用到的协议只警告不失败（避免每次依赖变动都要改 allowlist）
+unused-allowed-license = "allow"
 
 [bans]
 multiple-versions = "warn"
