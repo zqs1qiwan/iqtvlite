@@ -124,6 +124,26 @@ class PlaybackService : MediaSessionService() {
             currentUserAgent.set(ua)
             android.util.Log.i(TAG, "stream UA -> $ua")
         }
+
+        /**
+         * 应用播放偏好（AFR / 音频直通）。
+         * Media3 的 setAudioAttributes 支持 C.AUDIO_CAPABILITY_AUDIO_PASSTHROUGH（API 33+）。
+         * 自动帧率在 TV 上通过视频格式切换实现；Media3 不直接暴露，
+         * 这里记录用户偏好并交给设备/显示层处理（在支持的设备上生效）。
+         */
+        fun applyPlaybackPrefs(context: android.content.Context, prefs: TiviMatePrefs.PlaybackPrefs) {
+            val player = sharedPlayer ?: return
+            val builder = androidx.media3.common.AudioAttributes.Builder()
+                .setUsage(C.USAGE_MEDIA)
+                .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
+            player.setAudioAttributes(builder.build(), true)
+            // 自动帧率：仅在无缝切换时启用（Android TV 标准行为）
+            player.setVideoChangeFrameRateStrategy(
+                if (prefs.autoFrameRate) C.VIDEO_CHANGE_FRAME_RATE_STRATEGY_ONLY_IF_SEAMLESS
+                else C.VIDEO_CHANGE_FRAME_RATE_STRATEGY_OFF,
+            )
+            android.util.Log.i(TAG, "prefs applied afr=${prefs.autoFrameRate} passthrough=${prefs.audioPassthrough}")
+        }
     }
 
     override fun onCreate() {

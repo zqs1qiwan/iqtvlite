@@ -48,6 +48,10 @@
             android:exported="false" />
 
         <receiver
+            android:name=".ScheduledRecordingReceiver"
+            android:exported="false" />
+
+        <receiver
             android:name=".ReminderScheduler"
             android:exported="false" />
 

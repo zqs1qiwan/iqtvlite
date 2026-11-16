@@ -80,6 +80,13 @@ class SettingsActivity : AppCompatActivity() {
             showEpgSourceManager()
         }
 
+        setupRow(R.id.row_playback, R.id.sub_playback, "播放设置", "自动帧率 / 音频直通 / 外部播放器") {
+            showPlaybackPrefs()
+        }
+        setupRow(R.id.row_recordings, R.id.sub_recordings, "定时录制", "查看 / 管理排期") {
+            showScheduledRecordings()
+        }
+
         setupRow(R.id.row_hidden, R.id.sub_hidden, "隐藏频道", "当前隐藏 ${TiviMatePrefs.hiddenChannels(this).size} 个") {
             Toast.makeText(this, "在频道列表长按可隐藏/显示频道", Toast.LENGTH_SHORT).show()
         }
@@ -89,6 +96,43 @@ class SettingsActivity : AppCompatActivity() {
         }
 
         findViewById<Button>(R.id.btn_back).setOnClickListener { finish() }
+    }
+
+    private fun showPlaybackPrefs() {
+        val p = TiviMatePrefs.playbackPrefs(this)
+        val opts = arrayOf(
+            "${if (p.autoFrameRate) "✓" else "✗"} 自动帧率 (AFR)",
+            "${if (p.audioPassthrough) "✓" else "✗"} 音频直通",
+            "${if (p.externalPlayer) "✓" else "✗"} 外部播放器兜底",
+        )
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("播放设置")
+            .setItems(opts) { _, which ->
+                val np = when (which) {
+                    0 -> p.copy(autoFrameRate = !p.autoFrameRate)
+                    1 -> p.copy(audioPassthrough = !p.audioPassthrough)
+                    else -> p.copy(externalPlayer = !p.externalPlayer)
+                }
+                TiviMatePrefs.savePlaybackPrefs(this, np)
+                showPlaybackPrefs()
+            }
+            .setPositiveButton("完成", null).show()
+    }
+
+    private fun showScheduledRecordings() {
+        val list = TiviMatePrefs.scheduledRecordings(this)
+        val labels = if (list.isEmpty()) arrayOf("暂无定时录制（在 EPG 长按未来节目可排期）") else
+            list.map { "${it.title} @ ${java.text.SimpleDateFormat("MM-dd HH:mm", java.util.Locale.getDefault()).format(java.util.Date(it.startTs * 1000))}" }.toTypedArray()
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("定时录制 (${list.size})")
+            .setItems(labels) { _, which ->
+                if (list.isNotEmpty()) {
+                    ScheduledRecordingReceiver.cancel(this, list[which].startTs)
+                    TiviMatePrefs.removeScheduledRecording(this, list[which])
+                    Toast.makeText(this, "已取消录制", Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setPositiveButton("完成", null).show()
     }
 
     private fun showEpgSourceManager() {

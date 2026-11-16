@@ -108,6 +108,7 @@ class MainActivity : AppCompatActivity() {
                 status.text = "▶ ${programme.title} · ${row.name}"
             },
             onCatchup = { row, programme -> playCatchup(row, programme) },
+            onRecord = { row, programme -> scheduleRecording(row, programme) },
         )
         epgRecycler.layoutManager = LinearLayoutManager(this)
         epgRecycler.adapter = epgAdapter
@@ -140,6 +141,7 @@ class MainActivity : AppCompatActivity() {
 
         // ── 播放器（Media3，直播主引擎） ──────────────────────────────
         player = PlaybackService.ensurePlayer(this)
+        PlaybackService.applyPlaybackPrefs(this, TiviMatePrefs.playbackPrefs(this))
         playerView.player = player
         // ── TV 大屏字幕样式 ─────────────────────────────────────────
         // 10-foot UI：字更大、黑色半透明底、白色字，保证任何画面都清晰
@@ -562,6 +564,27 @@ class MainActivity : AppCompatActivity() {
             status.text = "切换备用线路 ${urlIndex + 1}/${all.size}"
         } else {
             status.text = "所有线路都失败了: ${ch.name}"
+            // 外部播放器兜底（用户开启后，线路全失败时尝试外跳）
+            if (TiviMatePrefs.playbackPrefs(this).externalPlayer) openExternalPlayer(ch)
+        }
+    }
+
+    /** 外部播放器兜底：用系统已安装的播放器打开流 */
+    private fun openExternalPlayer(ch: Channel) {
+        try {
+            val url = ch.url.substringBefore("|")
+            val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+                setDataAndType(android.net.Uri.parse(url), "application/vnd.apple.mpegurl")
+                addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            val ua = resolveUserAgent(ch.userAgent)
+            intent.putExtra("User-Agent", ua) // VLC / 部分播放器支持
+            startActivity(intent)
+            Toast.makeText(this, "已交给外部播放器", Toast.LENGTH_SHORT).show()
+            Log.i(TAG, "EXTERNAL_PLAYER ${ch.name} ua=$ua")
+        } catch (e: Exception) {
+            Toast.makeText(this, "没有可用的外部播放器", Toast.LENGTH_SHORT).show()
+            Log.w(TAG, "external player not available", e)
         }
     }
 
@@ -606,6 +629,28 @@ class MainActivity : AppCompatActivity() {
         raw.equals("TiviMate", ignoreCase = true) || raw.startsWith("TiviMate/") -> "TiviMate/5.1.6 (Android 12)"
         raw.startsWith("Mozilla/") -> raw
         else -> raw // 自定义完整 UA
+    }
+
+    /** EPG 长按未来节目 → 定时录制（AlarmManager 到点唤起 RecordingService） */
+    private fun scheduleRecording(row: EpgRow, programme: EpgProgramme) {
+        val ch = allChannels.find { normalizeTvg(it.tvgId) == normalizeTvg(row.tvgId) }
+        if (ch == null) { Toast.makeText(this, "找不到频道", Toast.LENGTH_SHORT).show(); return }
+        val now = System.currentTimeMillis() / 1000
+        if (programme.start <= now) { Toast.makeText(this, "节目已开始，请用即时录制", Toast.LENGTH_SHORT).show(); return }
+        val rec = TiviMatePrefs.ScheduledRecording(
+            channelId = ch.id,
+            tvgId = row.tvgId,
+            title = "${ch.name} · ${programme.title}",
+            startTs = programme.start,
+            stopTs = programme.stop,
+            liveUrl = ch.url.substringBefore("|"),
+            userAgent = resolveUserAgent(ch.userAgent),
+            altUrls = ch.altUrls.map { it.substringBefore("|") },
+        )
+        TiviMatePrefs.addScheduledRecording(this, rec)
+        ScheduledRecordingReceiver.schedule(this, rec)
+        Toast.makeText(this, "已排期: ${programme.title}", Toast.LENGTH_SHORT).show()
+        Log.i(TAG, "SCHEDULED_REC ${rec.title} ${rec.startTs}-${rec.stopTs}")
     }
 
     /** 即时录制当前频道：Rust 生成计划 → RecordingService 零转码写文件。 */

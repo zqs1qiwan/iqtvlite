@@ -27,6 +27,7 @@ class EpgGridAdapter(
     private val timeFormat: SimpleDateFormat,
     private val onProgramme: (EpgRow, EpgProgramme) -> Unit,
     private val onCatchup: (EpgRow, EpgProgramme) -> Unit,
+    private val onRecord: (EpgRow, EpgProgramme) -> Unit,
 ) : RecyclerView.Adapter<EpgGridAdapter.VH>() {
 
     /** 当前时间（Unix 秒）—— 用于判断节目是否已播出（可回看） */
@@ -127,8 +128,10 @@ class EpgGridAdapter(
             block.setOnLongClickListener {
                 if (p.stop <= nowSecs) {
                     onCatchup(row, p)
-                    true
-                } else false
+                } else {
+                    onRecord(row, p)   // 未来节目 → 定时录制
+                }
+                true
             }
             holder.timeline.addView(block)
         }
