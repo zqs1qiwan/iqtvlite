@@ -7,9 +7,11 @@
 
 pub mod grid;
 pub mod matcher;
+pub mod merge;
 
 pub use grid::{build_grid, EpgGrid, GridConfig, GridProgramme, GridRow, GridStats};
 pub use matcher::{MatchCandidate, MatchOutcome, Matcher};
+pub use merge::{merge_sources, EpgSourceInput, EpgSourceStat, MergedChannel, MergedEpg};
 
 /// EPG 保留窗口（天）。
 ///

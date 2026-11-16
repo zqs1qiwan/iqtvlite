@@ -42,9 +42,10 @@
 
         <Spinner
             android:id="@+id/source_spinner"
-            android:layout_width="150dp"
-            android:layout_height="wrap_content"
-            android:layout_marginEnd="6dp" />
+            android:layout_width="170dp"
+            android:layout_height="48dp"
+            android:layout_marginEnd="6dp"
+            android:background="@drawable/focus_border" />
 
         <Button
             android:id="@+id/tab_channels"
@@ -59,6 +60,14 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="EPG"
+            android:minWidth="0dp"
+            android:layout_marginEnd="6dp" />
+
+        <Button
+            android:id="@+id/btn_multiview"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="多画面"
             android:minWidth="0dp"
             android:layout_marginEnd="6dp" />
 
@@ -86,6 +95,8 @@
             android:hint="搜索频道…"
             android:textColor="#E8EDF2"
             android:textColorHint="#66717D"
+            android:textSize="18sp"
+            android:background="@drawable/focus_border"
             android:inputType="text"
             android:singleLine="true"
             android:padding="8dp" />

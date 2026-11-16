@@ -106,6 +106,17 @@ class MainActivity : AppCompatActivity() {
             showTab(true)
             loadEpg()
         }
+        findViewById<Button>(R.id.btn_multiview).setOnClickListener {
+            if (allChannels.isEmpty()) {
+                Toast.makeText(this, "请先加载频道", Toast.LENGTH_SHORT).show()
+            } else {
+                // 优先从当前位置开始取 4 个频道
+                val start = currentPos.coerceAtLeast(0)
+                val four = (0 until 4).mapNotNull { i -> allChannels.getOrNull(start + i) }
+                MultiViewActivity.open(four)
+                startActivity(android.content.Intent(this, MultiViewActivity::class.java))
+            }
+        }
         findViewById<Button>(R.id.btn_record).setOnClickListener { toggleRecording() }
         findViewById<Button>(R.id.btn_subtitle).setOnClickListener {
             val label = SubtitleManager.cycle(player, this)

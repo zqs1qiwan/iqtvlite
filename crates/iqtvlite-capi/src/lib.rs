@@ -23,7 +23,7 @@ use iqtvlite_core::id::{global_id, m3u_provider_key, SourceId};
 use iqtvlite_core::model::catchup::{CatchupConfig, CatchupContext, CatchupResolver, CatchupType};
 use iqtvlite_core::parse::m3u;
 use iqtvlite_dvr::{estimate_size_mb, OutputFormat, RecordingSource, RecordingTask};
-use iqtvlite_epg::{build_grid, GridConfig};
+use iqtvlite_epg::{build_grid, merge_sources, EpgSourceInput, GridConfig};
 
 /// 把 Rust String 转成 C 字符串（调用方必须用 `iqt_free_string` 释放）。
 fn to_c(s: String) -> *mut c_char {
@@ -392,6 +392,52 @@ fn build_recording_plan(raw: &str) -> Result<serde_json::Value, String> {
         "url": url,
         "userAgent": task.user_agent,
         "estimateMb": estimate_size_mb(2000, (task.stop_ts - task.start_ts).max(0) as u64),
+    }))
+}
+
+/// 合并多个 EPG 源（按优先级叠加）。
+///
+/// 输入 JSON：`{"windowStart":0,"windowEnd":0,
+///   "sources":[{"id":"manual","priority":10,"xml":"<tv>..."}, ...]}`
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn iqt_merge_epg_sources(params_json: *const c_char) -> *mut c_char {
+    let raw = unsafe { from_c(params_json) };
+    let result = match merge_epg(raw) {
+        Ok(v) => v,
+        Err(e) => serde_json::json!({ "ok": false, "error": e }),
+    };
+    to_c(result.to_string())
+}
+
+fn merge_epg(raw: &str) -> Result<serde_json::Value, String> {
+    let v: serde_json::Value = serde_json::from_str(raw).map_err(|e| e.to_string())?;
+    let window_start = v.get("windowStart").and_then(|x| x.as_i64()).unwrap_or(0);
+    let window_end = v
+        .get("windowEnd")
+        .and_then(|x| x.as_i64())
+        .unwrap_or(i64::MAX);
+    let sources: Vec<EpgSourceInput<'_>> = v
+        .get("sources")
+        .and_then(|x| x.as_array())
+        .ok_or("缺少 sources")?
+        .iter()
+        .filter_map(|s| {
+            let id = s.get("id")?.as_str()?;
+            let priority = s.get("priority")?.as_i64()? as i32;
+            let xml = s.get("xml")?.as_str()?;
+            Some(EpgSourceInput {
+                id: id.to_string(),
+                priority,
+                xml,
+            })
+        })
+        .collect();
+    let merged = merge_sources(&sources, window_start, window_end);
+    Ok(serde_json::json!({
+        "ok": true,
+        "channels": merged.channels,
+        "programmeCount": merged.programme_count,
+        "stats": merged.stats,
     }))
 }
 

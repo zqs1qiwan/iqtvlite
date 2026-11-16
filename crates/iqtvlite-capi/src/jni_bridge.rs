@@ -7,7 +7,7 @@ use jni::JNIEnv;
 
 use crate::{
     iqt_build_catchup_url, iqt_build_recording_plan, iqt_extract_query, iqt_free_string,
-    iqt_parse_epg_grid, iqt_parse_m3u, iqt_stable_id, iqt_version,
+    iqt_merge_epg_sources, iqt_parse_epg_grid, iqt_parse_m3u, iqt_stable_id, iqt_version,
 };
 use std::ffi::CString;
 use std::os::raw::c_char;
@@ -125,6 +125,22 @@ pub extern "system" fn Java_tv_iqtvlite_app_RustBridge_buildRecordingPlan<'local
         let s: String = env.get_string(&params_json)?.into();
         let c = CString::new(s).unwrap_or_default();
         let ptr = unsafe { iqt_build_recording_plan(c.as_ptr()) };
+        let result = unsafe { c_to_string(ptr) };
+        Ok(env.new_string(result)?.into_raw())
+    });
+    unwrap_outcome(outcome)
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_tv_iqtvlite_app_RustBridge_mergeEpgSources<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    params_json: JString<'local>,
+) -> jstring {
+    let outcome: jni::EnvOutcome<'local, jstring, JniError> = env.with_env(|env| {
+        let s: String = env.get_string(&params_json)?.into();
+        let c = CString::new(s).unwrap_or_default();
+        let ptr = unsafe { iqt_merge_epg_sources(c.as_ptr()) };
         let result = unsafe { c_to_string(ptr) };
         Ok(env.new_string(result)?.into_raw())
     });

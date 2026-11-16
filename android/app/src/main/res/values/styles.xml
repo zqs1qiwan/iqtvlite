@@ -8,5 +8,15 @@
         <item name="colorPrimary">#2E7CF6</item>
         <item name="android:windowNoTitle">true</item>
         <item name="android:windowFullscreen">true</item>
+        <!-- TV 按钮：大尺寸 + D-pad 焦点边框（Android TV 设计指南） -->
+        <item name="android:buttonStyle">@style/TvButton</item>
+    </style>
+
+    <style name="TvButton" parent="Widget.AppCompat.Button">
+        <item name="android:background">@drawable/focus_border</item>
+        <item name="android:textColor">#E8EDF2</item>
+        <item name="android:textSize">15sp</item>
+        <item name="android:minHeight">48dp</item>
+        <item name="android:minWidth">80dp</item>
     </style>
 </resources>
