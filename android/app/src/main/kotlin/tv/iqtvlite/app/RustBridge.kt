@@ -34,6 +34,9 @@ object RustBridge {
         windowEnd: Long,
         slotMinutes: Int
     ): String
+    /** 生成 catch-up 回看 URL。paramsJson 见 Rust iqt_build_catchup_url 文档。 */
+    external fun buildCatchupUrl(paramsJson: String): String
+
     external fun stableId(sourceId: Long, providerKey: String): Long
     external fun extractQuery(url: String, key: String): String
     external fun freeString(ptr: Long)
@@ -73,6 +76,15 @@ object RustBridge {
             o.optJSONArray("altUrls")?.let { alts ->
                 for (j in 0 until alts.length()) urls.add(alts.getString(j))
             }
+            // catch-up 配置（回看）
+            val catchupObj = o.optJSONObject("catchup")
+            val catchup = if (catchupObj != null) CatchupInfo(
+                type = catchupObj.optString("type", "Disabled"),
+                source = catchupObj.optString("source", "").ifEmpty { null },
+                days = catchupObj.optInt("days", 0),
+                hasArchive = catchupObj.optBoolean("hasArchive", false),
+            ) else null
+
             channels.add(
                 Channel(
                     id = o.getLong("id"),
@@ -86,6 +98,7 @@ object RustBridge {
                     radio = o.optBoolean("radio", false),
                     userAgent = o.optString("userAgent", "").ifEmpty { null },
                     referrer = o.optString("referrer", "").ifEmpty { null },
+                    catchup = catchup,
                 )
             )
         }
@@ -113,6 +126,15 @@ data class Channel(
     val radio: Boolean = false,
     val userAgent: String? = null,
     val referrer: String? = null,
+    val catchup: CatchupInfo? = null,
+)
+
+/** 频道的 catch-up（回看）配置，来自 M3U 的 catchup-* 属性。 */
+data class CatchupInfo(
+    val type: String,
+    val source: String?,
+    val days: Int,
+    val hasArchive: Boolean,
 )
 
 data class PlaylistResult(

@@ -89,11 +89,15 @@ class MainActivity : AppCompatActivity() {
         epgRecycler = findViewById(R.id.epg_recycler)
 
         // ── EPG 网格 ────────────────────────────────────────────────
-        epgAdapter = EpgGridAdapter(epgTimeFormat()) { row, programme ->
-            // 点击节目 → 找到对应频道并播放
-            allChannels.find { normalizeTvg(it.tvgId) == normalizeTvg(row.tvgId) }?.let { play(it) }
-            status.text = "▶ ${programme.title} · ${row.name}"
-        }
+        epgAdapter = EpgGridAdapter(
+            epgTimeFormat(),
+            onProgramme = { row, programme ->
+                // 点击节目 → 找到对应频道并播放
+                allChannels.find { normalizeTvg(it.tvgId) == normalizeTvg(row.tvgId) }?.let { play(it) }
+                status.text = "▶ ${programme.title} · ${row.name}"
+            },
+            onCatchup = { row, programme -> playCatchup(row, programme) },
+        )
         epgRecycler.layoutManager = LinearLayoutManager(this)
         epgRecycler.adapter = epgAdapter
 
@@ -137,7 +141,15 @@ class MainActivity : AppCompatActivity() {
         })
 
         // ── 频道列表 ────────────────────────────────────────────────
-        adapter = ChannelAdapter { ch -> play(ch) }
+        adapter = ChannelAdapter(
+            onSelect = { ch -> play(ch) },
+            onToggleFavorite = { ch ->
+                val added = FavoritesStore.toggleFavorite(this, ch.id)
+                adapter.setLists(FavoritesStore.favorites(this), FavoritesStore.recents(this))
+                adapter.refresh()
+                Toast.makeText(this, if (added) "★ 已收藏 ${ch.name}" else "☆ 已取消收藏", Toast.LENGTH_SHORT).show()
+            },
+        )
         recycler.layoutManager = LinearLayoutManager(this)
         recycler.adapter = adapter
 
@@ -213,6 +225,7 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             if (result != null) {
+                epgAdapter.nowSecs = result.now
                 epgAdapter.submit(result)
                 if (showingEpg) status.text = "EPG: ${result.matched}/${result.requested} 频道匹配 · ${result.guideChannels} 个指南频道"
                 Log.i(TAG, "EPG_RESULT matched=${result.matched} requested=${result.requested} guide=${result.guideChannels} rows=${result.rows.size} programmes=${result.rows.sumOf { it.programmes.size }}")
@@ -296,25 +309,35 @@ class MainActivity : AppCompatActivity() {
 
     private fun buildGroupChips(groups: List<String>) {
         groupRow.removeAllViews()
-        val all = Button(this).apply {
-            text = "全部"
-            setOnClickListener { currentGroup = null; adapter.filter(searchEdit.text.toString(), null) }
-        }
-        groupRow.addView(all)
-        groups.take(50).forEach { g ->
+        // 虚拟分组：收藏 / 最近观看 / 全部（TiviMate 风格）
+        val chips = listOf("★收藏" to "__favorites__", "最近观看" to "__recents__", "全部" to null) +
+            groups.take(50).map { it to it }
+        chips.forEach { (label, key) ->
             Button(this).apply {
-                text = g
+                text = label
                 isAllCaps = false
-                setOnClickListener { currentGroup = g; adapter.filter(searchEdit.text.toString(), g) }
+                setOnClickListener {
+                    currentGroup = key
+                    adapter.setLists(FavoritesStore.favorites(this@MainActivity), FavoritesStore.recents(this@MainActivity))
+                    adapter.filter(searchEdit.text.toString(), key)
+                    val count = if (key == null) allChannels.size else adapter.itemCount
+                    status.text = "$label: $count 个频道"
+                }
                 groupRow.addView(this)
             }
         }
+        adapter.setLists(FavoritesStore.favorites(this), FavoritesStore.recents(this))
     }
 
     private var urlIndex = 0
     private fun play(ch: Channel) {
         currentPos = allChannels.indexOfFirst { it.id == ch.id }.let { if (it >= 0) it else currentPos }
         urlIndex = 0
+        // 记录最近观看（用 Rust 稳定 ID，重新同步后仍有效）
+        FavoritesStore.markWatched(this, ch.id)
+        adapter.setLists(FavoritesStore.favorites(this), FavoritesStore.recents(this))
+        adapter.refresh()
+        Log.i(TAG, "WATCHED ${ch.id} ${ch.name} recents=${FavoritesStore.recents(this).size}")
         playCurrentUrl(ch)
     }
 
@@ -370,6 +393,62 @@ class MainActivity : AppCompatActivity() {
         raw.equals("TiviMate", ignoreCase = true) || raw.startsWith("TiviMate/") -> "TiviMate/5.1.6 (Android 12)"
         raw.startsWith("Mozilla/") -> raw
         else -> raw // 自定义完整 UA
+    }
+
+    /**
+     * Catch-up 回看：长按 EPG 里已播出的节目，由 Rust core 生成归档 URL 并播放。
+     * 支持播放列表标记的全部 catchup 模式（Shift/Append/Default/Flussonic）。
+     */
+    private fun playCatchup(row: EpgRow, programme: EpgProgramme) {
+        val ch = allChannels.find { normalizeTvg(it.tvgId) == normalizeTvg(row.tvgId) }
+        if (ch == null) {
+            Toast.makeText(this, "找不到频道 ${row.name}", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val cfg = ch.catchup
+        if (cfg == null || !cfg.hasArchive) {
+            Toast.makeText(this, "${ch.name} 不支持回看", Toast.LENGTH_SHORT).show()
+            return
+        }
+        lifecycleScope.launch {
+            val url = withContext(Dispatchers.IO) {
+                try {
+                    val params = org.json.JSONObject().apply {
+                        put("liveUrl", ch.url.substringBefore("|"))
+                        put("type", cfg.type)
+                        cfg.source?.let { put("source", it) }
+                        put("days", cfg.days)
+                        put("providerTz", "Asia/Shanghai") // 老白直播 EPG 用 +0800
+                        put("start", programme.start)
+                        put("stop", programme.stop)
+                        put("now", System.currentTimeMillis() / 1000)
+                        programme.catchupId?.let { put("catchupId", it) }
+                    }.toString()
+                    val result = org.json.JSONObject(RustBridge.buildCatchupUrl(params))
+                    if (result.optBoolean("ok", false)) result.getString("url") else null
+                } catch (e: Exception) {
+                    Log.e(TAG, "catchup failed", e)
+                    null
+                }
+            }
+            if (url != null) {
+                Log.i(TAG, "CATCHUP_URL $url")
+                playUrlDirect(url, "${ch.name} · 回看: ${programme.title}", ch.userAgent)
+            } else {
+                Toast.makeText(this@MainActivity, "该节目暂无回看源", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    /** 直接播放一个 URL（catch-up 用），不修改当前频道索引。 */
+    private fun playUrlDirect(url: String, label: String, rawUa: String?) {
+        val ua = resolveUserAgent(rawUa)
+        PlaybackService.setStreamUserAgent(ua)
+        val mediaItem = MediaItem.Builder().setUri(url).build()
+        player.setMediaItem(mediaItem)
+        player.prepare()
+        player.playWhenReady = true
+        status.text = "▶ $label"
     }
 
     /** 播放器的控制条是否可见（用两种 listener 接口都兼容的方式） */

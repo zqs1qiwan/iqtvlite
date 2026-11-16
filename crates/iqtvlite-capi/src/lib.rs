@@ -20,6 +20,7 @@ use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int};
 
 use iqtvlite_core::id::{global_id, m3u_provider_key, SourceId};
+use iqtvlite_core::model::catchup::{CatchupConfig, CatchupContext, CatchupResolver, CatchupType};
 use iqtvlite_core::parse::m3u;
 use iqtvlite_epg::{build_grid, GridConfig};
 
@@ -201,6 +202,113 @@ pub unsafe extern "C" fn iqt_parse_epg_grid(
     )
 }
 
+/// 生成 catch-up（回看）URL。
+///
+/// 输入是 JSON 对象（全部字段来自播放列表的 catchup 配置 + 节目时间）：
+/// ```json
+/// {
+///   "liveUrl": "http://.../1.ts",
+///   "type": "Shift",             // Default|Append|Shift|Timeshift|Flussonic|XtreamCodes|Vod
+///   "source": "?utc={utc}&lutc={lutc}",
+///   "days": 7, "timeSecs": 0, "tvgRec": 0, "correctionHours": 0,
+///   "providerTz": "Asia/Shanghai",
+///   "start": 1700000000, "stop": 1700003600, "now": 1700005000,
+///   "catchupId": "optional"
+/// }
+/// ```
+/// 返回 `{"ok":true,"url":"..."}` 或 `{"ok":false,"error":"..."}`。
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn iqt_build_catchup_url(params_json: *const c_char) -> *mut c_char {
+    let raw = unsafe { from_c(params_json) };
+    let result = match build_catchup_url(raw) {
+        Ok(url) => serde_json::json!({ "ok": true, "url": url }),
+        Err(e) => serde_json::json!({ "ok": false, "error": e }),
+    };
+    to_c(result.to_string())
+}
+
+fn build_catchup_url(raw: &str) -> Result<String, String> {
+    let v: serde_json::Value = serde_json::from_str(raw).map_err(|e| e.to_string())?;
+    let get_str = |k: &str| v.get(k).and_then(|x| x.as_str()).unwrap_or("").to_string();
+    let get_i64 = |k: &str| v.get(k).and_then(|x| x.as_i64()).unwrap_or(0);
+    let get_f64 = |k: &str| v.get(k).and_then(|x| x.as_f64()).unwrap_or(0.0);
+
+    let type_raw = get_str("type");
+    let catchup_type = CatchupType::from_attr(&type_raw)
+        .ok_or_else(|| format!("未知 catch-up 类型: {type_raw}"))?;
+
+    let cfg = CatchupConfig {
+        catchup_type,
+        days: v.get("days").and_then(|x| x.as_u64()).map(|x| x as u32),
+        time_secs: v.get("timeSecs").and_then(|x| x.as_u64()).map(|x| x as u32),
+        source: {
+            let s = get_str("source");
+            if s.is_empty() {
+                None
+            } else {
+                Some(s)
+            }
+        },
+        correction_hours: if get_f64("correctionHours") != 0.0 {
+            Some(get_f64("correctionHours"))
+        } else {
+            None
+        },
+        tvg_rec: if get_i64("tvgRec") != 0 {
+            Some(get_i64("tvgRec"))
+        } else {
+            None
+        },
+    };
+
+    let live_url = get_str("liveUrl");
+    if live_url.is_empty() {
+        return Err("缺少 liveUrl".to_string());
+    }
+    let provider_tz = {
+        let s = get_str("providerTz");
+        if s.is_empty() {
+            None
+        } else {
+            Some(s)
+        }
+    };
+    let catchup_id = {
+        let s = get_str("catchupId");
+        if s.is_empty() {
+            None
+        } else {
+            Some(s)
+        }
+    };
+
+    let start = get_i64("start");
+    let stop = get_i64("stop");
+    let now = {
+        let n = get_i64("now");
+        if n > 0 {
+            n
+        } else {
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs() as i64
+        }
+    };
+
+    let mut ctx = CatchupContext::with_buffer(start, stop, now);
+    ctx.catchup_id = catchup_id.as_deref();
+
+    let resolver = CatchupResolver {
+        config: cfg,
+        live_url,
+        provider_tz,
+    };
+    resolver
+        .resolve(&ctx)
+        .ok_or_else(|| "该频道不支持 catch-up（类型或模板无效）".to_string())
+}
+
 /// 生成稳定 ID。
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn iqt_stable_id(source_id: i64, provider_key: *const c_char) -> i64 {
@@ -269,6 +377,26 @@ mod tests {
         assert_eq!(v["rows"].as_array().unwrap().len(), 1);
         assert_eq!(v["rows"][0]["programmes"][0]["title"], "新闻");
         assert_eq!(v["rows"][0]["programmes"][0]["span"], 2);
+    }
+
+    #[test]
+    fn build_catchup_url_shift_mode() {
+        let json = r#"{"liveUrl":"http://x/live.ts","type":"Shift","start":1700000000,"stop":1700003600,"now":1700005000}"#;
+        let url = build_catchup_url(json).unwrap();
+        assert_eq!(url, "http://x/live.ts?utc=1700000000&lutc=1700005000");
+    }
+
+    #[test]
+    fn build_catchup_url_default_template() {
+        let json = r#"{"liveUrl":"http://x/live.ts","type":"Default","source":"http://a/v-{utc}-{duration}.m3u8","start":1700000000,"stop":1700003600,"now":1700005000}"#;
+        let url = build_catchup_url(json).unwrap();
+        assert_eq!(url, "http://a/v-1700000000-3900.m3u8");
+    }
+
+    #[test]
+    fn build_catchup_url_rejects_unknown_type() {
+        let json = r#"{"liveUrl":"http://x/live.ts","type":"Bogus","start":0,"stop":0,"now":0}"#;
+        assert!(build_catchup_url(json).is_err());
     }
 
     #[test]

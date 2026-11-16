@@ -26,7 +26,11 @@ import java.util.TimeZone
 class EpgGridAdapter(
     private val timeFormat: SimpleDateFormat,
     private val onProgramme: (EpgRow, EpgProgramme) -> Unit,
+    private val onCatchup: (EpgRow, EpgProgramme) -> Unit,
 ) : RecyclerView.Adapter<EpgGridAdapter.VH>() {
+
+    /** 当前时间（Unix 秒）—— 用于判断节目是否已播出（可回看） */
+    var nowSecs: Long = System.currentTimeMillis() / 1000
 
     private var rows: List<EpgRow> = emptyList()
     private var slotMinutes: Int = 30
@@ -119,6 +123,13 @@ class EpgGridAdapter(
             block.addView(time)
 
             block.setOnClickListener { onProgramme(row, p) }
+            // 长按已播出的节目 → catch-up 回看
+            block.setOnLongClickListener {
+                if (p.stop <= nowSecs) {
+                    onCatchup(row, p)
+                    true
+                } else false
+            }
             holder.timeline.addView(block)
         }
 

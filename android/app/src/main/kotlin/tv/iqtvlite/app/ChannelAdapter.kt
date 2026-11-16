@@ -10,6 +10,7 @@ import coil.load
 
 class ChannelAdapter(
     private val onSelect: (Channel) -> Unit,
+    private val onToggleFavorite: (Channel) -> Unit,
 ) : RecyclerView.Adapter<ChannelAdapter.VH>() {
 
     private var items: List<Channel> = emptyList()
@@ -22,16 +23,40 @@ class ChannelAdapter(
         notifyDataSetChanged()
     }
 
+    /** 收藏/最近观看的 ID 列表（由 MainActivity 更新） */
+    private var favIds: Set<Long> = emptySet()
+    private var recentIds: Set<Long> = emptySet()
+    private var currentQuery = ""
+    private var currentGroupFilter: String? = null
+
+    fun setLists(favorites: List<Long>, recents: List<Long>) {
+        favIds = favorites.toSet()
+        recentIds = recents.toSet()
+    }
+
+    /**
+     * 分组过滤。支持两个虚拟分组：
+     *   - `__favorites__` 收藏
+     *   - `__recents__` 最近观看（按最近顺序）
+     */
     fun filter(query: String, group: String?) {
-        filtered = items.filter { ch ->
-            val matchText = query.isBlank() ||
+        currentQuery = query
+        currentGroupFilter = group
+        filtered = when (group) {
+            "__favorites__" -> items.filter { favIds.contains(it.id) }
+            "__recents__" -> recentIds.mapNotNull { id -> items.find { it.id == id } }
+            null -> items
+            else -> items.filter { ch -> ch.group == group }
+        }.filter { ch ->
+            query.isBlank() ||
                 ch.name.contains(query, ignoreCase = true) ||
                 (ch.tvgId?.contains(query, ignoreCase = true) == true)
-            val matchGroup = group == null || ch.group == group
-            matchText && matchGroup
         }
         notifyDataSetChanged()
     }
+
+    /** 列表变化后重新应用当前过滤（收藏切换后调用）。 */
+    fun refresh() = filter(currentQuery, currentGroupFilter)
 
     fun setSelected(pos: Int) {
         val old = selectedPos
@@ -66,6 +91,11 @@ class ChannelAdapter(
         holder.itemView.setOnClickListener {
             setSelected(position)
             onSelect(ch)
+        }
+        // 长按 → 收藏/取消收藏（TiviMate 风格）
+        holder.itemView.setOnLongClickListener {
+            onToggleFavorite(ch)
+            true
         }
         // D-pad 焦点支持（TV 遥控器）
         holder.itemView.isFocusable = true
