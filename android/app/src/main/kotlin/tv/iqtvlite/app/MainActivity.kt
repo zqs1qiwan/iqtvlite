@@ -243,6 +243,13 @@ class MainActivity : AppCompatActivity() {
         swipe.setOnRefreshListener { loadSource(currentSource) }
 
         status.text = "Rust core: ${RustBridge.version()}"
+        // 恢复已设置的提醒（设备重启后 AlarmManager 需要重新注册）
+        TiviMatePrefs.reminders(this).forEach { r ->
+            if (r.startTs * 1000 > System.currentTimeMillis()) {
+                ReminderScheduler.schedule(this, r.tvgId, r.title, r.startTs)
+            }
+        }
+
         // ① 同步加载缓存 → 频道列表立即可交互（冷启动秒开）
         val cacheHit = loadFromCache(0)
         Log.i(TAG, "COLD_START_CACHE hit=$cacheHit ms=${System.currentTimeMillis() - coldStartTime}")
@@ -268,7 +275,9 @@ class MainActivity : AppCompatActivity() {
 
     /** 加载 EPG 并生成网格（复用 Rust core 的流式 XMLTV 解析 + 网格算法）。 */
     private fun loadEpg() {
-        if (epgUrls.isEmpty()) {
+        val customSources = TiviMatePrefs.epgSources(this).filter { it.enabled }
+        val effectiveUrls = if (customSources.isNotEmpty()) customSources.map { it.url } else epgUrls
+        if (effectiveUrls.isEmpty()) {
             status.text = "当前播放列表没有 EPG 源"
             return
         }
@@ -283,17 +292,17 @@ class MainActivity : AppCompatActivity() {
                     // 多个 EPG 源按优先级合并：序号越小优先级越高（第一个源胜出）
                     // 当前播放列表的 x-tvg-url 优先；其余 URL 作为补充（填缺）
                     val sources = org.json.JSONArray()
-                    epgUrls.distinct().forEachIndexed { idx, url ->
+                    effectiveUrls.distinct().forEachIndexed { idx, url ->
                         val xml = if (idx == 0 && epgCache != null) epgCache!! else
                             http.newCall(Request.Builder().url(url).build()).execute().use { resp ->
                                 if (!resp.isSuccessful) throw Exception("HTTP ${resp.code}")
-                                // EPG 端点是裸 gzip（无 Content-Encoding 头），需手动解压
                                 RustBridge.readBody(resp.body!!)
                             }
                         if (idx == 0) epgCache = xml
+                        val priority = customSources.getOrNull(idx)?.priority ?: (10 + idx * 10)
                         sources.put(org.json.JSONObject().apply {
                             put("id", "epg$idx")
-                            put("priority", 10 + idx * 10) // 10, 20, 30...
+                            put("priority", priority)
                             put("xml", xml)
                         })
                     }
@@ -311,7 +320,7 @@ class MainActivity : AppCompatActivity() {
 
                     val json = RustBridge.buildMergedEpgGrid(params)
                     val stats = org.json.JSONObject(json).optJSONArray("mergeStats")
-                    Log.i(TAG, "EPG_MERGE sources=${epgUrls.size} stats=$stats")
+                    Log.i(TAG, "EPG_MERGE sources=${effectiveUrls.size} custom=${customSources.isNotEmpty()} stats=$stats")
                     EpgGridData.fromJson(json)
                 } catch (e: Exception) {
                     Log.e(TAG, "EPG load failed", e)
@@ -462,11 +471,11 @@ class MainActivity : AppCompatActivity() {
                         Toast.makeText(this, hide, Toast.LENGTH_SHORT).show()
                     }
                     3 -> {
-                        TiviMatePrefs.addReminder(this, TiviMatePrefs.Reminder(
-                            ch.tvgId ?: ch.providerId, ch.name,
-                            System.currentTimeMillis() / 1000 + 300, // 示例：5 分钟后
-                        ))
-                        Toast.makeText(this, "已设置提醒（设置页可管理）", Toast.LENGTH_SHORT).show()
+                        val start = System.currentTimeMillis() / 1000 + 300 // 示例：5 分钟后
+                        val tvg = ch.tvgId ?: ch.providerId
+                        TiviMatePrefs.addReminder(this, TiviMatePrefs.Reminder(tvg, ch.name, start))
+                        ReminderScheduler.schedule(this, tvg, ch.name, start)
+                        Toast.makeText(this, "已设置提醒（5 分钟后）", Toast.LENGTH_SHORT).show()
                     }
                     4 -> showGroupPicker(ch)
                 }

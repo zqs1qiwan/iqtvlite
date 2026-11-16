@@ -99,9 +99,10 @@ UI 状态栏显示：`▶ CCTV-1 综合`。
 | EPG 时间轴网格（招牌功能） | ✅ 真机验证 550 节目块 |
 | 直播播放（Media3 / 硬解） | ✅ 真机验证 OMXVDEC + AudioTrack |
 | 按频道 UA / 备用线路 | ✅ 真机验证 VLC UA 生效 |
-| 多 EPG 源 / 断点续播 | ⬜ 未做 |
-| DVR 录制 / 多画面 / Catch-up UI | ⬜ 未做 |
-| Slint UI 迁移 | ⬜ 待 Surface 合成方案 spike |
+| 多 EPG 源 | ✅ 已实现（优先级合并 + UI 源管理），见 `docs/EPG-GRID-REPORT.md` |
+| DVR 录制 / 多画面 / Catch-up UI | ✅ 已实现并真机验证（有效 TS 文件 / 四路同播 / 回看 URL 生成） |
+| 断点续播 | ⬜ 未做 |
+| Slint UI 迁移 | ❌ 不 pursue —— 用户决策 ADR-011 固定为 Kotlin UI |
 
 ---
 

@@ -23,6 +23,7 @@ object TiviMatePrefs {
     private const val KEY_REMINDERS = "reminders"
     private const val KEY_ORDER = "channel_order"
     private const val KEY_GROUPS = "custom_groups"
+    private const val KEY_EPG_SOURCES = "epg_sources"
 
     private fun prefs(ctx: Context): SharedPreferences =
         ctx.getSharedPreferences(PREF, Context.MODE_PRIVATE)
@@ -116,6 +117,30 @@ object TiviMatePrefs {
         prefs(ctx).edit().putString(KEY_REMINDERS, a.toString()).apply()
     }
 
+    // ── EPG 源管理（自定义源 + 优先级）─────────────────────────────
+    data class EpgSource(val url: String, val priority: Int, val enabled: Boolean = true)
+
+    fun epgSources(ctx: Context): List<EpgSource> {
+        val raw = prefs(ctx).getString(KEY_EPG_SOURCES, null) ?: return emptyList()
+        return try {
+            val a = JSONArray(raw)
+            (0 until a.length()).map { i ->
+                val o = a.getJSONObject(i)
+                EpgSource(o.getString("url"), o.optInt("priority", 30), o.optBoolean("enabled", true))
+            }.sortedBy { it.priority }
+        } catch (_: Exception) { emptyList() }
+    }
+
+    fun saveEpgSources(ctx: Context, sources: List<EpgSource>) {
+        val a = JSONArray()
+        sources.sortedBy { it.priority }.forEach { s ->
+            a.put(JSONObject().apply {
+                put("url", s.url); put("priority", s.priority); put("enabled", s.enabled)
+            })
+        }
+        prefs(ctx).edit().putString(KEY_EPG_SOURCES, a.toString()).apply()
+    }
+
     // ── 备份 / 恢复 ─────────────────────────────────────────────────
     private fun longsArray(ids: List<Long>) = JSONArray().apply { ids.forEach { put(it) } }
 
@@ -133,6 +158,11 @@ object TiviMatePrefs {
                 put("tvgId", it.tvgId); put("title", it.title); put("startTs", it.startTs)
             }) }
             put(KEY_REMINDERS, ra)
+            val ea = JSONArray()
+            epgSources(ctx).forEach { ea.put(JSONObject().apply {
+                put("url", it.url); put("priority", it.priority); put("enabled", it.enabled)
+            }) }
+            put(KEY_EPG_SOURCES, ea)
         }
     }
 
@@ -152,6 +182,7 @@ object TiviMatePrefs {
             val g = json.optJSONObject(KEY_GROUPS)
             e.putString(KEY_GROUPS, g?.toString() ?: "{}")
             e.putString(KEY_REMINDERS, json.optJSONArray(KEY_REMINDERS)?.toString() ?: "[]")
+            e.putString(KEY_EPG_SOURCES, json.optJSONArray(KEY_EPG_SOURCES)?.toString() ?: "[]")
             e.apply()
             true
         } catch (e: Exception) { false }

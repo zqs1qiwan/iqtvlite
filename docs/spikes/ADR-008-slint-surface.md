@@ -77,9 +77,12 @@ let Some(win) = self.app.native_window() else { ... };  // resize
 
 ---
 
-## 4. 对最终目标的影响
+## 4. 对最终目标的影响（已由 ADR-011 定案）
 
-「UI 全 Rust」这个目标在 v1 无法达成 —— 但**底层架构完全兼容**：
+> **2026-11-17 更新**：用户已明确决定**接受 Kotlin 原生 UI 作为最终路线**（见 ADR-011）。
+> 本 ADR 的结论被采纳 —— 不 fork Slint，专注功能与性能。
+
+「UI 全 Rust」这个目标不再 pursue —— 但**底层架构完全兼容**：
 - Rust core 承担全部协议解析、EPG、稳定 ID、回退决策、catch-up 模板
 - Kotlin 只是 Android 平台胶水（Activity / Media3 执行）
 - 若未来投入 fork Slint 的成本，UI 层可以直接替换，底层无需重写

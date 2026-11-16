@@ -76,6 +76,10 @@ class SettingsActivity : AppCompatActivity() {
                 .setPositiveButton("关闭", null).show()
         }
 
+        setupRow(R.id.row_epg_sources, R.id.sub_epg_sources, "EPG 源管理", "添加 / 设置优先级") {
+            showEpgSourceManager()
+        }
+
         setupRow(R.id.row_hidden, R.id.sub_hidden, "隐藏频道", "当前隐藏 ${TiviMatePrefs.hiddenChannels(this).size} 个") {
             Toast.makeText(this, "在频道列表长按可隐藏/显示频道", Toast.LENGTH_SHORT).show()
         }
@@ -85,6 +89,49 @@ class SettingsActivity : AppCompatActivity() {
         }
 
         findViewById<Button>(R.id.btn_back).setOnClickListener { finish() }
+    }
+
+    private fun showEpgSourceManager() {
+        val sources = TiviMatePrefs.epgSources(this).toMutableList()
+        fun refreshDialog() {
+            val labels = if (sources.isEmpty()) arrayOf("（使用播放列表自带的 EPG 源）") else
+                sources.map { "P${it.priority} ${it.url}" }.toTypedArray()
+            val actions = arrayOf("添加 EPG 源", "调整优先级 / 删除", "完成")
+            androidx.appcompat.app.AlertDialog.Builder(this)
+                .setTitle("EPG 源管理（数字越小优先级越高）")
+                .setItems(labels) { _, _ -> }
+                .setPositiveButton("添加") { _, _ ->
+                    val input = EditText(this).apply { hint = "https://.../xmltv.php" }
+                    androidx.appcompat.app.AlertDialog.Builder(this)
+                        .setTitle("添加 EPG 源")
+                        .setView(input)
+                        .setPositiveButton("添加") { _, _ ->
+                            val url = input.text.toString().trim()
+                            if (url.isNotEmpty()) {
+                                sources.add(TiviMatePrefs.EpgSource(url, (sources.maxOfOrNull { it.priority } ?: 0) + 10))
+                                TiviMatePrefs.saveEpgSources(this, sources)
+                                refreshDialog()
+                            }
+                        }
+                        .setNegativeButton("取消") { _, _ -> refreshDialog() }.show()
+                }
+                .setNeutralButton("管理") { _, _ ->
+                    if (sources.isEmpty()) { refreshDialog(); return@setNeutralButton }
+                    val opts = sources.mapIndexed { i, s -> "P${s.priority} ${s.url}" }.toTypedArray()
+                    androidx.appcompat.app.AlertDialog.Builder(this)
+                        .setTitle("点击删除 / 降低优先级")
+                        .setItems(opts) { _, which ->
+                            val s = sources[which]
+                            if (s.priority > 10) sources[which] = s.copy(priority = s.priority - 10)
+                            else sources.removeAt(which)
+                            TiviMatePrefs.saveEpgSources(this, sources)
+                            refreshDialog()
+                        }.show()
+                }
+                .setNegativeButton("完成", null)
+                .show()
+        }
+        refreshDialog()
     }
 
     private fun setupRow(rowId: Int, subId: Int, title: String, subtitle: String, onClick: () -> Unit) {
