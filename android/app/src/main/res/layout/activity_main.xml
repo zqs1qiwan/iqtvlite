@@ -25,8 +25,8 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:padding="10dp"
-        android:textSize="15sp"
-        android:textColor="#9AA7B4"
+        android:textSize="18sp"
+        android:textColor="#D8E2EC"
         android:background="#131B24"
         android:maxLines="1"
         android:ellipsize="end" />
@@ -59,6 +59,22 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="EPG"
+            android:minWidth="0dp"
+            android:layout_marginEnd="6dp" />
+
+        <Button
+            android:id="@+id/btn_subtitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="字幕"
+            android:minWidth="0dp"
+            android:layout_marginEnd="6dp" />
+
+        <Button
+            android:id="@+id/btn_record"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="● 录制"
             android:minWidth="0dp"
             android:layout_marginEnd="6dp" />
 

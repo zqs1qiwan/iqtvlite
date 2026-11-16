@@ -2,10 +2,14 @@ package tv.iqtvlite.app
 
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
+import androidx.media3.common.Format
+import androidx.media3.common.MimeTypes
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.extractor.DefaultExtractorsFactory
+import androidx.media3.extractor.text.DefaultSubtitleParserFactory
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import okhttp3.OkHttpClient
@@ -51,16 +55,40 @@ class PlaybackService : MediaSessionService() {
             }
         }
 
+        /** 当前字幕 preference（选中的 CEA-608 channel，0 = 关闭） */
+        val captionChannel = AtomicReference(0)
+
         private fun buildPlayer(context: android.content.Context): ExoPlayer {
             // DataSource 工厂：每次创建连接时读取当前 UA
             val okHttpFactory = OkHttpDataSource.Factory(httpClient)
                 .setUserAgent(currentUserAgent.get())
-
-            // 包装成 DefaultDataSource（支持本地文件 + content://）
             val dataSourceFactory = DefaultDataSource.Factory(context, okHttpFactory)
 
-            val mediaSourceFactory = DefaultMediaSourceFactory(context)
-                .setDataSourceFactory(dataSourceFactory)
+            // ── 关键：让 TS 提取器读出 CEA-608 内嵌字幕 ───────────────────
+            // Red Bull 等 IPTV 源的字幕是 CEA-608，嵌在 TS 的 closed-caption 轨道里。
+            // Media3 默认不开 caption reader —— 这是「字幕支持不好」的根因。
+            // 未在下层声明的 CEA-608（Red Bull 直播 TS 就是这种）显式注册 CC1
+            val ccFormats = listOf(
+                Format.Builder()
+                    .setSampleMimeType(MimeTypes.APPLICATION_CEA608)
+                    .setAccessibilityChannel(1) // CC1
+                    .setLanguage("en")
+                    .build()
+            )
+            val extractorsFactory = DefaultExtractorsFactory()
+                // 注册 CEA-608 CC1 字幕格式 + 放宽 TS 时间戳搜索（很多 IPTV TS 没有 AUD/IDR）
+                .setTsSubtitleFormats(ccFormats)
+                .setTsExtractorTimestampSearchBytes(1_000_000)
+
+            // ── HLS 里的内嵌 CEA-608 ────────────────────────────────
+            // Media3 的 DefaultMediaSourceFactory 内部会创建 HlsMediaSource，
+            // 并把上面的 extractorsFactory 传进去；setTsSubtitleFormats 注册的
+            // CEA-608 CC1 会让 TS 分片里的 CEA-608 被识别为字幕轨。
+            val mediaSourceFactory = DefaultMediaSourceFactory(
+                dataSourceFactory,
+                extractorsFactory,
+                DefaultSubtitleParserFactory(),
+            ).experimentalParseSubtitlesDuringExtraction(true)
 
             return ExoPlayer.Builder(context)
                 .setMediaSourceFactory(mediaSourceFactory)

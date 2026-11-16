@@ -106,10 +106,31 @@ class MainActivity : AppCompatActivity() {
             showTab(true)
             loadEpg()
         }
+        findViewById<Button>(R.id.btn_record).setOnClickListener { toggleRecording() }
+        findViewById<Button>(R.id.btn_subtitle).setOnClickListener {
+            val label = SubtitleManager.cycle(player, this)
+            Toast.makeText(this, label, Toast.LENGTH_SHORT).show()
+            status.text = "字幕: $label"
+        }
 
         // ── 播放器（Media3，直播主引擎） ──────────────────────────────
         player = PlaybackService.ensurePlayer(this)
         playerView.player = player
+        // ── TV 大屏字幕样式 ─────────────────────────────────────────
+        // 10-foot UI：字更大、黑色半透明底、白色字，保证任何画面都清晰
+        val captionStyle = androidx.media3.ui.CaptionStyleCompat(
+            android.graphics.Color.WHITE,
+            android.graphics.Color.parseColor("#C0000000"), // 半透明黑底
+            android.graphics.Color.TRANSPARENT,
+            androidx.media3.ui.CaptionStyleCompat.EDGE_TYPE_OUTLINE,
+            android.graphics.Color.BLACK,
+            null,
+        )
+        playerView.subtitleView?.apply {
+            setStyle(captionStyle)
+            setFixedTextSize(android.util.TypedValue.COMPLEX_UNIT_DIP, 32f) // TV 大屏
+            setBottomPaddingFraction(0.08f)
+        }
         // 控制条可见性（用于 D-pad 换台逻辑：控制条显示时方向键交给 UI）
         playerView.setControllerVisibilityListener(
             PlayerView.ControllerVisibilityListener { visibility ->
@@ -125,6 +146,18 @@ class MainActivity : AppCompatActivity() {
             true, // handleAudioFocus
         )
         player.addListener(object : Player.Listener {
+            override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
+                // 流切换后刷新可用字幕轨道（Red Bull 的 CEA-608 在这里出现）
+                SubtitleManager.refresh(player)
+                val n = SubtitleManager.available.size
+                Log.i(TAG, "TRACKS_CHANGED groups=${tracks.groups.size} textTracks=$n")
+                tracks.groups.forEachIndexed { gi, g ->
+                    if (g.type == androidx.media3.common.C.TRACK_TYPE_TEXT) {
+                        Log.i(TAG, "  TEXT group $gi len=${g.length} format=${g.getTrackFormat(0).sampleMimeType} lang=${g.getTrackFormat(0).language}")
+                    }
+                }
+                if (n > 0) Log.i(TAG, "SUBTITLES_AVAILABLE count=$n labels=${SubtitleManager.available.map { it.label }}")
+            }
             override fun onPlaybackStateChanged(state: Int) {
                 if (state == Player.STATE_BUFFERING) status.text = " buffering…"
             }
@@ -393,6 +426,53 @@ class MainActivity : AppCompatActivity() {
         raw.equals("TiviMate", ignoreCase = true) || raw.startsWith("TiviMate/") -> "TiviMate/5.1.6 (Android 12)"
         raw.startsWith("Mozilla/") -> raw
         else -> raw // 自定义完整 UA
+    }
+
+    /** 即时录制当前频道：Rust 生成计划 → RecordingService 零转码写文件。 */
+    private fun toggleRecording() {
+        if (RecordingService.isRecording) {
+            RecordingService.stop(this)
+            status.text = "录制已停止"
+            Toast.makeText(this, "录制已停止", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val ch = allChannels.getOrNull(currentPos)
+        if (ch == null) {
+            Toast.makeText(this, "请先选择一个频道", Toast.LENGTH_SHORT).show()
+            return
+        }
+        lifecycleScope.launch {
+            val plan = withContext(Dispatchers.IO) {
+                try {
+                    val params = org.json.JSONObject().apply {
+                        put("title", ch.name)
+                        put("id", ch.id)
+                        put("channelId", ch.id)
+                        put("url", ch.url.substringBefore("|"))
+                        val alts = org.json.JSONArray()
+                        ch.altUrls.forEach { alts.put(it.substringBefore("|")) }
+                        put("altUrls", alts)
+                        put("source", "instant")
+                        put("userAgent", resolveUserAgent(ch.userAgent))
+                        put("outputDir", getExternalFilesDir("recordings")?.absolutePath ?: "/sdcard/Recordings")
+                        put("maxBytes", 500L * 1024 * 1024) // 单文件上限 500MB
+                    }.toString()
+                    val result = org.json.JSONObject(RustBridge.buildRecordingPlan(params))
+                    if (result.optBoolean("ok", false)) result.toString() else null
+                } catch (e: Exception) {
+                    Log.e(TAG, "recording plan failed", e)
+                    null
+                }
+            }
+            if (plan != null) {
+                RecordingService.start(this@MainActivity, plan)
+                val fileName = org.json.JSONObject(plan).optString("fileName")
+                status.text = "● 正在录制: $fileName"
+                Toast.makeText(this@MainActivity, "开始录制 $fileName", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(this@MainActivity, "无法创建录制计划", Toast.LENGTH_SHORT).show()
+            }
+        }
     }
 
     /**
