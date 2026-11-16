@@ -34,6 +34,9 @@ object RustBridge {
         windowEnd: Long,
         slotMinutes: Int
     ): String
+
+    /** 多 EPG 源按优先级合并后直接生成网格。 */
+    external fun buildMergedEpgGrid(paramsJson: String): String
     /** 生成 catch-up 回看 URL。paramsJson 见 Rust iqt_build_catchup_url 文档。 */
     external fun buildCatchupUrl(paramsJson: String): String
 

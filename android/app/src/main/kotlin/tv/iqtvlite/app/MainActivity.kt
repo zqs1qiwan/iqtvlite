@@ -244,24 +244,46 @@ class MainActivity : AppCompatActivity() {
             status.text = "当前播放列表没有 EPG 源"
             return
         }
-        val url = epgUrls.first()
         if (showingEpg) status.text = "正在加载节目单…"
         lifecycleScope.launch {
             val result = withContext(Dispatchers.IO) {
                 try {
-                    val xml = epgCache ?: http.newCall(Request.Builder().url(url).build())
-                        .execute().use { resp ->
-                            if (!resp.isSuccessful) throw Exception("HTTP ${resp.code}")
-                            // EPG 端点是裸 gzip 文件（无 Content-Encoding 头），需手动解压
-                            RustBridge.readBody(resp.body!!)
-                        }.also { epgCache = it }
                     val now = System.currentTimeMillis() / 1000
-                    val windowStart = now - 1800 // 向前 30 分钟
-                    val windowEnd = now + 6 * 3600 // 向后 6 小时
-                    val tvgIds = org.json.JSONArray().apply {
-                        allChannels.mapNotNull { it.tvgId }.distinct().take(300).forEach { put(it) }
+                    val windowStart = now - 1800
+                    val windowEnd = now + 6 * 3600
+
+                    // 多个 EPG 源按优先级合并：序号越小优先级越高（第一个源胜出）
+                    // 当前播放列表的 x-tvg-url 优先；其余 URL 作为补充（填缺）
+                    val sources = org.json.JSONArray()
+                    epgUrls.distinct().forEachIndexed { idx, url ->
+                        val xml = if (idx == 0 && epgCache != null) epgCache!! else
+                            http.newCall(Request.Builder().url(url).build()).execute().use { resp ->
+                                if (!resp.isSuccessful) throw Exception("HTTP ${resp.code}")
+                                // EPG 端点是裸 gzip（无 Content-Encoding 头），需手动解压
+                                RustBridge.readBody(resp.body!!)
+                            }
+                        if (idx == 0) epgCache = xml
+                        sources.put(org.json.JSONObject().apply {
+                            put("id", "epg$idx")
+                            put("priority", 10 + idx * 10) // 10, 20, 30...
+                            put("xml", xml)
+                        })
+                    }
+
+                    val params = org.json.JSONObject().apply {
+                        put("now", now)
+                        put("windowStart", windowStart)
+                        put("windowEnd", windowEnd)
+                        put("slotMinutes", 30)
+                        put("tvgIds", org.json.JSONArray().apply {
+                            allChannels.mapNotNull { it.tvgId }.distinct().take(300).forEach { put(it) }
+                        })
+                        put("sources", sources)
                     }.toString()
-                    val json = RustBridge.parseEpgGrid(xml, tvgIds, now, windowStart, windowEnd, 30)
+
+                    val json = RustBridge.buildMergedEpgGrid(params)
+                    val stats = org.json.JSONObject(json).optJSONArray("mergeStats")
+                    Log.i(TAG, "EPG_MERGE sources=${epgUrls.size} stats=$stats")
                     EpgGridData.fromJson(json)
                 } catch (e: Exception) {
                     Log.e(TAG, "EPG load failed", e)

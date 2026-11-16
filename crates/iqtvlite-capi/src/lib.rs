@@ -22,6 +22,7 @@ use std::os::raw::{c_char, c_int};
 use iqtvlite_core::id::{global_id, m3u_provider_key, SourceId};
 use iqtvlite_core::model::catchup::{CatchupConfig, CatchupContext, CatchupResolver, CatchupType};
 use iqtvlite_core::parse::m3u;
+use iqtvlite_core::parse::xmltv::{parse_reader, XmltvChannel, XmltvProgramme};
 use iqtvlite_dvr::{estimate_size_mb, OutputFormat, RecordingSource, RecordingTask};
 use iqtvlite_epg::{build_grid, merge_sources, EpgSourceInput, GridConfig};
 
@@ -395,6 +396,171 @@ fn build_recording_plan(raw: &str) -> Result<serde_json::Value, String> {
     }))
 }
 
+/// 合并多个 EPG 源并直接生成 EPG 网格（Android UI 一次调用）。
+///
+/// 输入 JSON：`{"now":0,"windowStart":0,"windowEnd":0,"slotMinutes":30,
+///   "tvgIds":["CCTV1",...],
+///   "sources":[{"id":"manual","priority":10,"xml":"<tv>..."}, ...]}`
+/// 返回与 iqt_parse_epg_grid 相同的网格 JSON，额外带 `mergeStats`。
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn iqt_build_merged_epg_grid(params_json: *const c_char) -> *mut c_char {
+    let raw = unsafe { from_c(params_json) };
+    let result = match build_merged_grid(raw) {
+        Ok(v) => v,
+        Err(e) => serde_json::json!({ "ok": false, "error": e }),
+    };
+    to_c(result.to_string())
+}
+
+fn build_merged_grid(raw: &str) -> Result<serde_json::Value, String> {
+    let v: serde_json::Value = serde_json::from_str(raw).map_err(|e| e.to_string())?;
+    let now = v.get("now").and_then(|x| x.as_i64()).unwrap_or(0);
+    let window_start = v
+        .get("windowStart")
+        .and_then(|x| x.as_i64())
+        .unwrap_or(now - 1800);
+    let window_end = v
+        .get("windowEnd")
+        .and_then(|x| x.as_i64())
+        .unwrap_or(now + 21600);
+    let slot_minutes = v.get("slotMinutes").and_then(|x| x.as_i64()).unwrap_or(30) as i32;
+    let tvg_ids: Vec<String> = v
+        .get("tvgIds")
+        .and_then(|x| x.as_array())
+        .map(|a| {
+            a.iter()
+                .filter_map(|x| x.as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default();
+
+    // ① 合并多源节目（优先级覆盖），key = (规范化 tvg-id, start_ts)
+    let sources: Vec<EpgSourceInput<'_>> = v
+        .get("sources")
+        .and_then(|x| x.as_array())
+        .ok_or("缺少 sources")?
+        .iter()
+        .filter_map(|s| {
+            let id = s.get("id")?.as_str()?;
+            let priority = s.get("priority")?.as_i64()? as i32;
+            let xml = s.get("xml")?.as_str()?;
+            Some(EpgSourceInput {
+                id: id.to_string(),
+                priority,
+                xml,
+            })
+        })
+        .collect();
+    let merged = merge_sources(&sources, window_start, window_end);
+
+    // ② 把合并结果重建为 XMLTV 文本，复用成熟的 grid builder
+    //    （merge_sources 已按优先级选好频道/节目，这里只做格式转换）
+    let mut out = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?><tv>");
+    // 合并后的节目需要从各源重新取（merge_sources 没暴露 programme 内容），
+    // 所以这里改为：直接对每个源解析并做优先级覆盖，再组 XML
+    let mut best: std::collections::HashMap<(String, i64), (i32, XmltvProgramme)> =
+        Default::default();
+    let mut chans: std::collections::HashMap<String, (i32, XmltvChannel)> = Default::default();
+    let mut ordered: Vec<&EpgSourceInput<'_>> = sources.iter().collect();
+    ordered.sort_by_key(|s| s.priority);
+    for src in ordered {
+        let pri = src.priority;
+        let _ = parse_reader(
+            src.xml.as_bytes(),
+            |ch| {
+                let key = iqtvlite_epg::matcher::normalize(&ch.id);
+                chans.entry(key).or_insert((pri, ch));
+                Ok(())
+            },
+            |p| {
+                if p.stop_ts <= window_start || p.start_ts >= window_end {
+                    return Ok(());
+                }
+                let key = (iqtvlite_epg::matcher::normalize(&p.channel), p.start_ts);
+                best.entry(key).or_insert((pri, p));
+                Ok(())
+            },
+        );
+    }
+    for (_, ch) in chans.values() {
+        out.push_str(&format!("<channel id=\"{}\">", escape_xml(&ch.id)));
+        for dn in &ch.display_names {
+            out.push_str(&format!("<display-name>{}</display-name>", escape_xml(dn)));
+        }
+        out.push_str("</channel>");
+    }
+    for (_, p) in best.values() {
+        // XMLTV 要求 YYYYMMDDHHMMSS +0000 格式，不能是裸 epoch 秒
+        let start_fmt = format_xmltv_time(p.start_ts);
+        let stop_fmt = format_xmltv_time(p.stop_ts);
+        out.push_str(&format!(
+            "<programme start=\"{}\" stop=\"{}\" channel=\"{}\"><title>{}</title>",
+            start_fmt,
+            stop_fmt,
+            escape_xml(&p.channel),
+            escape_xml(p.title.as_deref().unwrap_or("未命名"))
+        ));
+        if let Some(d) = &p.description {
+            out.push_str(&format!("<desc>{}</desc>", escape_xml(d)));
+        }
+        if let Some(c) = &p.catchup_id {
+            out.push_str(&format!("<catchup-id>{}</catchup-id>", escape_xml(c)));
+        }
+        out.push_str("</programme>");
+    }
+    out.push_str("</tv>");
+
+    let cfg = GridConfig {
+        window_start,
+        window_end,
+        slot_minutes,
+        tvg_ids,
+        max_rows: 300,
+    };
+    let grid = build_grid(&out, &cfg, now);
+    let mut result = serde_json::to_value(&grid).map_err(|e| e.to_string())?;
+    if let Some(obj) = result.as_object_mut() {
+        obj.insert(
+            "mergeStats".into(),
+            serde_json::to_value(&merged.stats).unwrap(),
+        );
+    }
+    Ok(result)
+}
+
+/// Unix 秒 → XMLTV 时间格式 `YYYYMMDDHHMMSS +0000`（纯 UTC 计算，无依赖）。
+fn format_xmltv_time(ts: i64) -> String {
+    let days = ts.div_euclid(86_400);
+    let secs = ts.rem_euclid(86_400);
+    // Howard Hinnant 的 civil_from_days 算法
+    let z = days + 719_468;
+    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let mut y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = mp + if mp < 10 { 3 } else { -9 };
+    y += if m <= 2 { 1 } else { 0 };
+    format!(
+        "{:04}{:02}{:02}{:02}{:02}{:02} +0000",
+        y,
+        m,
+        d,
+        secs / 3600,
+        (secs % 3600) / 60,
+        secs % 60
+    )
+}
+
+fn escape_xml(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+}
+
 /// 合并多个 EPG 源（按优先级叠加）。
 ///
 /// 输入 JSON：`{"windowStart":0,"windowEnd":0,
@@ -529,6 +695,40 @@ mod tests {
     fn build_catchup_url_rejects_unknown_type() {
         let json = r#"{"liveUrl":"http://x/live.ts","type":"Bogus","start":0,"stop":0,"now":0}"#;
         assert!(build_catchup_url(json).is_err());
+    }
+
+    #[test]
+    fn build_merged_epg_grid_bridge() {
+        // 时间用 XMLTV 格式（YYYYMMDDHHMMSS +0000），2023-11-14 22:13 UTC ≈ 1700000000
+        let xml1 = r#"<tv><channel id="CCTV1"><display-name>CCTV-1</display-name></channel><programme start="20231114221320 +0000" stop="20231114231320 +0000" channel="CCTV1"><title>高优先级</title></programme></tv>"#;
+        let xml2 = r#"<tv><channel id="CCTV5"><display-name>CCTV-5</display-name></channel><programme start="20231114221320 +0000" stop="20231114231320 +0000" channel="CCTV5"><title>低优先级</title></programme></tv>"#;
+        let params = serde_json::json!({
+            "now": 1700000010i64,
+            "windowStart": 1699999000i64,
+            "windowEnd": 1700010000i64,
+            "slotMinutes": 30,
+            "tvgIds": ["CCTV1", "CCTV5"],
+            "sources": [
+                {"id":"manual","priority":10,"xml":xml1},
+                {"id":"xtream","priority":30,"xml":xml2}
+            ]
+        })
+        .to_string();
+        let ptr = unsafe { iqt_build_merged_epg_grid(CString::new(params).unwrap().as_ptr()) };
+        let s = unsafe { CStr::from_ptr(ptr).to_str().unwrap().to_string() };
+        unsafe { iqt_free_string(ptr) };
+        let v: serde_json::Value = serde_json::from_str(&s).unwrap();
+        assert_eq!(v["rows"].as_array().unwrap().len(), 2);
+        assert!(v["mergeStats"].is_array());
+        // 合并后必须有节目（之前 epoch 秒格式导致 0 节目，已修复）
+        let rows = v["rows"].as_array().unwrap();
+        assert!(
+            rows.iter().any(|r| r["programmes"]
+                .as_array()
+                .map(|a| !a.is_empty())
+                .unwrap_or(false)),
+            "合并后网格应有节目: {v}"
+        );
     }
 
     #[test]
