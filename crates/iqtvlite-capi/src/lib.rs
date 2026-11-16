@@ -21,6 +21,7 @@ use std::os::raw::{c_char, c_int};
 
 use iqtvlite_core::id::{global_id, m3u_provider_key, SourceId};
 use iqtvlite_core::parse::m3u;
+use iqtvlite_epg::{build_grid, GridConfig};
 
 /// 把 Rust String 转成 C 字符串（调用方必须用 `iqt_free_string` 释放）。
 fn to_c(s: String) -> *mut c_char {
@@ -170,6 +171,36 @@ fn hex(c: u8) -> Option<u8> {
     }
 }
 
+/// 从 XMLTV 文本生成 EPG 网格，返回 JSON。
+///
+/// `tvg_ids_json` 是 JSON 字符串数组（视口内的频道 tvg-id）。
+/// `now` / `window_start` / `window_end` 是 Unix 秒（UTC）。
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn iqt_parse_epg_grid(
+    xmltv: *const c_char,
+    tvg_ids_json: *const c_char,
+    now: i64,
+    window_start: i64,
+    window_end: i64,
+    slot_minutes: i32,
+) -> *mut c_char {
+    let xml = unsafe { from_c(xmltv) };
+    let ids_raw = unsafe { from_c(tvg_ids_json) };
+    let tvg_ids: Vec<String> = serde_json::from_str(ids_raw).unwrap_or_default();
+    let config = GridConfig {
+        window_start,
+        window_end,
+        slot_minutes: if slot_minutes > 0 { slot_minutes } else { 30 },
+        tvg_ids,
+        max_rows: 300,
+    };
+    let grid = build_grid(xml, &config, now);
+    to_c(
+        serde_json::to_string(&grid)
+            .unwrap_or_else(|e| format!("{{\"ok\":false,\"error\":\"{}\"}}", e)),
+    )
+}
+
 /// 生成稳定 ID。
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn iqt_stable_id(source_id: i64, provider_key: *const c_char) -> i64 {
@@ -217,6 +248,27 @@ mod tests {
         assert_eq!(v["ok"], true);
         assert_eq!(v["channels"][0]["tvgId"], "CCTV1");
         assert_eq!(v["channels"][0]["group"], "央视");
+    }
+
+    #[test]
+    fn parse_epg_grid_returns_json() {
+        let xml = CString::new(
+            r#"<tv>
+              <channel id="CCTV1"><display-name>CCTV-1</display-name></channel>
+              <programme start="20240101000000 +0000" stop="20240101010000 +0000" channel="CCTV1"><title>新闻</title></programme>
+            </tv>"#,
+        )
+        .unwrap();
+        let ids = CString::new(r#"["CCTV1"]"#).unwrap();
+        let base = 1_704_067_200i64; // 2024-01-01 00:00 UTC
+        let ptr =
+            unsafe { iqt_parse_epg_grid(xml.as_ptr(), ids.as_ptr(), base, base, base + 7200, 30) };
+        let s = unsafe { CStr::from_ptr(ptr).to_str().unwrap().to_string() };
+        unsafe { iqt_free_string(ptr) };
+        let v: serde_json::Value = serde_json::from_str(&s).unwrap();
+        assert_eq!(v["rows"].as_array().unwrap().len(), 1);
+        assert_eq!(v["rows"][0]["programmes"][0]["title"], "新闻");
+        assert_eq!(v["rows"][0]["programmes"][0]["span"], 2);
     }
 
     #[test]

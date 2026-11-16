@@ -23,6 +23,14 @@ object RustBridge {
 
     external fun version(): String
     external fun parseM3u(content: String, sourceId: Long): String
+    external fun parseEpgGrid(
+        xmltv: String,
+        tvgIdsJson: String,
+        now: Long,
+        windowStart: Long,
+        windowEnd: Long,
+        slotMinutes: Int
+    ): String
     external fun stableId(sourceId: Long, providerKey: String): Long
     external fun extractQuery(url: String, key: String): String
     external fun freeString(ptr: Long)

@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE tv SYSTEM "xmltv.dtd">
+<tv generator-info-name="laobaiepg" generator-info-url="https://github.com/laobaiepg">
+  <channel id="CCTV1">
+    <display-name lang="zh">CCTV-1 综合</display-name>
+    <display-name lang="zh">中央电视台综合频道</display-name>
+    <icon src="CCTV1"/>
+  </channel>
+  <channel id="CCTV5">
+    <display-name lang="zh">CCTV-5 体育</display-name>
+  </channel>
+  <channel id="bingtuanweishi">
+    <display-name lang="zh">兵团卫视</display-name>
+  </channel>
+  <programme start="20240101000000 +0800" stop="20240101003000 +0800" channel="CCTV1">
+    <title lang="zh">新闻联播</title>
+    <desc lang="zh">当日新闻</desc>
+    <category lang="zh">新闻</category>
+  </programme>
+  <programme start="20240101003000 +0800" stop="20240101010000 +0800" channel="CCTV1">
+    <title lang="zh">焦点访谈</title>
+  </programme>
+  <programme start="20240101000000 +0800" stop="20240101020000 +0800" channel="CCTV5">
+    <title lang="zh">体育新闻</title>
+  </programme>
+  <programme start="20240101000000 +0800" stop="20240101010000 +0800" channel="bingtuanweishi">
+    <title lang="zh">兵团新闻</title>
+  </programme>
+</tv>

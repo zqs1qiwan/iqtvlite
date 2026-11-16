@@ -49,10 +49,17 @@ class MainActivity : AppCompatActivity() {
     private lateinit var searchEdit: EditText
     private lateinit var swipe: SwipeRefreshLayout
     private lateinit var groupRow: LinearLayout
+    private lateinit var groupScroll: HorizontalScrollView
+    private lateinit var epgScroll: HorizontalScrollView
+    private lateinit var epgRecycler: RecyclerView
+    private lateinit var epgAdapter: EpgGridAdapter
     private var allChannels: List<Channel> = emptyList()
     private var currentGroup: String? = null
     private var currentSource = 0
     private var currentPos = -1
+    private var epgUrls: List<String> = emptyList()
+    private var epgCache: String? = null
+    private var showingEpg = false
 
     private val http = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
@@ -77,6 +84,24 @@ class MainActivity : AppCompatActivity() {
         searchEdit = findViewById(R.id.search_edit)
         swipe = findViewById(R.id.swipe_refresh)
         groupRow = findViewById(R.id.group_row)
+        groupScroll = findViewById(R.id.group_scroll)
+        epgScroll = findViewById(R.id.epg_scroll)
+        epgRecycler = findViewById(R.id.epg_recycler)
+
+        // ── EPG 网格 ────────────────────────────────────────────────
+        epgAdapter = EpgGridAdapter(epgTimeFormat()) { row, programme ->
+            // 点击节目 → 找到对应频道并播放
+            allChannels.find { normalizeTvg(it.tvgId) == normalizeTvg(row.tvgId) }?.let { play(it) }
+            status.text = "▶ ${programme.title} · ${row.name}"
+        }
+        epgRecycler.layoutManager = LinearLayoutManager(this)
+        epgRecycler.adapter = epgAdapter
+
+        findViewById<Button>(R.id.tab_channels).setOnClickListener { showTab(false) }
+        findViewById<Button>(R.id.tab_epg).setOnClickListener {
+            showTab(true)
+            loadEpg()
+        }
 
         // ── 播放器（Media3，直播主引擎） ──────────────────────────────
         player = PlaybackService.ensurePlayer(this)
@@ -141,8 +166,63 @@ class MainActivity : AppCompatActivity() {
         loadSource(0)
     }
 
+    private fun normalizeTvg(id: String?): String =
+        (id ?: "").trim().lowercase(java.util.Locale.ROOT).replace(' ', '_')
+
+    private fun showTab(epg: Boolean) {
+        showingEpg = epg
+        swipe.visibility = if (epg) View.GONE else View.VISIBLE
+        groupScroll.visibility = if (epg) View.GONE else View.VISIBLE
+        epgScroll.visibility = if (epg) View.VISIBLE else View.GONE
+        findViewById<Button>(R.id.tab_channels).setBackgroundColor(
+            if (epg) 0xFF1A222C.toInt() else 0xFF2E7CF6.toInt()
+        )
+        findViewById<Button>(R.id.tab_epg).setBackgroundColor(
+            if (epg) 0xFF2E7CF6.toInt() else 0xFF1A222C.toInt()
+        )
+    }
+
+    /** 加载 EPG 并生成网格（复用 Rust core 的流式 XMLTV 解析 + 网格算法）。 */
+    private fun loadEpg() {
+        if (epgUrls.isEmpty()) {
+            status.text = "当前播放列表没有 EPG 源"
+            return
+        }
+        val url = epgUrls.first()
+        status.text = "正在加载节目单…"
+        lifecycleScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                try {
+                    val xml = epgCache ?: http.newCall(Request.Builder().url(url).build())
+                        .execute().use { resp ->
+                            if (!resp.isSuccessful) throw Exception("HTTP ${resp.code}")
+                            resp.body!!.string()
+                        }.also { epgCache = it }
+                    val now = System.currentTimeMillis() / 1000
+                    val windowStart = now - 1800 // 向前 30 分钟
+                    val windowEnd = now + 6 * 3600 // 向后 6 小时
+                    val tvgIds = org.json.JSONArray().apply {
+                        allChannels.mapNotNull { it.tvgId }.distinct().take(300).forEach { put(it) }
+                    }.toString()
+                    val json = RustBridge.parseEpgGrid(xml, tvgIds, now, windowStart, windowEnd, 30)
+                    EpgGridData.fromJson(json)
+                } catch (e: Exception) {
+                    Log.e(TAG, "EPG load failed", e)
+                    null
+                }
+            }
+            if (result != null) {
+                epgAdapter.submit(result)
+                status.text = "EPG: ${result.matched}/${result.requested} 频道匹配 · ${result.guideChannels} 个指南频道"
+            } else {
+                status.text = "节目单加载失败（可重试）"
+            }
+        }
+    }
+
     private fun loadSource(index: Int) {
         val src = SOURCES[index]
+        epgCache = null
         swipe.isRefreshing = true
         status.text = "正在加载 ${src.name}…"
         lifecycleScope.launch {
@@ -168,9 +248,11 @@ class MainActivity : AppCompatActivity() {
             swipe.isRefreshing = false
             if (result != null && result.channels.isNotEmpty()) {
                 allChannels = result.channels
+                epgUrls = result.epgUrls
                 adapter.submit(result.channels)
                 buildGroupChips(result.groups)
                 status.text = "已加载 ${result.channels.size} 个频道 · ${result.groups.size} 个分组 · EPG 源 ${result.epgUrls.size}"
+                if (showingEpg) loadEpg()
             } else {
                 status.text = "加载失败，请检查网络或下拉重试"
                 Toast.makeText(this@MainActivity, "加载失败", Toast.LENGTH_SHORT).show()
@@ -230,7 +312,12 @@ class MainActivity : AppCompatActivity() {
         // 处理 Kodi 风格的 |User-Agent=VLC 后缀
         val parts = url.split("|", limit = 2)
         url = parts[0]
-        val ua = ch.userAgent ?: parts.getOrNull(1)?.removePrefix("User-Agent=")
+        val rawUa = ch.userAgent ?: parts.getOrNull(1)?.removePrefix("User-Agent=")
+        val ua = resolveUserAgent(rawUa)
+        android.util.Log.i(TAG, "playing ${ch.name} url=${url.take(60)} ua=$ua")
+        // 换台前更新流的 UA（OkHttp interceptor 每个请求读取）
+        PlaybackService.setStreamUserAgent(ua)
+
         val mediaItem = MediaItem.Builder()
             .setUri(url)
             .setLiveConfiguration(
@@ -244,8 +331,21 @@ class MainActivity : AppCompatActivity() {
         player.setMediaItem(mediaItem)
         player.prepare()
         player.playWhenReady = true
-        status.text = "▶ ${ch.name}"
+        status.text = "▶ ${ch.name} (${if (rawUa != null) rawUa else "默认"} UA)"
         playerView.controllerShowTimeoutMs = 3000
+    }
+
+    /**
+     * 播放列表里用的是短名（如 `http-user-agent="VLC"` / `|User-Agent=VLC`），
+     * 必须映射成完整的 UA 字符串 —— 实测老白的 CCTV1/CCTV2 源用 TiviMate UA 返回 403，
+     * 只有 VLC UA 才能播放。
+     */
+    private fun resolveUserAgent(raw: String?): String = when {
+        raw == null -> "TiviMate/5.1.6 (Android 12)"
+        raw.equals("VLC", ignoreCase = true) || raw.startsWith("VLC/") -> "VLC/3.0.20 LibVLC/3.0.20"
+        raw.equals("TiviMate", ignoreCase = true) || raw.startsWith("TiviMate/") -> "TiviMate/5.1.6 (Android 12)"
+        raw.startsWith("Mozilla/") -> raw
+        else -> raw // 自定义完整 UA
     }
 
     /** 播放器的控制条是否可见（用两种 listener 接口都兼容的方式） */

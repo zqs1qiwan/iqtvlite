@@ -5,7 +5,10 @@ use jni::objects::{JClass, JString};
 use jni::sys::jstring;
 use jni::JNIEnv;
 
-use crate::{iqt_extract_query, iqt_free_string, iqt_parse_m3u, iqt_stable_id, iqt_version};
+use crate::{
+    iqt_extract_query, iqt_free_string, iqt_parse_epg_grid, iqt_parse_m3u, iqt_stable_id,
+    iqt_version,
+};
 use std::ffi::CString;
 use std::os::raw::c_char;
 
@@ -58,6 +61,38 @@ pub extern "system" fn Java_tv_iqtvlite_app_RustBridge_00024parseM3u<'local>(
         let s: String = env.get_string(&content)?.into();
         let c = CString::new(s).unwrap_or_default();
         let ptr = unsafe { iqt_parse_m3u(c.as_ptr(), source_id) };
+        let result = unsafe { c_to_string(ptr) };
+        Ok(env.new_string(result)?.into_raw())
+    });
+    unwrap_outcome(outcome)
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_tv_iqtvlite_app_RustBridge_00024parseEpgGrid<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    xmltv: JString<'local>,
+    tvg_ids_json: JString<'local>,
+    now: i64,
+    window_start: i64,
+    window_end: i64,
+    slot_minutes: i32,
+) -> jstring {
+    let outcome: jni::EnvOutcome<'local, jstring, JniError> = env.with_env(|env| {
+        let x: String = env.get_string(&xmltv)?.into();
+        let ids: String = env.get_string(&tvg_ids_json)?.into();
+        let cx = CString::new(x).unwrap_or_default();
+        let ci = CString::new(ids).unwrap_or_default();
+        let ptr = unsafe {
+            iqt_parse_epg_grid(
+                cx.as_ptr(),
+                ci.as_ptr(),
+                now,
+                window_start,
+                window_end,
+                slot_minutes,
+            )
+        };
         let result = unsafe { c_to_string(ptr) };
         Ok(env.new_string(result)?.into_raw())
     });

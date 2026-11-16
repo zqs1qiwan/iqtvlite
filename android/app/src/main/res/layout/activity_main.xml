@@ -5,7 +5,7 @@
     android:orientation="vertical"
     android:background="#0C1116">
 
-    <!-- 播放区：固定高度，下面留列表（测试 APK 用分屏而非全屏覆盖，便于验证 Z-order） -->
+    <!-- 播放区 -->
     <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
@@ -42,9 +42,25 @@
 
         <Spinner
             android:id="@+id/source_spinner"
-            android:layout_width="160dp"
+            android:layout_width="150dp"
             android:layout_height="wrap_content"
-            android:layout_marginEnd="8dp" />
+            android:layout_marginEnd="6dp" />
+
+        <Button
+            android:id="@+id/tab_channels"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="频道"
+            android:minWidth="0dp"
+            android:layout_marginEnd="4dp" />
+
+        <Button
+            android:id="@+id/tab_epg"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="EPG"
+            android:minWidth="0dp"
+            android:layout_marginEnd="6dp" />
 
         <EditText
             android:id="@+id/search_edit"
@@ -57,17 +73,11 @@
             android:inputType="text"
             android:singleLine="true"
             android:padding="8dp" />
-
-        <Button
-            android:id="@+id/guide_btn"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="EPG"
-            android:visibility="gone" />
     </LinearLayout>
 
-    <!-- 分组横向滚动 -->
+    <!-- 分组横向滚动（只在频道 tab 显示） -->
     <HorizontalScrollView
+        android:id="@+id/group_scroll"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:background="#0F151C">
@@ -93,5 +103,21 @@
             android:layout_height="match_parent"
             android:scrollbars="vertical" />
     </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
+
+    <!-- EPG 时间轴网格（横向 + 纵向滚动） -->
+    <HorizontalScrollView
+        android:id="@+id/epg_scroll"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:visibility="gone"
+        android:background="#0C1116">
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/epg_recycler"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:scrollbars="vertical" />
+    </HorizontalScrollView>
 
 </LinearLayout>

@@ -20,5 +20,8 @@ tracing = { workspace = true }
 # 只需要 JNI 桥 —— 不需要 android-activity（那是 Slint 才用的，且需要 feature flag 才能编过）
 jni = "0.22"
 
+[dev-dependencies]
+flate2 = "1"
+
 [profile.release]
 panic = "abort"

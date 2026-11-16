@@ -5,8 +5,10 @@
 //! **核心是匹配算法** —— 它是用户投诉「EPG 是空的」的第一大来源。
 //! 详见 [`matcher`]。
 
+pub mod grid;
 pub mod matcher;
 
+pub use grid::{build_grid, EpgGrid, GridConfig, GridProgramme, GridRow, GridStats};
 pub use matcher::{MatchCandidate, MatchOutcome, Matcher};
 
 /// EPG 保留窗口（天）。
