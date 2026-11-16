@@ -56,7 +56,10 @@ class RecordingService : Service() {
 
     private val http = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(0, TimeUnit.SECONDS) // 直播流可能长时间无数据
+        // 播放列表/分片请求必须有有限超时，否则服务器不响应时永久挂起（之前 0=无限导致录制卡死）
+        .readTimeout(20, TimeUnit.SECONDS)
+        // TR100-G9 盒子 IPv6 出口不通，OkHttp 优先 IPv6 会挂起 → 强制 IPv4（见 NetUtil）
+        .dns(NetUtil.ipv4OnlyDns)
         .build()
 
     override fun onCreate() {
@@ -143,6 +146,8 @@ class RecordingService : Service() {
      * MPEG-TS 的分片可以直接字节拼接，无需转码。
      */
     private fun recordHls(url: String, ua: String, out: FileOutputStream, stopTs: Long, maxBytes: Long): Long {
+        // 注意：Migu 的 `|` 是查询参数的一部分（ct=android|User-Agent=VLC），OkHttp 会原样保留，
+        // 不能剥离 —— 剥离会导致 403（实测）。保留原始 URL。
         var playlistUrl = url
         var total = 0L
         var lastLog = 0L
@@ -158,7 +163,10 @@ class RecordingService : Service() {
                 val variant = body.lines().map { it.trim() }.firstOrNull {
                     it.isNotEmpty() && !it.startsWith("#")
                 } ?: throw java.io.IOException("master playlist 无 variant")
-                playlistUrl = resolveUrl(playlistUrl, variant)
+                val next = resolveUrl(playlistUrl, variant)
+                Log.i(TAG, "HLS master->variant")
+                if (next == playlistUrl) throw java.io.IOException("variant 解析失败（与 master 相同）")
+                playlistUrl = next
                 continue
             }
 
@@ -166,6 +174,7 @@ class RecordingService : Service() {
             val segments = body.lines().map { it.trim() }.filter {
                 it.isNotEmpty() && !it.startsWith("#") && (it.contains(".ts") || it.contains(".m4s"))
             }
+            Log.d(TAG, "HLS media playlist segments=${segments.size}")
             if (segments.isEmpty()) {
                 Log.w(TAG, "HLS 播放列表无 TS 分片，等待重试")
                 Thread.sleep(2000)
@@ -175,8 +184,8 @@ class RecordingService : Service() {
                 if (cancelled) break
                 val segUrl = resolveUrl(playlistUrl, seg)
                 if (!downloadedSegments.add(segUrl)) continue // 直播滚动列表已下载过的跳过
-                // 只录最近的 3 个分片（避免把整个归档窗口都录下来）
-                if (downloadedSegments.size > 6) break
+                // 只录最近的若干分片（避免把整个归档窗口都录下来）
+                if (downloadedSegments.size > 30) break
                 try {
                     total += downloadTo(segUrl, ua, out)
                     if (total - lastLog >= 5 * 1024 * 1024) { lastLog = total; Log.i(TAG, "REC_PROGRESS ${total / 1024 / 1024} MB") }
@@ -213,6 +222,8 @@ class RecordingService : Service() {
     }
 
     private fun resolveUrl(base: String, ref: String): String {
+        // 注意：Migu 的 `|` 是查询参数的一部分（例如 ct=android|User-Agent=VLC），
+        // 必须原样保留 —— 实测剥离或 %7C 编码都会导致 403。
         if (ref.startsWith("http://") || ref.startsWith("https://")) return ref
         return try {
             java.net.URL(java.net.URL(base), ref).toString()

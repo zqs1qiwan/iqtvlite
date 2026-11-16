@@ -73,6 +73,8 @@ class MainActivity : AppCompatActivity() {
     private val http = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
+        // TR100-G9 盒子 IPv6 出口不通 → 强制 IPv4（见 NetUtil，实测 curl -6 超时 / -4 秒回）
+        .dns(NetUtil.ipv4OnlyDns)
         // 实测：iptv.laobaitv.net 会拒绝非浏览器 UA（TiviMate/VLC/iqtvlite 全部失败），
         // 只有 Mozilla 能拿到内容 → 播放列表/EPG 下载统一用浏览器 UA。
         // 流播放的 UA 单独由 PlaybackService 按频道设置（VLC）。
@@ -187,6 +189,9 @@ class MainActivity : AppCompatActivity() {
             }
             override fun onPlaybackStateChanged(state: Int) {
                 if (state == Player.STATE_BUFFERING) status.text = " buffering…"
+                // Media3 没有 STATE_PAUSED：暂停 = STATE_READY + playWhenReady=false
+                if (state == Player.STATE_ENDED ||
+                    (state == Player.STATE_READY && !player.playWhenReady)) saveCurrentResume()
             }
             override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
                 Log.e(TAG, "playback error", error)
@@ -250,6 +255,13 @@ class MainActivity : AppCompatActivity() {
             if (r.startTs * 1000 > System.currentTimeMillis()) {
                 ReminderScheduler.schedule(this, r.tvgId, r.title, r.startTs)
             }
+        }
+        // 恢复定时录制的闹钟（设备重启 / 进程被杀后需要重新注册）
+        TiviMatePrefs.scheduledRecordings(this).forEach { r ->
+            if (r.startTs * 1000 > System.currentTimeMillis()) {
+                ScheduledRecordingReceiver.schedule(this, r)
+            }
+            Log.i(TAG, "RESTORE_SCHEDULED_REC ${r.title} ${r.startTs}")
         }
 
         // ① 同步加载缓存 → 频道列表立即可交互（冷启动秒开）
@@ -569,6 +581,21 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /** 保存当前 VOD 播放进度（供下次续播） */
+    private fun saveCurrentResume() {
+        val ch = allChannels.getOrNull(currentPos) ?: return
+        val url = ch.url.substringBefore("|")
+        val isVod = !ch.radio && !url.contains("/live/") &&
+            (url.contains(".mp4") || url.contains(".mkv") || url.contains("/movie/") || url.contains("/series/"))
+        if (!isVod) return
+        val pos = player.currentPosition
+        val dur = player.duration
+        if (pos > 0 && dur > 0) {
+            TiviMatePrefs.saveResume(this, "vod:ch:${ch.id}", pos, dur)
+            Log.i(TAG, "SAVE_RESUME ${ch.name} ${pos}/${dur}")
+        }
+    }
+
     /** 外部播放器兜底：用系统已安装的播放器打开流 */
     private fun openExternalPlayer(ch: Channel) {
         try {
@@ -610,9 +637,30 @@ class MainActivity : AppCompatActivity() {
                     .build()
             )
             .build()
+        // 断点续播：只对 VOD/剧集（非直播）恢复位置；直播永远从边缘看
+        // 播放列表里的 URL 带 sign/auth 时效参数，VOD 才可续播；直播/广播不续
+        val isVod = !ch.radio && !url.contains("/live/") &&
+            (url.contains(".mp4") || url.contains(".mkv") || url.contains("/movie/") || url.contains("/series/"))
+        val resumeKey = if (isVod) "vod:ch:${ch.id}" else null
+        val resumePos = resumeKey?.let { TiviMatePrefs.getResume(this, it).first } ?: 0L
+
         zapStartTime = System.currentTimeMillis()
         player.setMediaItem(mediaItem)
         player.prepare()
+        // 一次性 seek 到上次位置（等 READY 后再 seek）
+        if (resumePos > 0) {
+            val resumeListener = object : Player.Listener {
+                override fun onPlaybackStateChanged(state: Int) {
+                    if (state == Player.STATE_READY) {
+                        player.seekTo(resumePos)
+                        player.removeListener(this)
+                        status.text = "▶ ${ch.name} · 已从 ${resumePos / 1000}s 继续"
+                        Log.i(TAG, "RESUME ${ch.name} -> ${resumePos}ms")
+                    }
+                }
+            }
+            player.addListener(resumeListener)
+        }
         player.playWhenReady = true
         status.text = "▶ ${ch.name} (${if (rawUa != null) rawUa else "默认"} UA)"
         playerView.controllerShowTimeoutMs = 3000
@@ -788,6 +836,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        saveCurrentResume()
         playerView.player = null
         super.onDestroy()
     }

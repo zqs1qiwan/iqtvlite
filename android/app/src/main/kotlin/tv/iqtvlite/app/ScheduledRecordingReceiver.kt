@@ -41,7 +41,9 @@ class ScheduledRecordingReceiver : BroadcastReceiver() {
 
     override fun onReceive(ctx: Context, intent: Intent) {
         val key = intent.getLongExtra(EXTRA_KEY, 0L)
-        val r = TiviMatePrefs.scheduledRecordings(ctx).find { it.startTs == key }
+        val all = TiviMatePrefs.scheduledRecordings(ctx)
+        val r = all.find { it.startTs == key }
+        Log.i(TAG, "onReceive key=$key total=${all.size}")
         if (r == null) { Log.w(TAG, "no scheduled recording for $key"); return }
         if (r.stopTs <= System.currentTimeMillis() / 1000) {
             Log.w(TAG, "recording window already passed: ${r.title}")

@@ -37,6 +37,8 @@ class PlaybackService : MediaSessionService() {
         private val httpClient = OkHttpClient.Builder()
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
+            // TR100-G9 盒子 IPv6 出口不通 → 强制 IPv4（见 NetUtil）
+            .dns(NetUtil.ipv4OnlyDns)
             .addInterceptor { chain ->
                 // 每请求读取当前 UA —— 不同频道要求不同 UA（实测 CCTV1 要 VLC）
                 val req = chain.request().newBuilder()
