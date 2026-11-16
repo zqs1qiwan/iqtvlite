@@ -37,7 +37,7 @@ fn unwrap_outcome<T: Default>(o: jni::EnvOutcome<'_, T, JniError>) -> T {
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_tv_iqtvlite_app_RustBridge_00024version<'local>(
+pub extern "system" fn Java_tv_iqtvlite_app_RustBridge_version<'local>(
     mut env: JNIEnv<'local>,
     _class: JClass<'local>,
 ) -> jstring {
@@ -51,7 +51,7 @@ pub extern "system" fn Java_tv_iqtvlite_app_RustBridge_00024version<'local>(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_tv_iqtvlite_app_RustBridge_00024parseM3u<'local>(
+pub extern "system" fn Java_tv_iqtvlite_app_RustBridge_parseM3u<'local>(
     mut env: JNIEnv<'local>,
     _class: JClass<'local>,
     content: JString<'local>,
@@ -68,7 +68,7 @@ pub extern "system" fn Java_tv_iqtvlite_app_RustBridge_00024parseM3u<'local>(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_tv_iqtvlite_app_RustBridge_00024parseEpgGrid<'local>(
+pub extern "system" fn Java_tv_iqtvlite_app_RustBridge_parseEpgGrid<'local>(
     mut env: JNIEnv<'local>,
     _class: JClass<'local>,
     xmltv: JString<'local>,
@@ -100,7 +100,7 @@ pub extern "system" fn Java_tv_iqtvlite_app_RustBridge_00024parseEpgGrid<'local>
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_tv_iqtvlite_app_RustBridge_00024stableId<'local>(
+pub extern "system" fn Java_tv_iqtvlite_app_RustBridge_stableId<'local>(
     mut env: JNIEnv<'local>,
     _class: JClass<'local>,
     source_id: i64,
@@ -115,7 +115,7 @@ pub extern "system" fn Java_tv_iqtvlite_app_RustBridge_00024stableId<'local>(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_tv_iqtvlite_app_RustBridge_00024extractQuery<'local>(
+pub extern "system" fn Java_tv_iqtvlite_app_RustBridge_extractQuery<'local>(
     mut env: JNIEnv<'local>,
     _class: JClass<'local>,
     url: JString<'local>,
@@ -134,7 +134,7 @@ pub extern "system" fn Java_tv_iqtvlite_app_RustBridge_00024extractQuery<'local>
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_tv_iqtvlite_app_RustBridge_00024freeString<'local>(
+pub extern "system" fn Java_tv_iqtvlite_app_RustBridge_freeString<'local>(
     mut env: JNIEnv<'local>,
     _class: JClass<'local>,
     ptr: i64,

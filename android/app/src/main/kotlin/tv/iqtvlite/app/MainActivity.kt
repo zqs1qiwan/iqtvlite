@@ -189,14 +189,15 @@ class MainActivity : AppCompatActivity() {
             return
         }
         val url = epgUrls.first()
-        status.text = "正在加载节目单…"
+        if (showingEpg) status.text = "正在加载节目单…"
         lifecycleScope.launch {
             val result = withContext(Dispatchers.IO) {
                 try {
                     val xml = epgCache ?: http.newCall(Request.Builder().url(url).build())
                         .execute().use { resp ->
                             if (!resp.isSuccessful) throw Exception("HTTP ${resp.code}")
-                            resp.body!!.string()
+                            // EPG 端点是裸 gzip 文件（无 Content-Encoding 头），需手动解压
+                            RustBridge.readBody(resp.body!!)
                         }.also { epgCache = it }
                     val now = System.currentTimeMillis() / 1000
                     val windowStart = now - 1800 // 向前 30 分钟
@@ -213,9 +214,11 @@ class MainActivity : AppCompatActivity() {
             }
             if (result != null) {
                 epgAdapter.submit(result)
-                status.text = "EPG: ${result.matched}/${result.requested} 频道匹配 · ${result.guideChannels} 个指南频道"
+                if (showingEpg) status.text = "EPG: ${result.matched}/${result.requested} 频道匹配 · ${result.guideChannels} 个指南频道"
+                Log.i(TAG, "EPG_RESULT matched=${result.matched} requested=${result.requested} guide=${result.guideChannels} rows=${result.rows.size} programmes=${result.rows.sumOf { it.programmes.size }}")
             } else {
-                status.text = "节目单加载失败（可重试）"
+                if (showingEpg) status.text = "节目单加载失败（可重试）"
+                Log.w(TAG, "EPG_RESULT failed")
             }
         }
     }
@@ -264,7 +267,9 @@ class MainActivity : AppCompatActivity() {
                 adapter.submit(result.channels)
                 buildGroupChips(result.groups)
                 status.text = "已加载 ${result.channels.size} 个频道 · ${result.groups.size} 个分组 · EPG 源 ${result.epgUrls.size}"
-                if (showingEpg) loadEpg()
+                Log.i(TAG, "PLAYLIST_RESULT channels=${result.channels.size} groups=${result.groups.size} epgUrls=${result.epgUrls}")
+                // 后台预取 EPG（不切换 tab）—— 冷启动时本地缓存优先，后续切 EPG tab 秒开
+                if (epgUrls.isNotEmpty()) loadEpg()
             } else {
                 status.text = "加载失败，请检查网络或下拉重试"
                 Toast.makeText(this@MainActivity, "加载失败", Toast.LENGTH_SHORT).show()

@@ -2,6 +2,9 @@ package tv.iqtvlite.app
 
 import android.util.Log
 import org.json.JSONObject
+import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
+import java.util.zip.GZIPInputStream
 
 /**
  * Rust core 的 JNI 桥。
@@ -34,6 +37,27 @@ object RustBridge {
     external fun stableId(sourceId: Long, providerKey: String): Long
     external fun extractQuery(url: String, key: String): String
     external fun freeString(ptr: Long)
+
+    /**
+     * 读取响应体为字符串，并处理「服务器直接返回 gzip 文件但没有 Content-Encoding 头」的情况。
+     * 老白直播的 EPG 端点 https://epg.laobaitv.net 就是这样（实测首字节 1f 8b）。
+     */
+    private fun decodeBody(body: okhttp3.ResponseBody): String {
+        val bytes = body.bytes()
+        if (bytes.size >= 2 && (bytes[0].toInt() and 0xFF) == 0x1F && (bytes[1].toInt() and 0xFF) == 0x8B) {
+            Log.i(TAG, "detected gzip body, decompressing ${bytes.size} bytes")
+            val gz = GZIPInputStream(ByteArrayInputStream(bytes))
+            val out = ByteArrayOutputStream()
+            val buf = ByteArray(64 * 1024)
+            var n: Int
+            while (gz.read(buf).also { n = it } > 0) out.write(buf, 0, n)
+            gz.close()
+            return out.toString("UTF-8")
+        }
+        return String(bytes, Charsets.UTF_8)
+    }
+
+    fun readBody(body: okhttp3.ResponseBody): String = decodeBody(body)
 
     /** 解析播放列表 → 频道列表 + 分组 */
     fun parsePlaylist(content: String, sourceId: Long): PlaylistResult {
