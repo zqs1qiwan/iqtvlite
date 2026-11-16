@@ -1,3 +1,7 @@
+// FFI 边界：extern "C" 函数必须 unsafe（指针有效性由 JNI 调用方保证），
+// 安全契约在模块文档里统一说明，不再逐个写 `# Safety`。
+#![allow(clippy::missing_safety_doc)]
+
 //! iqtvlite C-ABI 桥。
 //!
 //! Kotlin 侧通过 JNI 调用这些 `extern "C"` 函数。所有字符串都是 UTF-8，
@@ -35,7 +39,7 @@ unsafe fn from_c<'a>(p: *const c_char) -> &'a str {
 
 /// 释放由本库返回的字符串。
 #[unsafe(no_mangle)]
-pub extern "C" fn iqt_free_string(p: *mut c_char) {
+pub unsafe extern "C" fn iqt_free_string(p: *mut c_char) {
     if !p.is_null() {
         unsafe {
             drop(CString::from_raw(p));
@@ -45,7 +49,7 @@ pub extern "C" fn iqt_free_string(p: *mut c_char) {
 
 /// 返回库版本。
 #[unsafe(no_mangle)]
-pub extern "C" fn iqt_version() -> *const c_char {
+pub unsafe extern "C" fn iqt_version() -> *const c_char {
     concat!(env!("CARGO_PKG_VERSION"), "\0").as_ptr() as *const c_char
 }
 
@@ -53,7 +57,7 @@ pub extern "C" fn iqt_version() -> *const c_char {
 ///
 /// Kotlin 侧：`external fun parseM3u(content: String, sourceId: Long): String`
 #[unsafe(no_mangle)]
-pub extern "C" fn iqt_parse_m3u(content: *const c_char, source_id: i64) -> *mut c_char {
+pub unsafe extern "C" fn iqt_parse_m3u(content: *const c_char, source_id: i64) -> *mut c_char {
     let text = unsafe { from_c(content) };
     let result = match m3u::parse(text) {
         Ok(playlist) => {
@@ -119,7 +123,7 @@ pub extern "C" fn iqt_parse_m3u(content: *const c_char, source_id: i64) -> *mut 
 
 /// 从 URL 中提取查询参数（tv/ 接口用）。
 #[unsafe(no_mangle)]
-pub extern "C" fn iqt_extract_query(url: *const c_char, key: *const c_char) -> *mut c_char {
+pub unsafe extern "C" fn iqt_extract_query(url: *const c_char, key: *const c_char) -> *mut c_char {
     let url = unsafe { from_c(url) };
     let key = unsafe { from_c(key) };
     let value = extract_query_param(url, key).unwrap_or_default();
@@ -168,30 +172,30 @@ fn hex(c: u8) -> Option<u8> {
 
 /// 生成稳定 ID。
 #[unsafe(no_mangle)]
-pub extern "C" fn iqt_stable_id(source_id: i64, provider_key: *const c_char) -> i64 {
+pub unsafe extern "C" fn iqt_stable_id(source_id: i64, provider_key: *const c_char) -> i64 {
     let key = unsafe { from_c(provider_key) };
     global_id(SourceId(source_id), key).as_sqlite_int()
 }
 
 /// 回放错误分类的常量（与 Kotlin 侧 enum 对齐）。
 #[unsafe(no_mangle)]
-pub extern "C" fn iqt_error_class_unsupported() -> c_int {
+pub unsafe extern "C" fn iqt_error_class_unsupported() -> c_int {
     1
 }
 #[unsafe(no_mangle)]
-pub extern "C" fn iqt_error_class_auth() -> c_int {
+pub unsafe extern "C" fn iqt_error_class_auth() -> c_int {
     2
 }
 #[unsafe(no_mangle)]
-pub extern "C" fn iqt_error_class_rate_limited() -> c_int {
+pub unsafe extern "C" fn iqt_error_class_rate_limited() -> c_int {
     3
 }
 #[unsafe(no_mangle)]
-pub extern "C" fn iqt_error_class_transient() -> c_int {
+pub unsafe extern "C" fn iqt_error_class_transient() -> c_int {
     4
 }
 #[unsafe(no_mangle)]
-pub extern "C" fn iqt_error_class_not_found() -> c_int {
+pub unsafe extern "C" fn iqt_error_class_not_found() -> c_int {
     5
 }
 
@@ -206,9 +210,9 @@ mod tests {
             "#EXTM3U\n#EXTINF:-1 tvg-id=\"CCTV1\" group-title=\"央视\",CCTV-1 综合\nhttp://x/y.m3u8\n",
         )
         .unwrap();
-        let p = iqt_parse_m3u(input.as_ptr(), 1);
+        let p = unsafe { iqt_parse_m3u(input.as_ptr(), 1) };
         let s = unsafe { CStr::from_ptr(p).to_str().unwrap().to_string() };
-        iqt_free_string(p);
+        unsafe { iqt_free_string(p) };
         let v: serde_json::Value = serde_json::from_str(&s).unwrap();
         assert_eq!(v["ok"], true);
         assert_eq!(v["channels"][0]["tvgId"], "CCTV1");

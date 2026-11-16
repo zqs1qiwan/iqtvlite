@@ -14,7 +14,7 @@ unsafe fn c_to_string(ptr: *mut c_char) -> String {
         return String::new();
     }
     let s = std::ffi::CStr::from_ptr(ptr).to_string_lossy().to_string();
-    iqt_free_string(ptr);
+    unsafe { iqt_free_string(ptr) };
     s
 }
 
@@ -39,7 +39,7 @@ pub extern "system" fn Java_tv_iqtvlite_app_RustBridge_00024version<'local>(
     _class: JClass<'local>,
 ) -> jstring {
     let outcome: jni::EnvOutcome<'local, jstring, JniError> = env.with_env(|env| {
-        let v = unsafe { std::ffi::CStr::from_ptr(iqt_version()) }
+        let v = unsafe { std::ffi::CStr::from_ptr(unsafe { iqt_version() }) }
             .to_string_lossy()
             .to_string();
         Ok(env.new_string(v)?.into_raw())
@@ -57,7 +57,7 @@ pub extern "system" fn Java_tv_iqtvlite_app_RustBridge_00024parseM3u<'local>(
     let outcome: jni::EnvOutcome<'local, jstring, JniError> = env.with_env(|env| {
         let s: String = env.get_string(&content)?.into();
         let c = CString::new(s).unwrap_or_default();
-        let ptr = iqt_parse_m3u(c.as_ptr(), source_id);
+        let ptr = unsafe { iqt_parse_m3u(c.as_ptr(), source_id) };
         let result = unsafe { c_to_string(ptr) };
         Ok(env.new_string(result)?.into_raw())
     });
@@ -74,7 +74,7 @@ pub extern "system" fn Java_tv_iqtvlite_app_RustBridge_00024stableId<'local>(
     let outcome: jni::EnvOutcome<'local, i64, JniError> = env.with_env(|env| {
         let s: String = env.get_string(&key)?.into();
         let c = CString::new(s).unwrap_or_default();
-        Ok(iqt_stable_id(source_id, c.as_ptr()))
+        Ok(unsafe { iqt_stable_id(source_id, c.as_ptr()) })
     });
     unwrap_outcome(outcome)
 }
@@ -91,7 +91,7 @@ pub extern "system" fn Java_tv_iqtvlite_app_RustBridge_00024extractQuery<'local>
         let k: String = env.get_string(&key)?.into();
         let cu = CString::new(u).unwrap_or_default();
         let ck = CString::new(k).unwrap_or_default();
-        let ptr = iqt_extract_query(cu.as_ptr(), ck.as_ptr());
+        let ptr = unsafe { iqt_extract_query(cu.as_ptr(), ck.as_ptr()) };
         let result = unsafe { c_to_string(ptr) };
         Ok(env.new_string(result)?.into_raw())
     });
@@ -105,7 +105,7 @@ pub extern "system" fn Java_tv_iqtvlite_app_RustBridge_00024freeString<'local>(
     ptr: i64,
 ) {
     let outcome: jni::EnvOutcome<'local, (), JniError> = env.with_env(|_env| {
-        iqt_free_string(ptr as *mut c_char);
+        unsafe { iqt_free_string(ptr as *mut c_char) };
         Ok(())
     });
     unwrap_outcome(outcome)
