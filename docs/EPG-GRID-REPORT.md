@@ -118,6 +118,8 @@ xml chars: 3869417
 | Android EPG 网格 UI | ✅ |
 | 按频道 UA（VLC/TiviMate 映射） | ✅ |
 | 真实 EPG 端到端解析 | ✅（见 §1.3） |
-| 真机/模拟器播放验证 | 🔄 模拟器安装中（1.56 GB 系统镜像下载） |
+| JNI 符号在 ARM64 .so 中 | ✅ 二进制字符串搜索确认 `Java_tv_iqtvlite_app_RustBridge_00024parseEpgGrid` / `parseM3u` / `version` 均存在 |
+| CI 构建 | ✅ 两个工作流 success；APK 11.73 MB（[v0.2.0-epg](https://github.com/zqs1qiwan/iqtvlite/releases/tag/v0.2.0-epg)） |
+| 真机/模拟器播放验证 | 🔄 模拟器 WHPX 加速可用（`-accel-check` 通过），1.46 GB 系统镜像分块下载中 |
 
 代码已推送到 GitHub，CI 验证后更新 release。
