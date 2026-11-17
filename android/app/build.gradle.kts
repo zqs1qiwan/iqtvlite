@@ -81,4 +81,7 @@ dependencies {
 
     // 频道 logo 加载（轻量，比 Glide/Picasso 更适合）
     implementation("io.coil-kt:coil:2.6.0")
+
+    // ── 手机扫码推源 ────────────────────────────────────────────────
+    implementation("com.google.zxing:core:3.5.3")          // 二维码生成（HTTP 服务用纯 Java ServerSocket，无额外依赖）
 }

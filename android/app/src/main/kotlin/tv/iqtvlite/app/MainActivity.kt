@@ -33,14 +33,33 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         private const val TAG = "iqtvlite"
-        // 用户指定的两个播放列表
-        private val SOURCES = listOf(
+        // 默认播放源（用户指定的两个官方线路）；手机推源的自定义源会在运行时加入
+        private val DEFAULT_SOURCES = listOf(
             Source("https://lbzs.laobaitv.net", "老白直播 · 主线路"),
             Source("http://iptv.laobaitv.net", "老白直播 · 备用线路"),
         )
     }
 
     data class Source(val url: String, val name: String)
+
+    /** 播放源列表：默认两个官方线路，手机推源的自定义地址在运行时加入 */
+    private val sources = mutableListOf<Source>()
+    private var pushedSource: Source? = null
+
+    /** 重建播放源列表（推源的自定义源优先） */
+    private fun rebuildSources() {
+        val pushed = readPushedSource().also { pushedSource = it }
+        sources.clear()
+        if (pushed != null) sources.add(pushed)
+        sources.addAll(DEFAULT_SOURCES)
+    }
+
+    /** 从 SharedPreferences 读取手机推源保存的地址（SourcePushActivity 写入） */
+    private fun readPushedSource(): Source? {
+        val prefs = getSharedPreferences("iqtv_prefs", MODE_PRIVATE)
+        val live = prefs.getString("push_live_url", null)?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+        return Source(live, "手机推送 · 自定义源")
+    }
 
     private lateinit var player: ExoPlayer
     private lateinit var playerView: PlayerView
@@ -58,6 +77,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var posterGrid: RecyclerView
     private lateinit var posterAdapter: PosterAdapter
     private var posterMode = false
+    /** 首次启动引导遮罩 */
+    private var firstRunGuide: View? = null
+    private val prefs by lazy { getSharedPreferences("iqtv_prefs", MODE_PRIVATE) }
     // TiviMate 风格浮层 UI
     private lateinit var uiLayer: View
     private lateinit var channelPanel: View
@@ -206,6 +228,9 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.btn_settings).setOnClickListener {
             startActivity(android.content.Intent(this, SettingsActivity::class.java))
         }
+        findViewById<Button>(R.id.btn_push).setOnClickListener {
+            startActivity(android.content.Intent(this, SourcePushActivity::class.java))
+        }
         findViewById<Button>(R.id.btn_subtitle).setOnClickListener {
             val label = SubtitleManager.cycle(player, this)
             Toast.makeText(this, label, Toast.LENGTH_SHORT).show()
@@ -266,7 +291,7 @@ class MainActivity : AppCompatActivity() {
                 if (n > 0) Log.i(TAG, "SUBTITLES_AVAILABLE count=$n labels=${SubtitleManager.available.map { it.label }}")
             }
             override fun onPlaybackStateChanged(state: Int) {
-                if (state == Player.STATE_BUFFERING) status.text = " buffering…"
+                if (state == Player.STATE_BUFFERING) status.text = "正在缓冲…"
                 // Media3 没有 STATE_PAUSED：暂停 = STATE_READY + playWhenReady=false
                 if (state == Player.STATE_ENDED ||
                     (state == Player.STATE_READY && !player.playWhenReady)) saveCurrentResume()
@@ -334,8 +359,9 @@ class MainActivity : AppCompatActivity() {
         val cardH = (cardW * 1.05f).toInt()
         posterAdapter.setItemSize(cardW, cardH)
 
-        // ── 源选择 ─────────────────────────────────────────────────
-        val names = SOURCES.map { it.name }
+        // ── 源选择（推源的自定义源优先排第一位） ──────────────────────
+        rebuildSources()
+        val names = sources.map { it.name }
         sourceSpinner.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, names)
         sourceSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(p: AdapterView<*>?, v: View?, pos: Int, id: Long) {
@@ -355,7 +381,7 @@ class MainActivity : AppCompatActivity() {
 
         swipe.setOnRefreshListener { loadSource(currentSource) }
 
-        status.text = "Rust core: ${RustBridge.version()}"
+        status.text = "TiviMate 体验 · 按 OK 打开频道列表"
         // 恢复已设置的提醒（设备重启后 AlarmManager 需要重新注册）
         TiviMatePrefs.reminders(this).forEach { r ->
             if (r.startTs * 1000 > System.currentTimeMillis()) {
@@ -373,6 +399,19 @@ class MainActivity : AppCompatActivity() {
         coldPhase("autoPlayLastChannel")
         // ③ 后台拉网络 → 成功后刷新（不打断当前播放）
         loadSource(0)
+        // ④ 首次启动引导（只在第一次显示，按任意键消失）
+        firstRunGuide = findViewById(R.id.first_run_guide)
+        if (!prefs.getBoolean("guide_seen", false)) {
+            firstRunGuide?.visibility = View.VISIBLE
+            firstRunGuide?.setOnClickListener { dismissGuide() }
+        }
+    }
+
+    /** 关闭首次引导并记住 */
+    private fun dismissGuide() {
+        if (firstRunGuide?.visibility != View.VISIBLE) return
+        firstRunGuide?.visibility = View.GONE
+        prefs.edit().putBoolean("guide_seen", true).apply()
     }
 
     /** 同步列表/海报两种视图的选中态 */
@@ -589,7 +628,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun loadSource(index: Int) {
-        val src = SOURCES[index]
+        if (index < 0 || index >= sources.size) return
+        val src = sources[index]
         epgCache = null
         swipe.isRefreshing = true
         status.text = "正在加载 ${src.name}…"
@@ -866,6 +906,7 @@ class MainActivity : AppCompatActivity() {
     private fun playUnlocked(ch: Channel) {
         currentPos = allChannels.indexOfFirst { it.id == ch.id }.let { if (it >= 0) it else currentPos }
         urlIndex = 0
+        adapter.setPlaying(ch.id)   // 进度条只显示在当前播放频道
         FavoritesStore.markWatched(this, ch.id)
         adapter.setLists(FavoritesStore.favorites(this), FavoritesStore.recents(this))
         adapter.refresh()
@@ -1049,10 +1090,35 @@ class MainActivity : AppCompatActivity() {
     private var controllerVisible = false
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
+        // 首次引导：任意键关闭引导；OK 键额外打开频道列表
+        if (firstRunGuide?.visibility == View.VISIBLE) {
+            dismissGuide()
+            if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER) {
+                setUiVisible(true)
+                showTab(false)
+            }
+            return true
+        }
         when (keyCode) {
-            // OK：切换频道列表浮层（TiviMate 核心交互）
+            // OK：智能分层——满屏时打开频道列表；浮层内焦点在列表时播放该频道；否则关闭浮层
             KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
-                setUiVisible(!uiIsVisible())
+                if (!uiIsVisible()) {
+                    setUiVisible(true)
+                    showTab(false)
+                } else {
+                    val focused = currentFocus
+                    val inList = focused === recycler || focused === posterGrid ||
+                        (focused != null && focused.parent === recycler) ||
+                        (focused != null && focused.parent === posterGrid)
+                    if (inList && !showingEpg) {
+                        allChannels.getOrNull(currentPos)?.let { play(it) }
+                    } else if (inList && showingEpg) {
+                        // EPG 网格内 OK 交给 adapter 的节目点击
+                        return super.onKeyDown(keyCode, event)
+                    } else {
+                        setUiVisible(false)
+                    }
+                }
                 return true
             }
             // 返回：优先关闭浮层，回满屏播放
@@ -1121,6 +1187,21 @@ class MainActivity : AppCompatActivity() {
         recycler.scrollToPosition(next)
         if (posterMode) posterGrid.scrollToPosition(next)
         play(allChannels[next])
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // 手机推源返回后：若自定义源地址变化，立即切换过去
+        val current = readPushedSource()
+        if (current?.url != pushedSource?.url) {
+            rebuildSources()
+            (sourceSpinner.adapter as? ArrayAdapter<String>)?.let { ad ->
+                ad.clear(); ad.addAll(sources.map { it.name }); ad.notifyDataSetChanged()
+            }
+            sourceSpinner.setSelection(0, false)
+            currentSource = 0
+            if (current != null) loadSource(0)
+        }
     }
 
     override fun onStop() {

@@ -47,6 +47,13 @@
             android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenSize|screenLayout|smallestScreenSize|uiMode"
             android:exported="false" />
 
+        <!-- 手机扫码推源：电视端显示二维码，手机浏览器推送直播源地址 -->
+        <activity
+            android:name=".SourcePushActivity"
+            android:screenOrientation="landscape"
+            android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenSize|screenLayout|smallestScreenSize|uiMode"
+            android:exported="false" />
+
         <receiver
             android:name=".ReminderScheduler"
             android:exported="false" />

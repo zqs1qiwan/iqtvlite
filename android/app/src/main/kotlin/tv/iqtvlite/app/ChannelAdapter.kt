@@ -75,11 +75,21 @@ class ChannelAdapter(
         if (pos in filtered.indices) notifyItemChanged(pos)
     }
 
-    /** 当前节目信息（tvgId -> 标题 + 进度百分比），由 EPG 加载后注入，TiviMate 风格行内显示 */
+    /** 当前节目信息（tvgId -> 标题 + 进度百分比），由 EPG 加载后注入 */
     private var nowByTvg: Map<String, Pair<String, Int>> = emptyMap()
+    /** 当前正在播放的频道 id：进度条只给它显示，避免满屏蓝条视觉噪音 */
+    private var playingId: Long = -1L
     fun setNowPlaying(map: Map<String, Pair<String, Int>>) {
         nowByTvg = map
         notifyDataSetChanged()
+    }
+    fun setPlaying(id: Long) {
+        if (playingId == id) return
+        val old = playingId
+        playingId = id
+        // 只刷新受影响的两行
+        filtered.indexOfFirst { it.id == old }.takeIf { it >= 0 }?.let { notifyItemChanged(it) }
+        filtered.indexOfFirst { it.id == id }.takeIf { it >= 0 }?.let { notifyItemChanged(it) }
     }
 
     class VH(view: View) : RecyclerView.ViewHolder(view) {
@@ -104,12 +114,12 @@ class ChannelAdapter(
         if (ch.logo != null) {
             holder.logo.load(ch.logo) { crossfade(true) }
         }
-        // TiviMate 风格：行内显示当前节目 + 进度；无 EPG 时退回显示分组名
+        // 当前节目名给所有行看（EPG 信息有用）；进度条只给正在播放的那一行
         val now = ch.tvgId?.let { nowByTvg[it] }
         if (now != null) {
             holder.group.text = now.first
             holder.progress.progress = now.second
-            holder.progress.visibility = android.view.View.VISIBLE
+            holder.progress.visibility = if (ch.id == playingId) android.view.View.VISIBLE else android.view.View.GONE
         } else {
             holder.group.text = ch.group
             holder.progress.visibility = android.view.View.GONE

@@ -86,6 +86,7 @@
         android:layout_marginStart="740dp"
         android:layout_marginBottom="24dp"
         android:background="@drawable/pip_frame"
+        android:clipChildren="true"
         android:visibility="gone">
 
         <androidx.media3.ui.PlayerView
@@ -132,18 +133,18 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="iqtv"
-                android:textColor="@color/tm_focus"
-                android:textSize="20sp"
+                android:textColor="@color/tm_text"
+                android:textSize="21sp"
                 android:fontFamily="sans-serif-black" />
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="lite"
-                android:textColor="@color/tm_text"
-                android:textSize="20sp"
+                android:textColor="@color/tm_focus"
+                android:textSize="21sp"
                 android:fontFamily="sans-serif-light"
-                android:layout_marginEnd="24dp" />
+                android:layout_marginEnd="28dp" />
 
             <TextView
                 android:id="@+id/status"
@@ -160,18 +161,10 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="16dp"
-                android:textSize="20sp"
+                android:textSize="19sp"
                 android:fontFamily="sans-serif-medium"
                 android:textColor="@color/tm_text"
                 android:text="--:--" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="20dp"
-                android:text="返回键关闭"
-                android:textSize="13sp"
-                android:textColor="@color/tm_text_3" />
         </LinearLayout>
 
         <!-- 控制行 -->
@@ -240,6 +233,15 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="设置"
+                android:minWidth="0dp"
+                android:background="@drawable/focus_border"
+                android:layout_marginEnd="6dp" />
+
+            <Button
+                android:id="@+id/btn_push"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="推源"
                 android:minWidth="0dp"
                 android:background="@drawable/focus_border"
                 android:layout_marginEnd="6dp" />
@@ -332,5 +334,50 @@
                     android:scrollbars="vertical" />
             </HorizontalScrollView>
         </LinearLayout>
+    </LinearLayout>
+
+    <!-- ④ 首次启动引导：提示遥控器操作，按任意键或点按后消失 -->
+    <LinearLayout
+        android:id="@+id/first_run_guide"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:background="#CC08090B"
+        android:visibility="gone"
+        android:clickable="true"
+        android:focusable="true">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="iqtv lite"
+            android:textColor="@color/tm_focus"
+            android:textSize="40sp"
+            android:fontFamily="sans-serif-black" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:text="按 OK 打开频道列表"
+            android:textColor="@color/tm_text"
+            android:textSize="22sp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:text="← → 切换频道列表 / 节目单    ·    ↑ ↓ 换台    ·    数字键跳转"
+            android:textColor="@color/tm_text_2"
+            android:textSize="16sp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="40dp"
+            android:text="按任意键继续"
+            android:textColor="@color/tm_text_3"
+            android:textSize="15sp" />
     </LinearLayout>
 </FrameLayout>

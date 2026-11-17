@@ -1,29 +1,29 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- TiviMate 风格频道行：大 Logo + 编号 + 频道名 + 当前节目 + 进度条 -->
+<!-- 频道行：Logo 为主、编号 + 频道名 + 当前节目；进度条只当前频道显示 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="104dp"
+    android:layout_height="96dp"
     android:orientation="horizontal"
     android:gravity="center_vertical"
-    android:paddingStart="22dp"
-    android:paddingEnd="22dp"
+    android:paddingStart="18dp"
+    android:paddingEnd="18dp"
     android:layout_marginStart="8dp"
     android:layout_marginEnd="8dp"
     android:background="@drawable/channel_selector">
 
-    <!-- 频道编号（TiviMate 风格：大号淡色数字） -->
+    <!-- 频道编号 -->
     <TextView
         android:id="@+id/channel_number"
-        android:layout_width="52dp"
+        android:layout_width="50dp"
         android:layout_height="wrap_content"
         android:textColor="@color/tm_text_3"
-        android:textSize="21sp"
+        android:textSize="20sp"
         android:fontFamily="sans-serif-medium" />
 
-    <!-- 频道 Logo（大号、带圆角白底容器） -->
+    <!-- 频道 Logo：撑满容器，台标居中 -->
     <FrameLayout
-        android:layout_width="64dp"
-        android:layout_height="64dp"
+        android:layout_width="60dp"
+        android:layout_height="60dp"
         android:layout_marginEnd="16dp"
         android:background="@drawable/logo_frame">
 
@@ -31,12 +31,12 @@
             android:id="@+id/channel_logo"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:layout_margin="4dp"
+            android:layout_margin="6dp"
             android:scaleType="fitCenter"
             android:contentDescription="channel logo" />
     </FrameLayout>
 
-    <!-- 文字区：频道名 + 当前节目 + 进度条 -->
+    <!-- 文字区 -->
     <LinearLayout
         android:layout_width="0dp"
         android:layout_height="wrap_content"
@@ -57,25 +57,24 @@
             android:id="@+id/channel_group"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="3dp"
+            android:layout_marginTop="4dp"
             android:textColor="@color/tm_text_2"
-            android:textSize="17sp"
+            android:textSize="16sp"
             android:maxLines="1"
             android:ellipsize="end" />
 
-        <!-- 当前节目进度（TiviMate 标志性元素） -->
+        <!-- 当前节目进度：仅当前播放频道显示（由 adapter 控制 visibility） -->
         <ProgressBar
             android:id="@+id/channel_progress"
             style="?android:attr/progressBarStyleHorizontal"
             android:layout_width="match_parent"
-            android:layout_height="4dp"
-            android:layout_marginTop="7dp"
+            android:layout_height="3dp"
+            android:layout_marginTop="8dp"
             android:max="100"
             android:progressDrawable="@drawable/progress_bar"
             android:visibility="gone" />
     </LinearLayout>
 
-    <!-- 正在播放三角（TiviMate 选中行右侧标记） -->
     <TextView
         android:id="@+id/now_playing_mark"
         android:layout_width="wrap_content"
