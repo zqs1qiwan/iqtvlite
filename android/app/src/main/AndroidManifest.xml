@@ -48,17 +48,8 @@
             android:exported="false" />
 
         <receiver
-            android:name=".ScheduledRecordingReceiver"
-            android:exported="false" />
-
-        <receiver
             android:name=".ReminderScheduler"
             android:exported="false" />
-
-        <service
-            android:name=".RecordingService"
-            android:exported="false"
-            android:foregroundServiceType="mediaProjection" />
 
         <service
             android:name=".PlaybackService"

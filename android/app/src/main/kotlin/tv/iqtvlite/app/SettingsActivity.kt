@@ -83,9 +83,6 @@ class SettingsActivity : AppCompatActivity() {
         setupRow(R.id.row_playback, R.id.sub_playback, "播放设置", "自动帧率 / 音频直通 / 外部播放器") {
             showPlaybackPrefs()
         }
-        setupRow(R.id.row_recordings, R.id.sub_recordings, "定时录制", "查看 / 管理排期") {
-            showScheduledRecordings()
-        }
 
         setupRow(R.id.row_hidden, R.id.sub_hidden, "隐藏频道", "当前隐藏 ${TiviMatePrefs.hiddenChannels(this).size} 个") {
             Toast.makeText(this, "在频道列表长按可隐藏/显示频道", Toast.LENGTH_SHORT).show()
@@ -115,22 +112,6 @@ class SettingsActivity : AppCompatActivity() {
                 }
                 TiviMatePrefs.savePlaybackPrefs(this, np)
                 showPlaybackPrefs()
-            }
-            .setPositiveButton("完成", null).show()
-    }
-
-    private fun showScheduledRecordings() {
-        val list = TiviMatePrefs.scheduledRecordings(this)
-        val labels = if (list.isEmpty()) arrayOf("暂无定时录制（在 EPG 长按未来节目可排期）") else
-            list.map { "${it.title} @ ${java.text.SimpleDateFormat("MM-dd HH:mm", java.util.Locale.getDefault()).format(java.util.Date(it.startTs * 1000))}" }.toTypedArray()
-        androidx.appcompat.app.AlertDialog.Builder(this)
-            .setTitle("定时录制 (${list.size})")
-            .setItems(labels) { _, which ->
-                if (list.isNotEmpty()) {
-                    ScheduledRecordingReceiver.cancel(this, list[which].startTs)
-                    TiviMatePrefs.removeScheduledRecording(this, list[which])
-                    Toast.makeText(this, "已取消录制", Toast.LENGTH_SHORT).show()
-                }
             }
             .setPositiveButton("完成", null).show()
     }

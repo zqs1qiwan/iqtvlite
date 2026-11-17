@@ -24,7 +24,6 @@ object TiviMatePrefs {
     private const val KEY_ORDER = "channel_order"
     private const val KEY_GROUPS = "custom_groups"
     private const val KEY_EPG_SOURCES = "epg_sources"
-    private const val KEY_SCHEDULED_RECORDINGS = "scheduled_recordings"
     private const val KEY_RESUME = "resume_positions"
     private const val KEY_PLAYBACK_PREFS = "playback_prefs"
 
@@ -144,47 +143,6 @@ object TiviMatePrefs {
         prefs(ctx).edit().putString(KEY_EPG_SOURCES, a.toString()).apply()
     }
 
-    // ── 定时录制 ────────────────────────────────────────────────────
-    data class ScheduledRecording(
-        val channelId: Long, val tvgId: String, val title: String,
-        val startTs: Long, val stopTs: Long, val liveUrl: String,
-        val userAgent: String?, val altUrls: List<String> = emptyList(),
-    )
-
-    fun scheduledRecordings(ctx: Context): List<ScheduledRecording> {
-        val raw = prefs(ctx).getString(KEY_SCHEDULED_RECORDINGS, null) ?: return emptyList()
-        return try {
-            val a = JSONArray(raw)
-            (0 until a.length()).map { i ->
-                val o = a.getJSONObject(i)
-                val alts = o.optJSONArray("altUrls")
-                ScheduledRecording(
-                    o.getLong("channelId"), o.getString("tvgId"), o.getString("title"),
-                    o.getLong("startTs"), o.getLong("stopTs"), o.getString("liveUrl"),
-                    o.optString("userAgent").ifEmpty { null },
-                    if (alts != null) (0 until alts.length()).map { alts.getString(it) } else emptyList(),
-                )
-            }
-        } catch (_: Exception) { emptyList() }
-    }
-    fun addScheduledRecording(ctx: Context, r: ScheduledRecording) {
-        val list = scheduledRecordings(ctx).toMutableList()
-        if (list.none { it.channelId == r.channelId && it.startTs == r.startTs }) list.add(r)
-        saveScheduledRecordings(ctx, list)
-    }
-    fun removeScheduledRecording(ctx: Context, r: ScheduledRecording) =
-        saveScheduledRecordings(ctx, scheduledRecordings(ctx).filterNot { it.channelId == r.channelId && it.startTs == r.startTs })
-    fun saveScheduledRecordings(ctx: Context, list: List<ScheduledRecording>) {
-        val a = JSONArray()
-        list.forEach { r -> a.put(JSONObject().apply {
-            put("channelId", r.channelId); put("tvgId", r.tvgId); put("title", r.title)
-            put("startTs", r.startTs); put("stopTs", r.stopTs); put("liveUrl", r.liveUrl)
-            if (r.userAgent != null) put("userAgent", r.userAgent)
-            put("altUrls", JSONArray().apply { r.altUrls.forEach { put(it) } })
-        }) }
-        prefs(ctx).edit().putString(KEY_SCHEDULED_RECORDINGS, a.toString()).apply()
-    }
-
     // ── 断点续播（VOD/剧集）────────────────────────────────────────
     fun saveResume(ctx: Context, key: String, positionMs: Long, durationMs: Long) {
         val o = JSONObject(prefs(ctx).getString(KEY_RESUME, null) ?: "{}")
@@ -238,14 +196,6 @@ object TiviMatePrefs {
                 put("url", it.url); put("priority", it.priority); put("enabled", it.enabled)
             }) }
             put(KEY_EPG_SOURCES, ea)
-            val sa = JSONArray()
-            scheduledRecordings(ctx).forEach { r -> sa.put(JSONObject().apply {
-                put("channelId", r.channelId); put("tvgId", r.tvgId); put("title", r.title)
-                put("startTs", r.startTs); put("stopTs", r.stopTs); put("liveUrl", r.liveUrl)
-                if (r.userAgent != null) put("userAgent", r.userAgent)
-                put("altUrls", JSONArray().apply { r.altUrls.forEach { put(it) } })
-            }) }
-            put(KEY_SCHEDULED_RECORDINGS, sa)
             val pp = playbackPrefs(ctx)
             put(KEY_PLAYBACK_PREFS, JSONObject().apply {
                 put("afr", pp.autoFrameRate); put("passthrough", pp.audioPassthrough); put("external", pp.externalPlayer)
@@ -270,7 +220,6 @@ object TiviMatePrefs {
             e.putString(KEY_GROUPS, g?.toString() ?: "{}")
             e.putString(KEY_REMINDERS, json.optJSONArray(KEY_REMINDERS)?.toString() ?: "[]")
             e.putString(KEY_EPG_SOURCES, json.optJSONArray(KEY_EPG_SOURCES)?.toString() ?: "[]")
-            e.putString(KEY_SCHEDULED_RECORDINGS, json.optJSONArray(KEY_SCHEDULED_RECORDINGS)?.toString() ?: "[]")
             json.optJSONObject(KEY_PLAYBACK_PREFS)?.let { e.putString(KEY_PLAYBACK_PREFS, it.toString()) }
             e.apply()
             true

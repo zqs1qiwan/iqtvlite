@@ -80,14 +80,6 @@
             android:layout_marginEnd="6dp" />
 
         <Button
-            android:id="@+id/btn_record"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="● 录制"
-            android:minWidth="0dp"
-            android:layout_marginEnd="6dp" />
-
-        <Button
             android:id="@+id/btn_settings"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"

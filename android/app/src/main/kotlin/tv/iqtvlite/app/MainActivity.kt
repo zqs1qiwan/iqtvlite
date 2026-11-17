@@ -110,7 +110,6 @@ class MainActivity : AppCompatActivity() {
                 status.text = "▶ ${programme.title} · ${row.name}"
             },
             onCatchup = { row, programme -> playCatchup(row, programme) },
-            onRecord = { row, programme -> scheduleRecording(row, programme) },
         )
         epgRecycler.layoutManager = LinearLayoutManager(this)
         epgRecycler.adapter = epgAdapter
@@ -131,7 +130,6 @@ class MainActivity : AppCompatActivity() {
                 startActivity(android.content.Intent(this, MultiViewActivity::class.java))
             }
         }
-        findViewById<Button>(R.id.btn_record).setOnClickListener { toggleRecording() }
         findViewById<Button>(R.id.btn_settings).setOnClickListener {
             startActivity(android.content.Intent(this, SettingsActivity::class.java))
         }
@@ -255,13 +253,6 @@ class MainActivity : AppCompatActivity() {
             if (r.startTs * 1000 > System.currentTimeMillis()) {
                 ReminderScheduler.schedule(this, r.tvgId, r.title, r.startTs)
             }
-        }
-        // 恢复定时录制的闹钟（设备重启 / 进程被杀后需要重新注册）
-        TiviMatePrefs.scheduledRecordings(this).forEach { r ->
-            if (r.startTs * 1000 > System.currentTimeMillis()) {
-                ScheduledRecordingReceiver.schedule(this, r)
-            }
-            Log.i(TAG, "RESTORE_SCHEDULED_REC ${r.title} ${r.startTs}")
         }
 
         // ① 同步加载缓存 → 频道列表立即可交互（冷启动秒开）
@@ -677,75 +668,6 @@ class MainActivity : AppCompatActivity() {
         raw.equals("TiviMate", ignoreCase = true) || raw.startsWith("TiviMate/") -> "TiviMate/5.1.6 (Android 12)"
         raw.startsWith("Mozilla/") -> raw
         else -> raw // 自定义完整 UA
-    }
-
-    /** EPG 长按未来节目 → 定时录制（AlarmManager 到点唤起 RecordingService） */
-    private fun scheduleRecording(row: EpgRow, programme: EpgProgramme) {
-        val ch = allChannels.find { normalizeTvg(it.tvgId) == normalizeTvg(row.tvgId) }
-        if (ch == null) { Toast.makeText(this, "找不到频道", Toast.LENGTH_SHORT).show(); return }
-        val now = System.currentTimeMillis() / 1000
-        if (programme.start <= now) { Toast.makeText(this, "节目已开始，请用即时录制", Toast.LENGTH_SHORT).show(); return }
-        val rec = TiviMatePrefs.ScheduledRecording(
-            channelId = ch.id,
-            tvgId = row.tvgId,
-            title = "${ch.name} · ${programme.title}",
-            startTs = programme.start,
-            stopTs = programme.stop,
-            liveUrl = ch.url.substringBefore("|"),
-            userAgent = resolveUserAgent(ch.userAgent),
-            altUrls = ch.altUrls.map { it.substringBefore("|") },
-        )
-        TiviMatePrefs.addScheduledRecording(this, rec)
-        ScheduledRecordingReceiver.schedule(this, rec)
-        Toast.makeText(this, "已排期: ${programme.title}", Toast.LENGTH_SHORT).show()
-        Log.i(TAG, "SCHEDULED_REC ${rec.title} ${rec.startTs}-${rec.stopTs}")
-    }
-
-    /** 即时录制当前频道：Rust 生成计划 → RecordingService 零转码写文件。 */
-    private fun toggleRecording() {
-        if (RecordingService.isRecording) {
-            RecordingService.stop(this)
-            status.text = "录制已停止"
-            Toast.makeText(this, "录制已停止", Toast.LENGTH_SHORT).show()
-            return
-        }
-        val ch = allChannels.getOrNull(currentPos)
-        if (ch == null) {
-            Toast.makeText(this, "请先选择一个频道", Toast.LENGTH_SHORT).show()
-            return
-        }
-        lifecycleScope.launch {
-            val plan = withContext(Dispatchers.IO) {
-                try {
-                    val params = org.json.JSONObject().apply {
-                        put("title", ch.name)
-                        put("id", ch.id)
-                        put("channelId", ch.id)
-                        put("url", ch.url.substringBefore("|"))
-                        val alts = org.json.JSONArray()
-                        ch.altUrls.forEach { alts.put(it.substringBefore("|")) }
-                        put("altUrls", alts)
-                        put("source", "instant")
-                        put("userAgent", resolveUserAgent(ch.userAgent))
-                        put("outputDir", getExternalFilesDir("recordings")?.absolutePath ?: "/sdcard/Recordings")
-                        put("maxBytes", 500L * 1024 * 1024) // 单文件上限 500MB
-                    }.toString()
-                    val result = org.json.JSONObject(RustBridge.buildRecordingPlan(params))
-                    if (result.optBoolean("ok", false)) result.toString() else null
-                } catch (e: Exception) {
-                    Log.e(TAG, "recording plan failed", e)
-                    null
-                }
-            }
-            if (plan != null) {
-                RecordingService.start(this@MainActivity, plan)
-                val fileName = org.json.JSONObject(plan).optString("fileName")
-                status.text = "● 正在录制: $fileName"
-                Toast.makeText(this@MainActivity, "开始录制 $fileName", Toast.LENGTH_SHORT).show()
-            } else {
-                Toast.makeText(this@MainActivity, "无法创建录制计划", Toast.LENGTH_SHORT).show()
-            }
-        }
     }
 
     /**
