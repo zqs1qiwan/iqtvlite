@@ -1,22 +1,29 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="IqtvTheme" parent="Theme.MaterialComponents.NoActionBar">
-        <item name="android:windowBackground">#0C1116</item>
-        <item name="android:colorBackground">#0C1116</item>
-        <item name="android:textColorPrimary">#E8EDF2</item>
-        <item name="android:textColorSecondary">#9AA7B4</item>
-        <item name="colorPrimary">#2E7CF6</item>
+    <!-- 用 AppCompat 而非 MaterialComponents：避免 Material 自动给 Button 加蓝色 backgroundTint，
+         我们要完全自定义 TV 焦点 drawable -->
+    <style name="IqtvTheme" parent="Theme.AppCompat.Light.NoActionBar">
+        <item name="android:windowBackground">@color/tm_bg</item>
+        <item name="android:colorBackground">@color/tm_bg</item>
+        <item name="android:textColorPrimary">@color/tm_text</item>
+        <item name="android:textColorSecondary">@color/tm_text_2</item>
+        <item name="colorPrimary">@color/tm_focus</item>
+        <item name="colorAccent">@color/tm_focus</item>
+        <item name="android:colorAccent">@color/tm_focus</item>
+        <item name="colorControlHighlight">#22FFFFFF</item>
         <item name="android:windowNoTitle">true</item>
         <item name="android:windowFullscreen">true</item>
-        <!-- TV 按钮：大尺寸 + D-pad 焦点边框（Android TV 设计指南） -->
         <item name="android:buttonStyle">@style/TvButton</item>
     </style>
 
+    <!-- TiviMate 风格 TV 按钮：大尺寸、圆角、D-pad 焦点蓝色描边 -->
     <style name="TvButton" parent="Widget.AppCompat.Button">
         <item name="android:background">@drawable/focus_border</item>
-        <item name="android:textColor">#E8EDF2</item>
-        <item name="android:textSize">15sp</item>
-        <item name="android:minHeight">48dp</item>
-        <item name="android:minWidth">80dp</item>
+        <item name="android:textColor">@color/tm_text</item>
+        <item name="android:textSize">16sp</item>
+        <item name="android:minHeight">52dp</item>
+        <item name="android:minWidth">88dp</item>
+        <item name="android:paddingStart">12dp</item>
+        <item name="android:paddingEnd">12dp</item>
     </style>
 </resources>

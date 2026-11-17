@@ -5,7 +5,7 @@
     android:layout_width="wrap_content"
     android:layout_height="72dp"
     android:orientation="horizontal"
-    android:background="#0F151C">
+    android:background="@color/tm_bg">
 
     <!-- 频道列（宽度固定；横向滚动时会一起滚走 —— 第一版可接受） -->
     <LinearLayout
@@ -13,7 +13,7 @@
         android:layout_height="match_parent"
         android:orientation="horizontal"
         android:gravity="center_vertical"
-        android:background="#131B24">
+        android:background="@color/tm_surface">
 
         <ImageView
             android:id="@+id/epg_channel_icon"

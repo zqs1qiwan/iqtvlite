@@ -53,6 +53,19 @@ class MainActivity : AppCompatActivity() {
     private lateinit var epgScroll: HorizontalScrollView
     private lateinit var epgRecycler: RecyclerView
     private lateinit var epgAdapter: EpgGridAdapter
+    // TiviMate 风格浮层 UI
+    private lateinit var uiLayer: View
+    private lateinit var channelPanel: View
+    private lateinit var infoCard: View
+    private lateinit var infoTitle: TextView
+    private lateinit var infoChannel: TextView
+    private lateinit var infoTime: TextView
+    private lateinit var infoRemaining: TextView
+    private lateinit var infoProgress: ProgressBar
+    private var infoCardHideRunnable: Runnable? = null
+    /** tvgId -> (当前节目名, 进度%, 开始, 结束)，EPG 加载后填充，供信息卡 & 列表复用 */
+    private var nowPlaying: Map<String, ProgramNow> = emptyMap()
+    data class ProgramNow(val title: String, val pct: Int, val start: Long, val stop: Long)
     private var allChannels: List<Channel> = emptyList()
     private var currentGroup: String? = null
     private var currentSource = 0
@@ -93,6 +106,24 @@ class MainActivity : AppCompatActivity() {
         playerView = findViewById(R.id.player_view)
         recycler = findViewById(R.id.channel_list)
         status = findViewById(R.id.status)
+        // TiviMate 风格：浮层默认隐藏，启动即满屏播放
+        uiLayer = findViewById(R.id.ui_layer)
+        channelPanel = findViewById(R.id.channel_panel)
+        infoCard = findViewById(R.id.info_card)
+        infoTitle = findViewById(R.id.info_title)
+        infoChannel = findViewById(R.id.info_channel)
+        infoTime = findViewById(R.id.info_time)
+        infoRemaining = findViewById(R.id.info_remaining)
+        infoProgress = findViewById(R.id.info_progress)
+        // TiviMate 风格顶栏时钟，每分钟更新
+        val clock = findViewById<TextView>(R.id.top_clock)
+        fun tickClock() {
+            clock.text = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date())
+        }
+        tickClock()
+        clock.postDelayed(object : Runnable {
+            override fun run() { tickClock(); clock.postDelayed(this, 30_000) }
+        }, 30_000)
         sourceSpinner = findViewById(R.id.source_spinner)
         searchEdit = findViewById(R.id.search_edit)
         swipe = findViewById(R.id.swipe_refresh)
@@ -143,6 +174,10 @@ class MainActivity : AppCompatActivity() {
         player = PlaybackService.ensurePlayer(this)
         PlaybackService.applyPlaybackPrefs(this, TiviMatePrefs.playbackPrefs(this))
         playerView.player = player
+        // TiviMate 风格：不用 Media3 控制条（它拦截 OK/方向键），导航完全交给我们的浮层逻辑
+        playerView.useController = false
+        playerView.isClickable = false
+        playerView.isFocusable = false
         // ── TV 大屏字幕样式 ─────────────────────────────────────────
         // 10-foot UI：字更大、黑色半透明底、白色字，保证任何画面都清晰
         val captionStyle = androidx.media3.ui.CaptionStyleCompat(
@@ -258,8 +293,23 @@ class MainActivity : AppCompatActivity() {
         // ① 同步加载缓存 → 频道列表立即可交互（冷启动秒开）
         val cacheHit = loadFromCache(0)
         Log.i(TAG, "COLD_START_CACHE hit=$cacheHit ms=${System.currentTimeMillis() - coldStartTime}")
-        // ② 后台拉网络 → 成功后刷新
+        // ② TiviMate 秒播：用缓存里的上次频道立即开播（不等网络刷新）
+        if (cacheHit) autoPlayLastChannel()
+        // ③ 后台拉网络 → 成功后刷新（不打断当前播放）
         loadSource(0)
+    }
+
+    /** TiviMate 秒播：启动即播放上次的频道（无历史则播第一个） */
+    private var autoPlayed = false
+    private fun autoPlayLastChannel() {
+        if (autoPlayed || allChannels.isEmpty()) return
+        val (lastId, _) = TiviMatePrefs.lastChannel(this)
+        val ch = if (lastId >= 0) allChannels.find { it.id == lastId } ?: allChannels[0] else allChannels[0]
+        autoPlayed = true
+        currentPos = allChannels.indexOf(ch).coerceAtLeast(0)
+        adapter.setSelected(currentPos)
+        playUnlocked(ch)
+        Log.i(TAG, "AUTOPLAY ${ch.name} (秒播, COLD_START_MS=${System.currentTimeMillis() - coldStartTime})")
     }
 
     private fun normalizeTvg(id: String?): String =
@@ -267,15 +317,52 @@ class MainActivity : AppCompatActivity() {
 
     private fun showTab(epg: Boolean) {
         showingEpg = epg
-        swipe.visibility = if (epg) View.GONE else View.VISIBLE
-        groupScroll.visibility = if (epg) View.GONE else View.VISIBLE
+        channelPanel.visibility = if (epg) View.GONE else View.VISIBLE
         epgScroll.visibility = if (epg) View.VISIBLE else View.GONE
-        findViewById<Button>(R.id.tab_channels).setBackgroundColor(
-            if (epg) 0xFF1A222C.toInt() else 0xFF2E7CF6.toInt()
-        )
-        findViewById<Button>(R.id.tab_epg).setBackgroundColor(
-            if (epg) 0xFF2E7CF6.toInt() else 0xFF1A222C.toInt()
-        )
+        if (epg) loadEpg()
+    }
+
+    /** TiviMate 风格：显示/隐藏 UI 浮层；默认隐藏，满屏播放 */
+    private fun setUiVisible(show: Boolean) {
+        uiLayer.visibility = if (show) View.VISIBLE else View.GONE
+        if (show) {
+            // 浮层出现时把焦点给到频道列表，方便遥控器操作
+            recycler.requestFocus()
+        }
+    }
+    private fun uiIsVisible() = uiLayer.visibility == View.VISIBLE
+
+    /** 换台时右上浮出信息卡，几秒后自动隐藏（TiviMate 风格） */
+    private fun showInfoCard(ch: Channel) {
+        refreshInfoCard(ch)
+        infoCard.visibility = View.VISIBLE
+        infoCardHideRunnable?.let { infoCard.removeCallbacks(it) }
+        val hide = Runnable { infoCard.visibility = View.GONE }
+        infoCardHideRunnable = hide
+        infoCard.postDelayed(hide, 5000)
+    }
+
+    private fun refreshInfoCard(ch: Channel) {
+        infoChannel.text = ch.name
+        val now = ch.tvgId?.let { nowPlaying[it] }
+        if (now != null && now.title.isNotEmpty()) {
+            infoTitle.text = now.title
+            infoProgress.progress = now.pct
+            if (now.start > 0 && now.stop > now.start) {
+                val fmt = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
+                infoTime.text = "${fmt.format(java.util.Date(now.start * 1000))} – ${fmt.format(java.util.Date(now.stop * 1000))}"
+                val mins = (now.stop - System.currentTimeMillis() / 1000) / 60
+                infoRemaining.text = if (mins > 0) "$mins 分钟" else ""
+            } else {
+                infoTime.text = ""; infoRemaining.text = ""
+            }
+            infoProgress.visibility = View.VISIBLE
+        } else {
+            infoTitle.text = ch.name
+            infoTime.text = "正在播放"
+            infoRemaining.text = ""
+            infoProgress.visibility = View.GONE
+        }
     }
 
     /** 加载 EPG 并生成网格（复用 Rust core 的流式 XMLTV 解析 + 网格算法）。 */
@@ -335,6 +422,17 @@ class MainActivity : AppCompatActivity() {
             if (result != null) {
                 epgAdapter.nowSecs = result.now
                 epgAdapter.submit(result)
+                // TiviMate 风格：把"当前节目 + 进度"注入频道列表行内显示 + 信息卡
+                val nowData = result.rows.associate { row ->
+                    val cur = row.programmes.firstOrNull { p -> p.start <= result.now && p.stop > result.now }
+                    val pct = if (cur != null && cur.stop > cur.start)
+                        ((result.now - cur.start) * 100 / (cur.stop - cur.start)).toInt().coerceIn(0, 100) else 0
+                    row.tvgId to ProgramNow(cur?.title ?: "", pct, cur?.start ?: 0, cur?.stop ?: 0)
+                }
+                nowPlaying = nowData
+                adapter.setNowPlaying(nowData.mapValues { it.value.title to it.value.pct })
+                // 刷新当前频道信息卡（若正在显示）
+                allChannels.getOrNull(currentPos)?.let { refreshInfoCard(it) }
                 if (showingEpg) status.text = "EPG: ${result.matched}/${result.requested} 频道匹配 · ${result.guideChannels} 个指南频道"
                 Log.i(TAG, "EPG_RESULT matched=${result.matched} requested=${result.requested} guide=${result.guideChannels} rows=${result.rows.size} programmes=${result.rows.sumOf { it.programmes.size }}")
             } else {
@@ -372,6 +470,8 @@ class MainActivity : AppCompatActivity() {
         buildGroupChips(result.groups)
         status.text = "已加载 ${allChannels.size} 个频道 · ${result.groups.size} 个分组${if (fromCache) "（缓存）" else ""}"
         if (!fromCache) PlaylistCache.save(this@MainActivity, currentSource, rawContent)
+        // 首次启动无缓存时，网络列表到位后也自动开播
+        if (!fromCache && !autoPlayed) autoPlayLastChannel()
         Log.i(TAG, "PLAYLIST_APPLIED channels=${allChannels.size} fromCache=$fromCache COLD_START_MS=${System.currentTimeMillis() - coldStartTime}")
     }
 
@@ -516,12 +616,31 @@ class MainActivity : AppCompatActivity() {
             Button(this).apply {
                 text = label
                 isAllCaps = false
+                textSize = 15f
+                setTextColor(android.graphics.Color.parseColor("#A1A1A6"))
+                setBackgroundResource(R.drawable.group_chip)
+                minHeight = 0
+                minimumWidth = 0
+                setPadding(28, 18, 28, 18)
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                ).apply { setMargins(0, 0, 14, 0) }
                 setOnClickListener {
                     currentGroup = key
                     adapter.setLists(FavoritesStore.favorites(this@MainActivity), FavoritesStore.recents(this@MainActivity))
                     adapter.filter(searchEdit.text.toString(), key)
                     val count = if (key == null) allChannels.size else adapter.itemCount
                     status.text = "$label: $count 个频道"
+                    // 选中态高亮（TiviMate 分组 tab）
+                    for (i in 0 until groupRow.childCount) {
+                        val c = groupRow.getChildAt(i)
+                        if (c is Button) {
+                            val selected = c.text == label
+                            c.setBackgroundResource(if (selected) R.drawable.group_chip_active else R.drawable.group_chip)
+                            c.setTextColor(android.graphics.Color.parseColor(if (selected) "#FFFFFF" else "#A1A1A6"))
+                        }
+                    }
                 }
                 groupRow.addView(this)
             }
@@ -555,7 +674,11 @@ class MainActivity : AppCompatActivity() {
         adapter.setLists(FavoritesStore.favorites(this), FavoritesStore.recents(this))
         adapter.refresh()
         Log.i(TAG, "WATCHED ${ch.id} ${ch.name} recents=${FavoritesStore.recents(this).size}")
+        // 记住上次频道（秒播：下次启动直接续播）
+        TiviMatePrefs.saveLastChannel(this, ch.id, currentSource)
         playCurrentUrl(ch)
+        // 换台时短暂浮出信息卡（TiviMate 风格）
+        showInfoCard(ch)
     }
 
     private fun tryNextUrl() {
@@ -731,16 +854,38 @@ class MainActivity : AppCompatActivity() {
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
         when (keyCode) {
+            // OK：切换频道列表浮层（TiviMate 核心交互）
+            KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
+                setUiVisible(!uiIsVisible())
+                return true
+            }
+            // 返回：优先关闭浮层，回满屏播放
+            KeyEvent.KEYCODE_BACK -> {
+                if (uiIsVisible()) { setUiVisible(false); return true }
+            }
+            // 左键：打开频道列表（若未开）
+            KeyEvent.KEYCODE_DPAD_LEFT -> {
+                if (!uiIsVisible()) { setUiVisible(true); showTab(false); return true }
+            }
+            // 右键：打开 EPG（若未开）
+            KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                if (!uiIsVisible()) { setUiVisible(true); showTab(true); return true }
+            }
+            // 上/下：满屏时换台；浮层打开时交给列表焦点处理
             KeyEvent.KEYCODE_CHANNEL_UP, KeyEvent.KEYCODE_DPAD_UP -> {
-                if (controllerVisible) return super.onKeyDown(keyCode, event)
-                zap(1); return true
+                if (!uiIsVisible() && !controllerVisible) { zap(1); return true }
             }
             KeyEvent.KEYCODE_CHANNEL_DOWN, KeyEvent.KEYCODE_DPAD_DOWN -> {
-                if (controllerVisible) return super.onKeyDown(keyCode, event)
-                zap(-1); return true
+                if (!uiIsVisible() && !controllerVisible) { zap(-1); return true }
             }
         }
         return super.onKeyDown(keyCode, event)
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onBackPressed() {
+        if (uiIsVisible()) { setUiVisible(false); return }
+        super.onBackPressed()
     }
 
     private fun zap(delta: Int) {

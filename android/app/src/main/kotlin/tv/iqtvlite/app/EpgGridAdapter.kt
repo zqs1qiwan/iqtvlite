@@ -76,8 +76,12 @@ class EpgGridAdapter(
                 layoutParams = LinearLayout.LayoutParams(widthPx, ViewGroup.LayoutParams.MATCH_PARENT).apply {
                     setMargins(2, 4, 2, 4)
                 }
-                setBackgroundColor(if (p.progress in 1..99) Color.parseColor("#1E3A5F") else Color.parseColor("#1A222C"))
+                setBackgroundColor(if (p.progress in 1..99) Color.parseColor("#1B3358") else Color.parseColor("#161F2B"))
                 isFocusable = true
+                foreground = android.graphics.drawable.RippleDrawable(
+                    android.content.res.ColorStateList.valueOf(Color.parseColor("#335B8C")),
+                    null, null
+                )
             }
 
             val title = TextView(ctx).apply {

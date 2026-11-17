@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- TiviMate 风格半透明侧边浮层：视频透出，右侧圆角 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="#D40A0F16" />
+    <corners android:radius="0dp" />
+</shape>

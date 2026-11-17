@@ -1,4 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="focus_bg">#1A2E4A</color>
+    <!-- focus_bg 现定义在 colors.xml（TiviMate 配色） -->
 </resources>

@@ -4,6 +4,7 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
+import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 import coil.load
@@ -73,11 +74,20 @@ class ChannelAdapter(
         if (pos in filtered.indices) notifyItemChanged(pos)
     }
 
+    /** 当前节目信息（tvgId -> 标题 + 进度百分比），由 EPG 加载后注入，TiviMate 风格行内显示 */
+    private var nowByTvg: Map<String, Pair<String, Int>> = emptyMap()
+    fun setNowPlaying(map: Map<String, Pair<String, Int>>) {
+        nowByTvg = map
+        notifyDataSetChanged()
+    }
+
     class VH(view: View) : RecyclerView.ViewHolder(view) {
         val name: TextView = view.findViewById(R.id.channel_name)
         val group: TextView = view.findViewById(R.id.channel_group)
         val logo: ImageView = view.findViewById(R.id.channel_logo)
         val number: TextView = view.findViewById(R.id.channel_number)
+        val progress: ProgressBar = view.findViewById(R.id.channel_progress)
+        val playingMark: View = view.findViewById(R.id.now_playing_mark)
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
@@ -88,14 +98,28 @@ class ChannelAdapter(
     override fun onBindViewHolder(holder: VH, position: Int) {
         val ch = filtered[position]
         holder.name.text = ch.name
-        holder.group.text = ch.group
         holder.number.text = (position + 1).toString().padStart(3, '0')
+        holder.logo.setImageResource(R.drawable.ic_tv)
         if (ch.logo != null) {
             holder.logo.load(ch.logo) { crossfade(true) }
-        } else {
-            holder.logo.setImageResource(R.drawable.ic_tv)
         }
+        // TiviMate 风格：行内显示当前节目 + 进度；无 EPG 时退回显示分组名
+        val now = ch.tvgId?.let { nowByTvg[it] }
+        if (now != null) {
+            holder.group.text = now.first
+            holder.progress.progress = now.second
+            holder.progress.visibility = android.view.View.VISIBLE
+        } else {
+            holder.group.text = ch.group
+            holder.progress.visibility = android.view.View.GONE
+        }
+        // 显式设置背景 drawable，绕开系统默认的高亮色（AppCompat 默认黄色）
+        holder.itemView.background = androidx.core.content.ContextCompat.getDrawable(
+            holder.itemView.context,
+            if (position == selectedPos) R.drawable.channel_row_active else R.drawable.channel_row_normal
+        )
         holder.itemView.isSelected = position == selectedPos
+        holder.playingMark.visibility = if (position == selectedPos) android.view.View.VISIBLE else android.view.View.INVISIBLE
         holder.itemView.setOnClickListener {
             setSelected(position)
             onSelect(ch)
@@ -110,7 +134,11 @@ class ChannelAdapter(
         holder.itemView.setOnFocusChangeListener { v, hasFocus ->
             if (hasFocus) {
                 setSelected(position)
-                v.post { v.requestFocus() }
+                // tvOS 风格：聚焦放大动画
+                val anim = android.animation.AnimatorInflater.loadStateListAnimator(
+                    v.context, R.animator.focus_scale
+                )
+                v.stateListAnimator = anim
             }
         }
     }

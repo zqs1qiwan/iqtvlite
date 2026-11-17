@@ -26,6 +26,8 @@ object TiviMatePrefs {
     private const val KEY_EPG_SOURCES = "epg_sources"
     private const val KEY_RESUME = "resume_positions"
     private const val KEY_PLAYBACK_PREFS = "playback_prefs"
+    private const val KEY_LAST_CHANNEL = "last_channel_id"
+    private const val KEY_LAST_SOURCE = "last_source_index"
 
     private fun prefs(ctx: Context): SharedPreferences =
         ctx.getSharedPreferences(PREF, Context.MODE_PRIVATE)
@@ -142,6 +144,16 @@ object TiviMatePrefs {
         }
         prefs(ctx).edit().putString(KEY_EPG_SOURCES, a.toString()).apply()
     }
+
+    // ── 上次观看频道（TiviMate 秒播：启动自动播放）─────────────────
+    fun saveLastChannel(ctx: Context, channelId: Long, sourceIndex: Int) {
+        prefs(ctx).edit()
+            .putLong(KEY_LAST_CHANNEL, channelId)
+            .putInt(KEY_LAST_SOURCE, sourceIndex)
+            .apply()
+    }
+    fun lastChannel(ctx: Context): Pair<Long, Int> =
+        prefs(ctx).getLong(KEY_LAST_CHANNEL, -1L) to prefs(ctx).getInt(KEY_LAST_SOURCE, 0)
 
     // ── 断点续播（VOD/剧集）────────────────────────────────────────
     fun saveResume(ctx: Context, key: String, positionMs: Long, durationMs: Long) {

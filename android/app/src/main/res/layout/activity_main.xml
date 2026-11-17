@@ -1,150 +1,281 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<!-- TiviMate 风格：视频满屏铺底，所有 UI 都是按需浮出的半透明浮层 -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:background="#0C1116">
+    android:background="@android:color/black">
 
-    <!-- 播放区 -->
-    <FrameLayout
+    <!-- ① 满屏播放器（永远在底层，尺寸不随 UI 变化） -->
+    <androidx.media3.ui.PlayerView
+        android:id="@+id/player_view"
         android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
-        android:background="#000000">
+        android:layout_height="match_parent"
+        android:keepScreenOn="true" />
 
-        <androidx.media3.ui.PlayerView
-            android:id="@+id/player_view"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:keepScreenOn="true" />
-    </FrameLayout>
-
-    <!-- 状态条 -->
-    <TextView
-        android:id="@+id/status"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:padding="10dp"
-        android:textSize="18sp"
-        android:textColor="#D8E2EC"
-        android:background="#131B24"
-        android:maxLines="1"
-        android:ellipsize="end" />
-
-    <!-- 控制行 -->
+    <!-- ② 换台信息卡：右上浮出，几秒后消失（TiviMate 标志性元素） -->
     <LinearLayout
-        android:layout_width="match_parent"
+        android:id="@+id/info_card"
+        android:layout_width="640dp"
         android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:padding="8dp"
-        android:background="#131B24"
-        android:gravity="center_vertical">
+        android:layout_gravity="top|end"
+        android:layout_marginTop="24dp"
+        android:layout_marginEnd="24dp"
+        android:orientation="vertical"
+        android:padding="20dp"
+        android:background="@drawable/info_card_bg"
+        android:visibility="gone">
 
-        <Spinner
-            android:id="@+id/source_spinner"
-            android:layout_width="170dp"
-            android:layout_height="48dp"
-            android:layout_marginEnd="6dp"
-            android:background="@drawable/focus_border" />
-
-        <Button
-            android:id="@+id/tab_channels"
-            android:layout_width="wrap_content"
+        <TextView
+            android:id="@+id/info_title"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="频道"
-            android:minWidth="0dp"
-            android:layout_marginEnd="4dp" />
-
-        <Button
-            android:id="@+id/tab_epg"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="EPG"
-            android:minWidth="0dp"
-            android:layout_marginEnd="6dp" />
-
-        <Button
-            android:id="@+id/btn_multiview"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="多画面"
-            android:minWidth="0dp"
-            android:layout_marginEnd="6dp" />
-
-        <Button
-            android:id="@+id/btn_subtitle"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="字幕"
-            android:minWidth="0dp"
-            android:layout_marginEnd="6dp" />
-
-        <Button
-            android:id="@+id/btn_settings"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="设置"
-            android:minWidth="0dp"
-            android:layout_marginEnd="6dp" />
-
-        <EditText
-            android:id="@+id/search_edit"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:hint="搜索频道…"
-            android:textColor="#E8EDF2"
-            android:textColorHint="#66717D"
-            android:textSize="18sp"
-            android:background="@drawable/focus_border"
-            android:inputType="text"
-            android:singleLine="true"
-            android:padding="8dp" />
-    </LinearLayout>
-
-    <!-- 分组横向滚动（只在频道 tab 显示） -->
-    <HorizontalScrollView
-        android:id="@+id/group_scroll"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:background="#0F151C">
+            android:textColor="@color/tm_text"
+            android:textSize="24sp"
+            android:fontFamily="sans-serif-medium"
+            android:maxLines="1"
+            android:ellipsize="end" />
 
         <LinearLayout
-            android:id="@+id/group_row"
-            android:layout_width="wrap_content"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <TextView
+                android:id="@+id/info_channel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="@color/tm_focus"
+                android:textSize="15sp" />
+
+            <TextView
+                android:id="@+id/info_time"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="14dp"
+                android:textColor="@color/tm_text_2"
+                android:textSize="15sp" />
+
+            <TextView
+                android:id="@+id/info_remaining"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="@color/tm_text_2"
+                android:textSize="14sp" />
+        </LinearLayout>
+
+        <ProgressBar
+            android:id="@+id/info_progress"
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="match_parent"
+            android:layout_height="5dp"
+            android:layout_marginTop="12dp"
+            android:max="100"
+            android:progressDrawable="@drawable/progress_bar" />
+    </LinearLayout>
+
+    <!-- ③ UI 浮层：默认隐藏，按 OK / 方向键呼出。半透明，视频透出 -->
+    <LinearLayout
+        android:id="@+id/ui_layer"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:visibility="gone">
+
+        <!-- 顶栏：品牌 + 状态 + 时钟 + 关闭提示 -->
+        <LinearLayout
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
-            android:padding="6dp" />
-    </HorizontalScrollView>
+            android:paddingStart="20dp"
+            android:paddingEnd="20dp"
+            android:paddingTop="10dp"
+            android:paddingBottom="10dp"
+            android:background="@drawable/panel_top_bg"
+            android:gravity="center_vertical">
 
-    <!-- 频道列表 -->
-    <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
-        android:id="@+id/swipe_refresh"
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1">
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="iqtv"
+                android:textColor="@color/tm_focus"
+                android:textSize="20sp"
+                android:fontFamily="sans-serif-black" />
 
-        <androidx.recyclerview.widget.RecyclerView
-            android:id="@+id/channel_list"
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="lite"
+                android:textColor="@color/tm_text"
+                android:textSize="20sp"
+                android:fontFamily="sans-serif-light"
+                android:layout_marginEnd="24dp" />
+
+            <TextView
+                android:id="@+id/status"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:textSize="15sp"
+                android:textColor="@color/tm_text_2"
+                android:maxLines="1"
+                android:ellipsize="end" />
+
+            <TextView
+                android:id="@+id/top_clock"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="16dp"
+                android:textSize="20sp"
+                android:fontFamily="sans-serif-medium"
+                android:textColor="@color/tm_text"
+                android:text="--:--" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="20dp"
+                android:text="返回键关闭"
+                android:textSize="13sp"
+                android:textColor="@color/tm_text_3" />
+        </LinearLayout>
+
+        <!-- 控制行 -->
+        <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:scrollbars="vertical" />
-    </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:padding="8dp"
+            android:background="@drawable/panel_top_bg"
+            android:gravity="center_vertical">
 
-    <!-- EPG 时间轴网格（横向 + 纵向滚动） -->
-    <HorizontalScrollView
-        android:id="@+id/epg_scroll"
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
-        android:visibility="gone"
-        android:background="#0C1116">
+            <Spinner
+                android:id="@+id/source_spinner"
+                android:layout_width="170dp"
+                android:layout_height="48dp"
+                android:layout_marginEnd="6dp"
+                android:background="@drawable/focus_border" />
 
-        <androidx.recyclerview.widget.RecyclerView
-            android:id="@+id/epg_recycler"
-            android:layout_width="wrap_content"
-            android:layout_height="match_parent"
-            android:scrollbars="vertical" />
-    </HorizontalScrollView>
+            <Button
+                android:id="@+id/tab_channels"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="频道"
+                android:minWidth="0dp"
+                android:background="@drawable/focus_border"
+                android:layout_marginEnd="4dp" />
 
-</LinearLayout>
+            <Button
+                android:id="@+id/tab_epg"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="EPG"
+                android:minWidth="0dp"
+                android:background="@drawable/focus_border"
+                android:layout_marginEnd="6dp" />
+
+            <Button
+                android:id="@+id/btn_multiview"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="多画面"
+                android:minWidth="0dp"
+                android:background="@drawable/focus_border"
+                android:layout_marginEnd="6dp" />
+
+            <Button
+                android:id="@+id/btn_subtitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="字幕"
+                android:minWidth="0dp"
+                android:background="@drawable/focus_border"
+                android:layout_marginEnd="6dp" />
+
+            <Button
+                android:id="@+id/btn_settings"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="设置"
+                android:minWidth="0dp"
+                android:background="@drawable/focus_border"
+                android:layout_marginEnd="6dp" />
+
+            <EditText
+                android:id="@+id/search_edit"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:hint="搜索频道…"
+                android:textColor="#E8EDF2"
+                android:textColorHint="#66717D"
+                android:textSize="18sp"
+                android:background="@drawable/focus_border"
+                android:inputType="text"
+                android:singleLine="true"
+                android:padding="8dp" />
+        </LinearLayout>
+
+        <!-- 内容区：左侧频道浮层 + EPG 浮层，右侧透出视频 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:orientation="horizontal">
+
+            <!-- 频道列表浮层（左，半透明） -->
+            <LinearLayout
+                android:id="@+id/channel_panel"
+                android:layout_width="720dp"
+                android:layout_height="match_parent"
+                android:orientation="vertical"
+                android:background="@drawable/panel_side_bg">
+
+                <HorizontalScrollView
+                    android:id="@+id/group_scroll"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:background="@drawable/panel_top_bg">
+
+                    <LinearLayout
+                        android:id="@+id/group_row"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:padding="8dp" />
+                </HorizontalScrollView>
+
+                <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+                    android:id="@+id/swipe_refresh"
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_weight="1">
+
+                    <androidx.recyclerview.widget.RecyclerView
+                        android:id="@+id/channel_list"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:listSelector="@android:color/transparent"
+                        android:scrollbars="vertical" />
+                </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
+            </LinearLayout>
+
+            <!-- EPG 网格浮层（中，半透明；默认隐藏） -->
+            <HorizontalScrollView
+                android:id="@+id/epg_scroll"
+                android:layout_width="1100dp"
+                android:layout_height="match_parent"
+                android:visibility="gone"
+                android:background="@drawable/panel_side_bg">
+
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/epg_recycler"
+                    android:layout_width="wrap_content"
+                    android:layout_height="match_parent"
+                    android:scrollbars="vertical" />
+            </HorizontalScrollView>
+        </LinearLayout>
+    </LinearLayout>
+</FrameLayout>

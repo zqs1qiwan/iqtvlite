@@ -1,27 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- TV 焦点：清晰的蓝色边框 + 背景高亮，10-foot UI 看得见 -->
+<!-- tvOS 焦点行：显式指定各状态 drawable，绝不使用系统默认高亮（会变黄） -->
 <selector xmlns:android="http://schemas.android.com/apk/res/android">
-    <item android:state_selected="true">
-        <layer-list>
-            <item android:drawable="@color/focus_bg" />
-            <item>
-                <shape android:shape="rectangle">
-                    <stroke android:width="3dp" android:color="#2E7CF6" />
-                    <solid android:color="@android:color/transparent" />
-                </shape>
-            </item>
-        </layer-list>
-    </item>
-    <item android:state_focused="true">
-        <layer-list>
-            <item android:drawable="@color/focus_bg" />
-            <item>
-                <shape android:shape="rectangle">
-                    <stroke android:width="3dp" android:color="#2E7CF6" />
-                    <solid android:color="@android:color/transparent" />
-                </shape>
-            </item>
-        </layer-list>
-    </item>
+    <item android:state_selected="true" android:drawable="@drawable/channel_row_active" />
+    <item android:state_focused="true" android:drawable="@drawable/channel_row_active" />
+    <item android:state_pressed="true" android:drawable="@drawable/channel_row_active" />
+    <item android:state_activated="true" android:drawable="@drawable/channel_row_active" />
+    <!-- 默认：透明，让半透明浮层底透出 -->
     <item android:drawable="@android:color/transparent" />
 </selector>
