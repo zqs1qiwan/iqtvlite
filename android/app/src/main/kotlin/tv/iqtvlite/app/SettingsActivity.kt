@@ -61,6 +61,13 @@ class SettingsActivity : AppCompatActivity() {
             }
         }
 
+        setupRow(R.id.row_diagnostics, R.id.sub_diagnostics, "播放诊断", "首帧耗时/缓冲/分辨率，可复制") {
+            val intent = android.content.Intent(this, MainActivity::class.java).apply {
+                putExtra("show_diagnostics", true)
+                flags = android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP or android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP
+            }
+            startActivity(intent)
+        }
         setupRow(R.id.row_reminders, R.id.sub_reminders, "提醒管理", "查看 / 删除已设置的节目提醒") {
             val list = TiviMatePrefs.reminders(this)
             val names = if (list.isEmpty()) arrayOf("暂无提醒") else

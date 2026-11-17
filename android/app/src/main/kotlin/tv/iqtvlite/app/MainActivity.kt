@@ -73,7 +73,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var swipe: SwipeRefreshLayout
     private lateinit var groupRow: LinearLayout
     private lateinit var groupScroll: HorizontalScrollView
-    private lateinit var epgScroll: HorizontalScrollView
+    private lateinit var epgScroll: View
+    private lateinit var epgSearch: EditText
+    private lateinit var epgSearchCount: TextView
     private lateinit var epgRecycler: RecyclerView
     private lateinit var epgAdapter: EpgGridAdapter
     private lateinit var posterGrid: RecyclerView
@@ -105,6 +107,8 @@ class MainActivity : AppCompatActivity() {
     private var nowPlaying: Map<String, ProgramNow> = emptyMap()
     data class ProgramNow(val title: String, val pct: Int, val start: Long, val stop: Long, val nextTitle: String = "")
     private var allChannels: List<Channel> = emptyList()
+    private var epgMatched = 0
+    private var epgRequested = 0
     private var currentGroup: String? = null
     private var currentSource = 0
     private var currentPos = -1
@@ -124,6 +128,8 @@ class MainActivity : AppCompatActivity() {
 
     /** 换台计时：发起播放 → 首帧（衡量「丝滑」的核心指标） */
     private var zapStartTime = 0L
+    private var lastZapMs = 0L
+    private var autoPlayColdMs = 0L
     private var zapCount = 0
     private var zapTotalMs = 0L
     private var zapMaxMs = 0L
@@ -183,6 +189,17 @@ class MainActivity : AppCompatActivity() {
         groupRow = findViewById(R.id.group_row)
         groupScroll = findViewById(R.id.group_scroll)
         epgScroll = findViewById(R.id.epg_scroll)
+        epgSearch = findViewById(R.id.epg_search)
+        epgSearchCount = findViewById(R.id.epg_search_count)
+        // R1 EPG 节目搜索：输入即过滤网格
+        epgSearch.addTextChangedListener(object : android.text.TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {
+                val n = epgAdapter.filter(s?.toString() ?: "")
+                epgSearchCount.text = if (s.isNullOrEmpty()) "" else "$n 个频道"
+            }
+            override fun afterTextChanged(s: android.text.Editable?) {}
+        })
         epgRecycler = findViewById(R.id.epg_recycler)
         // EPG 时间刻度轴：从当前整点开始，每小时一格（2 slot × 160dp），与节目行对齐
         findViewById<LinearLayout>(R.id.epg_ruler).let { ruler ->
@@ -454,7 +471,8 @@ class MainActivity : AppCompatActivity() {
         currentPos = allChannels.indexOf(ch).coerceAtLeast(0)
         syncSelection(currentPos)
         playUnlocked(ch)
-        Log.i(TAG, "AUTOPLAY ${ch.name} (秒播, COLD_START_MS=${System.currentTimeMillis() - coldStartTime})")
+        autoPlayColdMs = System.currentTimeMillis() - coldStartTime
+        Log.i(TAG, "AUTOPLAY ${ch.name} (秒播, COLD_START_MS=$autoPlayColdMs)")
     }
 
     private fun normalizeTvg(id: String?): String =
@@ -465,8 +483,16 @@ class MainActivity : AppCompatActivity() {
         channelPanel.visibility = if (epg) View.GONE else View.VISIBLE
         epgScroll.visibility = if (epg) View.VISIBLE else View.GONE
         // EPG tab 不显示 PiP
-        if (epg) pipContainer.visibility = View.GONE
-        else if (uiIsVisible() && TiviMatePrefs.pipEnabled(this)) pipContainer.visibility = View.VISIBLE
+        if (epg) {
+            pipContainer.visibility = View.GONE
+            // R1：进入 EPG 时清空上次搜索并把焦点给搜索框
+            if (epgSearch.text.isNotEmpty()) {
+                epgSearch.setText("")
+                epgAdapter.filter("")
+                epgSearchCount.text = ""
+            }
+            epgSearch.requestFocus()
+        } else if (uiIsVisible() && TiviMatePrefs.pipEnabled(this)) pipContainer.visibility = View.VISIBLE
         if (epg) loadEpg()
     }
 
@@ -502,6 +528,47 @@ class MainActivity : AppCompatActivity() {
         val hide = Runnable { infoCard.visibility = View.GONE }
         infoCardHideRunnable = hide
         infoCard.postDelayed(hide, 5000)
+    }
+
+    /** R2 网络/播放诊断面板：收集本机实时状态，可一键复制（零遥测） */
+    private fun showDiagnostics() {
+        val ch = allChannels.getOrNull(currentPos)
+        val fmt = player.videoFormat
+        val fps = fmt?.frameRate ?: -1f
+        val res = if (fmt != null && fmt.width > 0) "${fmt.width}×${fmt.height}" + (if (fps > 0) " @ ${fps.toInt()}fps" else " (直播)") else "未知"
+        val codec = fmt?.codecs ?: "未知"
+        val buffered = player.bufferedPosition
+        val pos = player.currentPosition
+        val input = DiagnosticsReport.Input(
+            appVersion = RustBridge.version(),
+            channelName = ch?.name ?: "无",
+            channelUrl = ch?.url ?: "无",
+            userAgent = PlaylistUrlResolver.resolveUserAgent(ch?.userAgent),
+            engine = "Media3 ExoPlayer 1.11.1 (硬解优先)",
+            resolution = res,
+            codec = codec,
+            bufferedMs = buffered,
+            positionMs = pos,
+            lastZapMs = lastZapMs,
+            avgZapMs = if (zapCount > 0) zapTotalMs / zapCount else 0,
+            zapCount = zapCount,
+            coldStartMs = autoPlayColdMs,
+            epgMatched = epgMatched,
+            epgRequested = epgRequested,
+            channelCount = allChannels.size,
+            sourceName = sources.getOrNull(currentSource)?.name ?: "未知",
+        )
+        val text = DiagnosticsReport.build(input)
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("播放诊断（仅本地）")
+            .setMessage(text)
+            .setPositiveButton("复制") { _, _ ->
+                val cm = getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                cm.setPrimaryClip(android.content.ClipData.newPlainText("iqtvlite 诊断", text))
+                Toast.makeText(this, "诊断信息已复制", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("关闭", null)
+            .show()
     }
 
     private fun refreshInfoCard(ch: Channel) {
@@ -590,6 +657,8 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             if (result != null) {
+                epgMatched = result.matched
+                epgRequested = result.requested
                 epgAdapter.nowSecs = result.now
                 epgAdapter.submit(result)
                 // TiviMate 风格：把"当前节目 + 进度"注入频道列表行内显示 + 信息卡
@@ -1219,8 +1288,18 @@ class MainActivity : AppCompatActivity() {
         play(allChannels[next])
     }
 
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+    }
+
     override fun onResume() {
         super.onResume()
+        // R2：设置页请求播放诊断（CLEAR_TOP 回到 MainActivity）
+        if (intent?.getBooleanExtra("show_diagnostics", false) == true) {
+            intent.removeExtra("show_diagnostics")
+            showDiagnostics()
+        }
         // 手机推源返回后：若自定义源地址变化，立即切换过去
         val current = readPushedSource()
         if (current?.url != pushedSource?.url) {

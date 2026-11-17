@@ -45,6 +45,12 @@
                 <TextView android:id="@+id/sub_restore" android:text="从备份文件导入配置" android:textColor="#9AA7B4" android:textSize="15sp" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
             </LinearLayout>
 
+            <LinearLayout android:id="@+id/row_diagnostics" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:orientation="vertical" android:background="@drawable/focus_border" android:padding="16dp" android:layout_marginBottom="8dp">
+                <TextView android:id="@+id/title_diagnostics" android:text="播放诊断" android:textColor="#E8EDF2" android:textSize="20sp" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
+                <TextView android:id="@+id/sub_diagnostics" android:text="查看首帧耗时/缓冲/分辨率/EPG匹配，可复制" android:textColor="#9AA7B4" android:textSize="15sp" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
+            </LinearLayout>
+
             <LinearLayout android:id="@+id/row_reminders" android:layout_width="match_parent" android:layout_height="wrap_content"
                 android:orientation="vertical" android:background="@drawable/focus_border" android:padding="16dp" android:layout_marginBottom="8dp">
                 <TextView android:id="@+id/title_reminders" android:text="提醒管理" android:textColor="#E8EDF2" android:textSize="20sp" android:layout_width="wrap_content" android:layout_height="wrap_content"/>

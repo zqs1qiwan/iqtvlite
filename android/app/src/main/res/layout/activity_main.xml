@@ -331,50 +331,96 @@
                 </FrameLayout>
             </LinearLayout>
 
-            <!-- EPG 网格浮层（中，半透明；默认隐藏） -->
-            <HorizontalScrollView
-                android:id="@+id/epg_scroll"
-                android:layout_width="1100dp"
-                android:layout_height="match_parent"
-                android:visibility="gone"
-                android:background="@drawable/panel_side_bg">
-
-                <!-- 刻度与节目行同在一个横向滚动容器，保证始终对齐 -->
+                <!-- EPG 容器：固定搜索栏 + 横向滚动的刻度/网格 -->
                 <LinearLayout
-                    android:layout_width="wrap_content"
+                    android:id="@+id/epg_scroll"
+                    android:layout_width="1100dp"
                     android:layout_height="match_parent"
-                    android:orientation="vertical">
+                    android:orientation="vertical"
+                    android:visibility="gone"
+                    android:background="@drawable/panel_side_bg">
 
-                    <!-- 时间刻度轴（SLOT 160dp/30min，与节目块对齐） -->
+                    <!-- R1 EPG 节目搜索：输入节目名/频道名过滤 -->
                     <LinearLayout
-                        android:layout_width="wrap_content"
-                        android:layout_height="36dp"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
                         android:orientation="horizontal"
-                        android:background="@drawable/panel_top_bg">
+                        android:padding="8dp"
+                        android:background="@drawable/panel_top_bg"
+                        android:gravity="center_vertical">
 
                         <TextView
-                            android:layout_width="140dp"
-                            android:layout_height="match_parent"
-                            android:gravity="center"
-                            android:text="频道"
-                            android:textColor="@color/tm_text_2"
-                            android:textSize="13sp" />
-
-                        <LinearLayout
-                            android:id="@+id/epg_ruler"
                             android:layout_width="wrap_content"
-                            android:layout_height="match_parent"
-                            android:orientation="horizontal" />
+                            android:layout_height="wrap_content"
+                            android:text="🔍"
+                            android:textSize="18sp"
+                            android:layout_marginEnd="8dp" />
+
+                        <EditText
+                            android:id="@+id/epg_search"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:hint="搜索节目或频道…"
+                            android:textColor="#E8EDF2"
+                            android:textColorHint="#66717D"
+                            android:textSize="16sp"
+                            android:background="@drawable/focus_border"
+                            android:inputType="text"
+                            android:singleLine="true"
+                            android:padding="8dp" />
+
+                        <TextView
+                            android:id="@+id/epg_search_count"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="10dp"
+                            android:textColor="@color/tm_text_3"
+                            android:textSize="13sp" />
                     </LinearLayout>
 
-                    <androidx.recyclerview.widget.RecyclerView
-                        android:id="@+id/epg_recycler"
-                        android:layout_width="wrap_content"
+                    <HorizontalScrollView
+                        android:layout_width="match_parent"
                         android:layout_height="0dp"
-                        android:layout_weight="1"
-                        android:scrollbars="vertical" />
+                        android:layout_weight="1">
+
+                        <!-- 刻度与节目行同在一个横向滚动容器，保证始终对齐 -->
+                        <LinearLayout
+                            android:layout_width="wrap_content"
+                            android:layout_height="match_parent"
+                            android:orientation="vertical">
+
+                            <!-- 时间刻度轴（SLOT 160dp/30min，与节目块对齐） -->
+                            <LinearLayout
+                                android:layout_width="wrap_content"
+                                android:layout_height="36dp"
+                                android:orientation="horizontal"
+                                android:background="@drawable/panel_top_bg">
+
+                                <TextView
+                                    android:layout_width="140dp"
+                                    android:layout_height="match_parent"
+                                    android:gravity="center"
+                                    android:text="频道"
+                                    android:textColor="@color/tm_text_2"
+                                    android:textSize="13sp" />
+
+                                <LinearLayout
+                                    android:id="@+id/epg_ruler"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="match_parent"
+                                    android:orientation="horizontal" />
+                            </LinearLayout>
+
+                            <androidx.recyclerview.widget.RecyclerView
+                                android:id="@+id/epg_recycler"
+                                android:layout_width="wrap_content"
+                                android:layout_height="0dp"
+                                android:layout_weight="1"
+                                android:scrollbars="vertical" />
+                        </LinearLayout>
+                    </HorizontalScrollView>
                 </LinearLayout>
-            </HorizontalScrollView>
         </LinearLayout>
     </LinearLayout>
 

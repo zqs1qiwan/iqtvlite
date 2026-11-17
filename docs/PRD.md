@@ -50,8 +50,8 @@
 | F9 | 家长控制 / 备份还原 / 字幕音轨 | ✅ | §5.9 |
 | F10 | 快捷键：数字跳转/频道上下键 | ✅ | §5.10 |
 | — | ~~DVR 录制~~ | ❌ 已删除（硬约束） | §6 |
-| R1 | EPG 节目搜索 | ⬜ P0 | competitive-roadmap.md |
-| R2 | 网络/播放诊断面板 | ⬜ P0 | competitive-roadmap.md |
+| R1 | EPG 节目搜索 | ✅ P0 | competitive-roadmap.md |
+| R2 | 网络/播放诊断面板 | ✅ P0 | competitive-roadmap.md |
 | R3 | 全局收藏/最近观看统一视图 | ⬜ P1 | competitive-roadmap.md |
 | R4 | 频道预览缩略图网格（opt-in） | ⬜ P1 | competitive-roadmap.md |
 | R5 | 配置导入/导出（二维码/文件） | ⬜ P1 | competitive-roadmap.md |

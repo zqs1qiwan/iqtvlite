@@ -33,6 +33,8 @@ class EpgGridAdapter(
     var nowSecs: Long = System.currentTimeMillis() / 1000
 
     private var rows: List<EpgRow> = emptyList()
+    private var allRows: List<EpgRow> = emptyList()
+    private var query: String = ""
     private var slotMinutes: Int = 30
 
     companion object {
@@ -40,8 +42,28 @@ class EpgGridAdapter(
     }
 
     fun submit(grid: EpgGridData) {
-        rows = grid.rows
+        allRows = grid.rows
         slotMinutes = grid.slotMinutes
+        applyFilter(query)
+    }
+
+    /** R1 EPG 节目搜索：按节目名/频道名过滤；返回匹配频道数。 */
+    fun filter(queryText: String): Int {
+        query = queryText.trim()
+        applyFilter(query)
+        return rows.size
+    }
+
+    private fun applyFilter(q: String) {
+        rows = if (q.isEmpty()) {
+            allRows
+        } else {
+            val needle = q.lowercase(java.util.Locale.ROOT)
+            allRows.filter { row ->
+                row.name.lowercase(java.util.Locale.ROOT).contains(needle) ||
+                    row.programmes.any { it.title.lowercase(java.util.Locale.ROOT).contains(needle) }
+            }
+        }
         notifyDataSetChanged()
     }
 
@@ -76,12 +98,22 @@ class EpgGridAdapter(
                 layoutParams = LinearLayout.LayoutParams(widthPx, ViewGroup.LayoutParams.MATCH_PARENT).apply {
                     setMargins(2, 4, 2, 4)
                 }
-                setBackgroundColor(if (p.progress in 1..99) Color.parseColor("#1B3358") else Color.parseColor("#161F2B"))
+                val isMatch = query.isNotEmpty() && p.title.lowercase(java.util.Locale.ROOT).contains(query.lowercase(java.util.Locale.ROOT))
+                setBackgroundColor(when {
+                    isMatch -> Color.parseColor("#2A4A6B")          // R1 搜索命中：高亮蓝
+                    p.progress in 1..99 -> Color.parseColor("#1B3358") // 当前播出
+                    else -> Color.parseColor("#161F2B")
+                })
+                if (isMatch) {
+                    foreground = android.graphics.drawable.RippleDrawable(
+                        android.content.res.ColorStateList.valueOf(Color.parseColor("#4FC3F7")), null, null)
+                } else {
+                    foreground = android.graphics.drawable.RippleDrawable(
+                        android.content.res.ColorStateList.valueOf(Color.parseColor("#335B8C")),
+                        null, null
+                    )
+                }
                 isFocusable = true
-                foreground = android.graphics.drawable.RippleDrawable(
-                    android.content.res.ColorStateList.valueOf(Color.parseColor("#335B8C")),
-                    null, null
-                )
             }
 
             val title = TextView(ctx).apply {
