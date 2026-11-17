@@ -645,8 +645,6 @@ mod tests {
         );
     }
 
-
-
     #[test]
     fn query_param_works() {
         assert_eq!(
