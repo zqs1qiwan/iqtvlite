@@ -28,6 +28,9 @@ object TiviMatePrefs {
     private const val KEY_PLAYBACK_PREFS = "playback_prefs"
     private const val KEY_LAST_CHANNEL = "last_channel_id"
     private const val KEY_LAST_SOURCE = "last_source_index"
+    private const val KEY_HIDDEN_GROUPS = "hidden_groups"
+    private const val KEY_GROUP_NAMES = "group_names"
+    private const val KEY_PIP_ENABLED = "pip_enabled"
 
     private fun prefs(ctx: Context): SharedPreferences =
         ctx.getSharedPreferences(PREF, Context.MODE_PRIVATE)
@@ -145,6 +148,37 @@ object TiviMatePrefs {
         prefs(ctx).edit().putString(KEY_EPG_SOURCES, a.toString()).apply()
     }
 
+    // ── 分组隐藏 / 重命名 ────────────────────────────────────────────
+    fun hiddenGroups(ctx: Context): Set<String> {
+        val raw = prefs(ctx).getString(KEY_HIDDEN_GROUPS, null) ?: return emptySet()
+        return try {
+            val a = JSONArray(raw); (0 until a.length()).map { a.getString(it) }.toSet()
+        } catch (_: Exception) { emptySet() }
+    }
+    fun toggleHiddenGroup(ctx: Context, group: String): Boolean {
+        val set = hiddenGroups(ctx).toMutableSet()
+        val hidden = if (set.contains(group)) { set.remove(group); false } else { set.add(group); true }
+        prefs(ctx).edit().putString(KEY_HIDDEN_GROUPS, JSONArray(set).toString()).apply()
+        return hidden
+    }
+    fun groupNames(ctx: Context): Map<String, String> {
+        val raw = prefs(ctx).getString(KEY_GROUP_NAMES, null) ?: return emptyMap()
+        return try {
+            val o = JSONObject(raw); o.keys().asSequence().associateWith { o.getString(it) }
+        } catch (_: Exception) { emptyMap() }
+    }
+    fun renameGroup(ctx: Context, original: String, newName: String) {
+        val m = groupNames(ctx).toMutableMap()
+        if (newName.isBlank() || newName == original) m.remove(original) else m[original] = newName
+        prefs(ctx).edit().putString(KEY_GROUP_NAMES, JSONObject(m as Map<*, *>).toString()).apply()
+    }
+
+    // ── PiP 浏览预览开关 ────────────────────────────────────────────
+    fun pipEnabled(ctx: Context): Boolean = prefs(ctx).getBoolean(KEY_PIP_ENABLED, true)
+    fun setPipEnabled(ctx: Context, enabled: Boolean) {
+        prefs(ctx).edit().putBoolean(KEY_PIP_ENABLED, enabled).apply()
+    }
+
     // ── 上次观看频道（TiviMate 秒播：启动自动播放）─────────────────
     fun saveLastChannel(ctx: Context, channelId: Long, sourceIndex: Int) {
         prefs(ctx).edit()
@@ -208,6 +242,9 @@ object TiviMatePrefs {
                 put("url", it.url); put("priority", it.priority); put("enabled", it.enabled)
             }) }
             put(KEY_EPG_SOURCES, ea)
+            put(KEY_HIDDEN_GROUPS, JSONArray(hiddenGroups(ctx)))
+            put(KEY_GROUP_NAMES, JSONObject(groupNames(ctx) as Map<*, *>))
+            put(KEY_PIP_ENABLED, pipEnabled(ctx))
             val pp = playbackPrefs(ctx)
             put(KEY_PLAYBACK_PREFS, JSONObject().apply {
                 put("afr", pp.autoFrameRate); put("passthrough", pp.audioPassthrough); put("external", pp.externalPlayer)
@@ -232,6 +269,9 @@ object TiviMatePrefs {
             e.putString(KEY_GROUPS, g?.toString() ?: "{}")
             e.putString(KEY_REMINDERS, json.optJSONArray(KEY_REMINDERS)?.toString() ?: "[]")
             e.putString(KEY_EPG_SOURCES, json.optJSONArray(KEY_EPG_SOURCES)?.toString() ?: "[]")
+            e.putString(KEY_HIDDEN_GROUPS, json.optJSONArray(KEY_HIDDEN_GROUPS)?.toString() ?: "[]")
+            e.putString(KEY_GROUP_NAMES, json.optJSONObject(KEY_GROUP_NAMES)?.toString() ?: "{}")
+            if (json.has(KEY_PIP_ENABLED)) e.putBoolean(KEY_PIP_ENABLED, json.optBoolean(KEY_PIP_ENABLED, true))
             json.optJSONObject(KEY_PLAYBACK_PREFS)?.let { e.putString(KEY_PLAYBACK_PREFS, it.toString()) }
             e.apply()
             true

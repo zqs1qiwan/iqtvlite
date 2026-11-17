@@ -62,6 +62,14 @@ class MainActivity : AppCompatActivity() {
     private lateinit var infoTime: TextView
     private lateinit var infoRemaining: TextView
     private lateinit var infoProgress: ProgressBar
+    // PiP 预览（TiviMate 标志性功能）
+    private lateinit var pipContainer: View
+    private lateinit var pipPlayerView: PlayerView
+    private lateinit var pipLabel: TextView
+    private var previewPlayer: PreviewPlayer? = null
+    private val uiHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private var numberJumpBuffer = ""
+    private var numberJumpRunnable: Runnable? = null
     private var infoCardHideRunnable: Runnable? = null
     /** tvgId -> (当前节目名, 进度%, 开始, 结束)，EPG 加载后填充，供信息卡 & 列表复用 */
     private var nowPlaying: Map<String, ProgramNow> = emptyMap()
@@ -115,6 +123,9 @@ class MainActivity : AppCompatActivity() {
         infoTime = findViewById(R.id.info_time)
         infoRemaining = findViewById(R.id.info_remaining)
         infoProgress = findViewById(R.id.info_progress)
+        pipContainer = findViewById(R.id.pip_container)
+        pipPlayerView = findViewById(R.id.pip_player)
+        pipLabel = findViewById(R.id.pip_label)
         // TiviMate 风格顶栏时钟，每分钟更新
         val clock = findViewById<TextView>(R.id.top_clock)
         fun tickClock() {
@@ -257,6 +268,14 @@ class MainActivity : AppCompatActivity() {
                 Toast.makeText(this, if (added) "★ 已收藏 ${ch.name}" else "☆ 已取消收藏", Toast.LENGTH_SHORT).show()
             },
             onLongPress = { ch -> showChannelMenu(ch) },
+            onFocus = { ch ->
+                if (TiviMatePrefs.pipEnabled(this)) {
+                    if (previewPlayer == null) previewPlayer = PreviewPlayer(this)
+                    pipLabel.text = ch.name
+                    Log.i(TAG, "PIP_FOCUS ${ch.name}")
+                    previewPlayer?.focus(ch, pipPlayerView, uiHandler)
+                }
+            },
         )
         recycler.layoutManager = LinearLayoutManager(this)
         recycler.adapter = adapter
@@ -319,6 +338,9 @@ class MainActivity : AppCompatActivity() {
         showingEpg = epg
         channelPanel.visibility = if (epg) View.GONE else View.VISIBLE
         epgScroll.visibility = if (epg) View.VISIBLE else View.GONE
+        // EPG tab 不显示 PiP
+        if (epg) pipContainer.visibility = View.GONE
+        else if (uiIsVisible() && TiviMatePrefs.pipEnabled(this)) pipContainer.visibility = View.VISIBLE
         if (epg) loadEpg()
     }
 
@@ -328,6 +350,11 @@ class MainActivity : AppCompatActivity() {
         if (show) {
             // 浮层出现时把焦点给到频道列表，方便遥控器操作
             recycler.requestFocus()
+            if (!showingEpg && TiviMatePrefs.pipEnabled(this)) pipContainer.visibility = View.VISIBLE
+        } else {
+            // 关闭浮层 → 释放 PiP 解码器，避免占用资源
+            pipContainer.visibility = View.GONE
+            previewPlayer?.hide(pipPlayerView)
         }
     }
     private fun uiIsVisible() = uiLayer.visibility == View.VISIBLE
@@ -609,9 +636,13 @@ class MainActivity : AppCompatActivity() {
 
     private fun buildGroupChips(groups: List<String>) {
         groupRow.removeAllViews()
+        val hidden = TiviMatePrefs.hiddenGroups(this)
+        val names = TiviMatePrefs.groupNames(this)
+        // 过滤隐藏分组；重命名仅影响显示，过滤仍用原始组名
+        val visibleGroups = groups.filterNot { hidden.contains(it) }
         // 虚拟分组：收藏 / 最近观看 / 全部（TiviMate 风格）
         val chips = listOf("★收藏" to "__favorites__", "最近观看" to "__recents__", "全部" to null) +
-            groups.take(50).map { it to it }
+            visibleGroups.take(50).map { (names[it] ?: it) to it }
         chips.forEach { (label, key) ->
             Button(this).apply {
                 text = label
@@ -642,10 +673,55 @@ class MainActivity : AppCompatActivity() {
                         }
                     }
                 }
+                // 长按真实分组 → 隐藏 / 重命名（TiviMate 功能）
+                if (key != null && key != "__favorites__" && key != "__recents__") {
+                    setOnLongClickListener {
+                        showGroupOptions(key, label)
+                        true
+                    }
+                }
                 groupRow.addView(this)
             }
         }
         adapter.setLists(FavoritesStore.favorites(this), FavoritesStore.recents(this))
+    }
+
+    /** 分组长按菜单：隐藏分组 / 重命名 */
+    private fun showGroupOptions(group: String, currentLabel: String) {
+        val isHidden = TiviMatePrefs.hiddenGroups(this).contains(group)
+        val actions = arrayOf(
+            if (isHidden) "显示此分组" else "隐藏此分组",
+            "重命名分组",
+        )
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("分组: $currentLabel")
+            .setItems(actions) { _, which ->
+                when (which) {
+                    0 -> {
+                        TiviMatePrefs.toggleHiddenGroup(this, group)
+                        rebuildGroups()
+                    }
+                    1 -> {
+                        val input = EditText(this).apply { setText(currentLabel) }
+                        androidx.appcompat.app.AlertDialog.Builder(this)
+                            .setTitle("重命名分组")
+                            .setView(input)
+                            .setPositiveButton("确定") { _, _ ->
+                                TiviMatePrefs.renameGroup(this, group, input.text.toString().trim())
+                                rebuildGroups()
+                            }
+                            .setNegativeButton("取消", null).show()
+                    }
+                }
+            }
+            .setNegativeButton("取消", null).show()
+    }
+
+    /** 用当前所有分组重建 chips（从 allChannels 提取） */
+    private fun rebuildGroups() {
+        val groups = allChannels.map { it.group }.distinct().sorted()
+        buildGroupChips(groups)
+        status.text = "分组已更新"
     }
 
     private var urlIndex = 0
@@ -879,7 +955,35 @@ class MainActivity : AppCompatActivity() {
                 if (!uiIsVisible() && !controllerVisible) { zap(-1); return true }
             }
         }
+        // 数字键：频道号跳转（TiviMate 功能，1.5s 内连续输入组合成频道号）
+        if (keyCode in KeyEvent.KEYCODE_0..KeyEvent.KEYCODE_9) {
+            val digit = keyCode - KeyEvent.KEYCODE_0
+            numberJumpBuffer += digit.toString()
+            status.text = "跳转到频道 $numberJumpBuffer…"
+            numberJumpRunnable?.let { uiHandler.removeCallbacks(it) }
+            val jump = Runnable {
+                val idx = numberJumpBuffer.toIntOrNull()?.let { it - 1 } // 频道号从 1 开始
+                if (idx != null && idx in allChannels.indices) {
+                    zapTo(idx)
+                    status.text = "▶ ${allChannels[idx].name}"
+                } else {
+                    status.text = "没有频道 $numberJumpBuffer"
+                }
+                numberJumpBuffer = ""
+            }
+            numberJumpRunnable = jump
+            uiHandler.postDelayed(jump, 1500)
+            return true
+        }
         return super.onKeyDown(keyCode, event)
+    }
+
+    /** 直接跳到指定索引的频道（数字跳转用） */
+    private fun zapTo(index: Int) {
+        currentPos = index
+        adapter.setSelected(index)
+        recycler.scrollToPosition(index)
+        play(allChannels[index])
     }
 
     @Deprecated("Deprecated in Java")
@@ -904,6 +1008,8 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         saveCurrentResume()
+        previewPlayer?.release(pipPlayerView)
+        previewPlayer = null
         playerView.player = null
         super.onDestroy()
     }

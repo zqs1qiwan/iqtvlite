@@ -13,6 +13,7 @@ class ChannelAdapter(
     private val onSelect: (Channel) -> Unit,
     private val onToggleFavorite: (Channel) -> Unit,
     private val onLongPress: (Channel) -> Unit,
+    private val onFocus: (Channel) -> Unit = {},
 ) : RecyclerView.Adapter<ChannelAdapter.VH>() {
 
     private var items: List<Channel> = emptyList()
@@ -131,14 +132,14 @@ class ChannelAdapter(
         }
         // D-pad 焦点支持（TV 遥控器）
         holder.itemView.isFocusable = true
+        // tvOS 风格：每个 item 挂 stateListAnimator，由系统按焦点状态自动驱动（海报卡 15% 缩放 + 抬升）
+        holder.itemView.stateListAnimator = android.animation.AnimatorInflater.loadStateListAnimator(
+            holder.itemView.context, R.animator.focus_scale_poster
+        )
         holder.itemView.setOnFocusChangeListener { v, hasFocus ->
             if (hasFocus) {
                 setSelected(position)
-                // tvOS 风格：聚焦放大动画
-                val anim = android.animation.AnimatorInflater.loadStateListAnimator(
-                    v.context, R.animator.focus_scale
-                )
-                v.stateListAnimator = anim
+                onFocus(ch) // PiP 预览焦点频道
             }
         }
     }

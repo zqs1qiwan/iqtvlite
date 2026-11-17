@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- TiviMate 风格：视频满屏铺底，所有 UI 都是按需浮出的半透明浮层 -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@android:color/black">
@@ -75,6 +76,37 @@
             android:max="100"
             android:progressDrawable="@drawable/progress_bar" />
     </LinearLayout>
+
+    <!-- ②b PiP 频道预览小窗（浏览列表时显示焦点频道，静音；TiviMate 标志性功能） -->
+    <FrameLayout
+        android:id="@+id/pip_container"
+        android:layout_width="360dp"
+        android:layout_height="220dp"
+        android:layout_gravity="bottom|start"
+        android:layout_marginStart="740dp"
+        android:layout_marginBottom="24dp"
+        android:background="@drawable/pip_frame"
+        android:visibility="gone">
+
+        <androidx.media3.ui.PlayerView
+            android:id="@+id/pip_player"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            app:use_controller="false"
+            app:surface_type="texture_view" />
+
+        <TextView
+            android:id="@+id/pip_label"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom"
+            android:padding="8dp"
+            android:background="#B0000000"
+            android:textColor="#F5F5F7"
+            android:textSize="14sp"
+            android:maxLines="1"
+            android:ellipsize="end" />
+    </FrameLayout>
 
     <!-- ③ UI 浮层：默认隐藏，按 OK / 方向键呼出。半透明，视频透出 -->
     <LinearLayout
