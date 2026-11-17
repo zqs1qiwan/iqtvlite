@@ -3,6 +3,7 @@ name: Build Test APK
 on:
   push:
     branches: [main]
+    tags: ['v*']          # push v* tag 时构建并自动创建 Release
   pull_request:
   workflow_dispatch:
 
