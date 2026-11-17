@@ -14,6 +14,19 @@
         <item name="android:windowNoTitle">true</item>
         <item name="android:windowFullscreen">true</item>
         <item name="android:buttonStyle">@style/TvButton</item>
+        <!-- 所有对话框用深色主题，避免刺眼白底破坏影院视觉 -->
+        <item name="alertDialogTheme">@style/IqtvDialogTheme</item>
+        <item name="android:alertDialogTheme">@style/IqtvDialogTheme</item>
+    </style>
+
+    <!-- 深色对话框（频道菜单/家长控制/确认框） -->
+    <style name="IqtvDialogTheme" parent="Theme.AppCompat.Dialog.Alert">
+        <item name="android:background">@color/tm_surface_2</item>
+        <item name="android:textColorPrimary">@color/tm_text</item>
+        <item name="android:textColorSecondary">@color/tm_text_2</item>
+        <item name="colorAccent">@color/tm_focus</item>
+        <item name="android:colorAccent">@color/tm_focus</item>
+        <item name="android:windowBackground">@drawable/dialog_bg</item>
     </style>
 
     <!-- TiviMate 风格 TV 按钮：大尺寸、圆角、D-pad 焦点蓝色描边 -->
