@@ -1162,6 +1162,19 @@ class MainActivity : AppCompatActivity() {
             KeyEvent.KEYCODE_CHANNEL_DOWN, KeyEvent.KEYCODE_DPAD_DOWN -> {
                 if (!uiIsVisible() && !controllerVisible) { zap(-1); return true }
             }
+            // 菜单键：打开当前频道操作菜单（TiviMate 标准）
+            KeyEvent.KEYCODE_MENU -> {
+                allChannels.getOrNull(currentPos)?.let { showChannelMenu(it) }
+                return true
+            }
+            // 信息键：浮出/隐藏当前频道信息卡
+            KeyEvent.KEYCODE_INFO -> {
+                allChannels.getOrNull(currentPos)?.let {
+                    if (infoCard.visibility == View.VISIBLE) infoCard.visibility = View.GONE
+                    else showInfoCard(it)
+                }
+                return true
+            }
         }
         // 数字键：频道号跳转（TiviMate 功能，1.5s 内连续输入组合成频道号）
         if (keyCode in KeyEvent.KEYCODE_0..KeyEvent.KEYCODE_9) {
