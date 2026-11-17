@@ -52,11 +52,11 @@
 | — | ~~DVR 录制~~ | ❌ 已删除（硬约束） | §6 |
 | R1 | EPG 节目搜索 | ✅ P0 | competitive-roadmap.md |
 | R2 | 网络/播放诊断面板 | ✅ P0 | competitive-roadmap.md |
-| R3 | 全局收藏/最近观看统一视图 | ⬜ P1 | competitive-roadmap.md |
-| R4 | 频道预览缩略图网格（opt-in） | ⬜ P1 | competitive-roadmap.md |
-| R5 | 配置导入/导出（二维码/文件） | ⬜ P1 | competitive-roadmap.md |
-| R6 | 播放统计/常看频道（本地） | ⬜ P2 | competitive-roadmap.md |
-| R7 | 主题切换（TV 高对比） | ⬜ P2 | competitive-roadmap.md |
+| R3 | 常看频道统一视图 | ✅ P1 | competitive-roadmap.md |
+| R4 | ~~预览缩略图网格~~ | ⛔ PiP覆盖 | 避免低端机过载 |
+| R5 | ~~配置二维码导出~~ | ⛔ 备份覆盖 | 增量价值低 |
+| R6 | 播放统计（本地零遥测） | ✅ P2 | competitive-roadmap.md |
+| R7 | ~~主题切换~~ | ⛔ TV不需要 | 浅色主题有害10-foot |
 
 > R1–R7 来自全 GitHub 竞品调研，准入依据与验收标准见 `docs/PRD/competitive-roadmap.md`。逐级迭代，每级真机验证 + CI 出包。
 
@@ -93,8 +93,11 @@ Verify:        adb connect 192.168.2.245:5555 && adb -s ... install -r APK
 - ✅ v1.8.1：DVR 全链路删除（CI 全绿）+ EPG 时间刻度轴 + 交互金标准对齐
 - ✅ v1.8.2：深色对话框 + 菜单键/信息键 + PlaylistUrlResolver 结构优化
 - ✅ v1.8.3：金标准完全对齐（信息卡下一节目预告 + 打开面板定位当前频道）
+- ✅ v1.9.0：Level1 — EPG节目搜索(R1) + 播放诊断面板(R2)
+- ✅ v1.9.1：Level2 — 常看频道(R3) + 播放统计(R6, 本地零遥测)
+- R4/R5/R7 经评估不做（PiP覆盖/备份覆盖/TV不需要），理由见 competitive-roadmap.md
+- 架构核查：时区(UTC+jiff)、ID命名空间(SourceId)、导入原子性 均已符合 best practice
 - 全部 Release 由 GitHub CI 自动发布；真机 TR100-G9 逐项验证通过
-- 剩余：TD-2 MainActivity Controller 拆分（暂缓——功能稳定，避免为拆分引入回归；已外置纯逻辑）
 
 ## 11. 交互金标准对齐状态
 详见 `docs/PRD/interaction-golden-standard.md` 与真机截图 `shots/v3_epg2.png`：
