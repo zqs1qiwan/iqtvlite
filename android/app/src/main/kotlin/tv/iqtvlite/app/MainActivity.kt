@@ -15,6 +15,8 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -53,6 +55,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var epgScroll: HorizontalScrollView
     private lateinit var epgRecycler: RecyclerView
     private lateinit var epgAdapter: EpgGridAdapter
+    private lateinit var posterGrid: RecyclerView
+    private lateinit var posterAdapter: PosterAdapter
+    private var posterMode = false
     // TiviMate 风格浮层 UI
     private lateinit var uiLayer: View
     private lateinit var channelPanel: View
@@ -84,6 +89,13 @@ class MainActivity : AppCompatActivity() {
 
     /** 冷启动计时：进程启动 → UI 可交互 */
     private val coldStartTime = System.currentTimeMillis()
+    /** 冷启动分阶段计时 */
+    private var tColdMark = System.currentTimeMillis()
+    private fun coldPhase(name: String) {
+        val now = System.currentTimeMillis()
+        Log.i(TAG, "COLD_PHASE $name +${now - tColdMark}ms total=${now - coldStartTime}ms")
+        tColdMark = now
+    }
 
     /** 换台计时：发起播放 → 首帧（衡量「丝滑」的核心指标） */
     private var zapStartTime = 0L
@@ -110,6 +122,9 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+        coldPhase("setContentView")
+        // 尽早启动缓存解析，与后面的 playerInit/view 初始化并行（省 ~300ms）
+        startCachePrefetch(0)
 
         playerView = findViewById(R.id.player_view)
         recycler = findViewById(R.id.channel_list)
@@ -142,6 +157,7 @@ class MainActivity : AppCompatActivity() {
         groupScroll = findViewById(R.id.group_scroll)
         epgScroll = findViewById(R.id.epg_scroll)
         epgRecycler = findViewById(R.id.epg_recycler)
+        posterGrid = findViewById(R.id.poster_grid)
 
         // ── EPG 网格 ────────────────────────────────────────────────
         epgAdapter = EpgGridAdapter(
@@ -156,7 +172,21 @@ class MainActivity : AppCompatActivity() {
         epgRecycler.layoutManager = LinearLayoutManager(this)
         epgRecycler.adapter = epgAdapter
 
+        // 清除所有工具栏 Button 的默认 tint（避免焦点黄色，保持 tvOS 克制配色）
+        for (id in intArrayOf(R.id.tab_channels, R.id.tab_epg, R.id.btn_viewmode,
+                R.id.btn_multiview, R.id.btn_subtitle, R.id.btn_settings)) {
+            findViewById<Button>(id).backgroundTintList = null
+        }
+
         findViewById<Button>(R.id.tab_channels).setOnClickListener { showTab(false) }
+        findViewById<Button>(R.id.btn_viewmode).setOnClickListener {
+            posterMode = !posterMode
+            posterGrid.visibility = if (posterMode) View.VISIBLE else View.GONE
+            swipe.visibility = if (posterMode) View.GONE else View.VISIBLE
+            (it as Button).text = if (posterMode) "列表" else "海报"
+            if (posterMode) posterGrid.requestFocus()
+            status.text = if (posterMode) "海报浏览模式" else "列表模式"
+        }
         findViewById<Button>(R.id.tab_epg).setOnClickListener {
             showTab(true)
             loadEpg()
@@ -182,9 +212,11 @@ class MainActivity : AppCompatActivity() {
         }
 
         // ── 播放器（Media3，直播主引擎） ──────────────────────────────
+        coldPhase("views+findViewById")
         player = PlaybackService.ensurePlayer(this)
         PlaybackService.applyPlaybackPrefs(this, TiviMatePrefs.playbackPrefs(this))
         playerView.player = player
+        coldPhase("playerInit")
         // TiviMate 风格：不用 Media3 控制条（它拦截 OK/方向键），导航完全交给我们的浮层逻辑
         playerView.useController = false
         playerView.isClickable = false
@@ -280,6 +312,25 @@ class MainActivity : AppCompatActivity() {
         recycler.layoutManager = LinearLayoutManager(this)
         recycler.adapter = adapter
 
+        // ── tvOS 海报卡浏览器（4 列网格，焦点视差） ──────────────────
+        posterAdapter = PosterAdapter(
+            onSelect = { ch -> play(ch) },
+            onFocus = { ch ->
+                if (TiviMatePrefs.pipEnabled(this)) {
+                    if (previewPlayer == null) previewPlayer = PreviewPlayer(this)
+                    pipLabel.text = ch.name
+                    previewPlayer?.focus(ch, pipPlayerView, uiHandler)
+                }
+            },
+        )
+        val cols = 4
+        posterGrid.layoutManager = androidx.recyclerview.widget.GridLayoutManager(this, cols)
+        posterGrid.adapter = posterAdapter
+        // 海报卡尺寸：面板 720dp / 4 列 ≈ 176dp 宽
+        val cardW = resources.displayMetrics.density.let { (720f / cols - 16) * it }.toInt()
+        val cardH = (cardW * 1.05f).toInt()
+        posterAdapter.setItemSize(cardW, cardH)
+
         // ── 源选择 ─────────────────────────────────────────────────
         val names = SOURCES.map { it.name }
         sourceSpinner.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, names)
@@ -309,13 +360,22 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        coldPhase("listeners+epgAdapter")
         // ① 同步加载缓存 → 频道列表立即可交互（冷启动秒开）
         val cacheHit = loadFromCache(0)
+        coldPhase("loadFromCache")
         Log.i(TAG, "COLD_START_CACHE hit=$cacheHit ms=${System.currentTimeMillis() - coldStartTime}")
         // ② TiviMate 秒播：用缓存里的上次频道立即开播（不等网络刷新）
         if (cacheHit) autoPlayLastChannel()
+        coldPhase("autoPlayLastChannel")
         // ③ 后台拉网络 → 成功后刷新（不打断当前播放）
         loadSource(0)
+    }
+
+    /** 同步列表/海报两种视图的选中态 */
+    private fun syncSelection(pos: Int) {
+        adapter.setSelected(pos)
+        allChannels.getOrNull(pos)?.let { posterAdapter.setSelected(it.id) }
     }
 
     /** TiviMate 秒播：启动即播放上次的频道（无历史则播第一个） */
@@ -326,7 +386,7 @@ class MainActivity : AppCompatActivity() {
         val ch = if (lastId >= 0) allChannels.find { it.id == lastId } ?: allChannels[0] else allChannels[0]
         autoPlayed = true
         currentPos = allChannels.indexOf(ch).coerceAtLeast(0)
-        adapter.setSelected(currentPos)
+        syncSelection(currentPos)
         playUnlocked(ch)
         Log.i(TAG, "AUTOPLAY ${ch.name} (秒播, COLD_START_MS=${System.currentTimeMillis() - coldStartTime})")
     }
@@ -457,7 +517,9 @@ class MainActivity : AppCompatActivity() {
                     row.tvgId to ProgramNow(cur?.title ?: "", pct, cur?.start ?: 0, cur?.stop ?: 0)
                 }
                 nowPlaying = nowData
-                adapter.setNowPlaying(nowData.mapValues { it.value.title to it.value.pct })
+                val nowPairs = nowData.mapValues { it.value.title to it.value.pct }
+                adapter.setNowPlaying(nowPairs)
+                posterAdapter.setNowPlaying(nowPairs)
                 // 刷新当前频道信息卡（若正在显示）
                 allChannels.getOrNull(currentPos)?.let { refreshInfoCard(it) }
                 if (showingEpg) status.text = "EPG: ${result.matched}/${result.requested} 频道匹配 · ${result.guideChannels} 个指南频道"
@@ -469,14 +531,34 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /** 启动时在后台提前解析缓存，与 playerInit 并行，省去串行等待 */
+    private var prefetched: Deferred<Pair<PlaylistResult, String>?>? = null
+    private fun startCachePrefetch(index: Int) {
+        prefetched = lifecycleScope.async(Dispatchers.Default) {
+            try {
+                val cached = PlaylistCache.load(this@MainActivity, index) ?: return@async null
+                val result = RustBridge.parsePlaylist(cached, (index + 1).toLong())
+                if (result.channels.isEmpty()) null else result to cached
+            } catch (e: Exception) { null }
+        }
+    }
+
     /** 从本地缓存同步加载频道（冷启动秒开，零网络等待） */
     private fun loadFromCache(index: Int): Boolean {
-        val cached = PlaylistCache.load(this, index) ?: return false
         val result = try {
+            kotlinx.coroutines.runBlocking { prefetched?.await() }
+        } catch (e: Exception) { null }
+        if (result != null) {
+            applyPlaylist(result.first, result.second, true)
+            return true
+        }
+        // 回退：同步解析（prefetch 未命中时）
+        val cached = PlaylistCache.load(this, index) ?: return false
+        val parsed = try {
             RustBridge.parsePlaylist(cached, (index + 1).toLong())
         } catch (e: Exception) { return false }
-        if (result.channels.isEmpty()) return false
-        applyPlaylist(result, cached, true)
+        if (parsed.channels.isEmpty()) return false
+        applyPlaylist(parsed, cached, true)
         return true
     }
 
@@ -494,6 +576,7 @@ class MainActivity : AppCompatActivity() {
         adapter.submit(allChannels)
         adapter.setLists(FavoritesStore.favorites(this@MainActivity), FavoritesStore.recents(this@MainActivity))
         adapter.refresh()
+        posterAdapter.submit(allChannels, FavoritesStore.favorites(this@MainActivity))
         buildGroupChips(result.groups)
         status.text = "已加载 ${allChannels.size} 个频道 · ${result.groups.size} 个分组${if (fromCache) "（缓存）" else ""}"
         if (!fromCache) PlaylistCache.save(this@MainActivity, currentSource, rawContent)
@@ -650,6 +733,8 @@ class MainActivity : AppCompatActivity() {
                 textSize = 15f
                 setTextColor(android.graphics.Color.parseColor("#A1A1A6"))
                 setBackgroundResource(R.drawable.group_chip)
+                // 关键：清除 AppCompat 默认 backgroundTint（否则焦点变黄色，很丑）
+                backgroundTintList = null
                 minHeight = 0
                 minimumWidth = 0
                 setPadding(28, 18, 28, 18)
@@ -668,6 +753,7 @@ class MainActivity : AppCompatActivity() {
                         val c = groupRow.getChildAt(i)
                         if (c is Button) {
                             val selected = c.text == label
+                            c.backgroundTintList = null
                             c.setBackgroundResource(if (selected) R.drawable.group_chip_active else R.drawable.group_chip)
                             c.setTextColor(android.graphics.Color.parseColor(if (selected) "#FFFFFF" else "#A1A1A6"))
                         }
@@ -981,8 +1067,9 @@ class MainActivity : AppCompatActivity() {
     /** 直接跳到指定索引的频道（数字跳转用） */
     private fun zapTo(index: Int) {
         currentPos = index
-        adapter.setSelected(index)
+        syncSelection(index)
         recycler.scrollToPosition(index)
+        if (posterMode) posterGrid.scrollToPosition(index)
         play(allChannels[index])
     }
 
@@ -996,8 +1083,9 @@ class MainActivity : AppCompatActivity() {
         if (allChannels.isEmpty()) return
         val next = (currentPos + delta).coerceIn(0, allChannels.size - 1)
         currentPos = next
-        adapter.setSelected(next)
+        syncSelection(next)
         recycler.scrollToPosition(next)
+        if (posterMode) posterGrid.scrollToPosition(next)
         play(allChannels[next])
     }
 

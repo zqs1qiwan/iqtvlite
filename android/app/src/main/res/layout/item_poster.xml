@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- tvOS 海报焦点卡：分层结构（背景层 / Logo 前景层 / 文字层），聚焦时前景层放大更多产生视差 -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/poster_card"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:focusable="true"
+    android:clickable="true"
+    android:background="@drawable/poster_card_bg">
+
+    <!-- 背景层：柔和渐变，聚焦时轻微放大 -->
+    <View
+        android:id="@+id/poster_bg_layer"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@drawable/poster_glow" />
+
+    <!-- Logo 前景层：聚焦时放大更多（视差深度感） -->
+    <FrameLayout
+        android:id="@+id/poster_logo_layer"
+        android:layout_width="120dp"
+        android:layout_height="80dp"
+        android:layout_gravity="center_horizontal|center_vertical"
+        android:layout_marginTop="-24dp"
+        android:background="@drawable/logo_frame">
+
+        <ImageView
+            android:id="@+id/poster_logo"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:layout_margin="6dp"
+            android:scaleType="fitCenter"
+            android:contentDescription="logo" />
+    </FrameLayout>
+
+    <!-- 文字层：频道名 + 当前节目 -->
+    <LinearLayout
+        android:id="@+id/poster_text_layer"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:orientation="vertical"
+        android:padding="12dp">
+
+        <TextView
+            android:id="@+id/poster_number"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="@color/tm_focus"
+            android:textSize="13sp"
+            android:fontFamily="sans-serif-medium" />
+
+        <TextView
+            android:id="@+id/poster_name"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="@color/tm_text"
+            android:textSize="17sp"
+            android:fontFamily="sans-serif-medium"
+            android:maxLines="1"
+            android:ellipsize="end" />
+
+        <TextView
+            android:id="@+id/poster_programme"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:textColor="@color/tm_text_2"
+            android:textSize="12sp"
+            android:maxLines="1"
+            android:ellipsize="end" />
+    </LinearLayout>
+</FrameLayout>

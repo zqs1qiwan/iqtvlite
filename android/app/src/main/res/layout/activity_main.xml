@@ -209,6 +209,15 @@
                 android:layout_marginEnd="6dp" />
 
             <Button
+                android:id="@+id/btn_viewmode"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="海报"
+                android:minWidth="0dp"
+                android:background="@drawable/focus_border"
+                android:layout_marginEnd="6dp" />
+
+            <Button
                 android:id="@+id/btn_multiview"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
@@ -279,19 +288,33 @@
                         android:padding="8dp" />
                 </HorizontalScrollView>
 
-                <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
-                    android:id="@+id/swipe_refresh"
+                <FrameLayout
                     android:layout_width="match_parent"
                     android:layout_height="0dp"
                     android:layout_weight="1">
 
+                    <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+                        android:id="@+id/swipe_refresh"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent">
+
+                        <androidx.recyclerview.widget.RecyclerView
+                            android:id="@+id/channel_list"
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            android:listSelector="@android:color/transparent"
+                            android:scrollbars="vertical" />
+                    </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
+
+                    <!-- tvOS 海报卡浏览器（默认隐藏，"海报"按钮切换） -->
                     <androidx.recyclerview.widget.RecyclerView
-                        android:id="@+id/channel_list"
+                        android:id="@+id/poster_grid"
                         android:layout_width="match_parent"
                         android:layout_height="match_parent"
-                        android:listSelector="@android:color/transparent"
-                        android:scrollbars="vertical" />
-                </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
+                        android:visibility="gone"
+                        android:clipToPadding="false"
+                        android:padding="8dp" />
+                </FrameLayout>
             </LinearLayout>
 
             <!-- EPG 网格浮层（中，半透明；默认隐藏） -->
