@@ -90,6 +90,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var infoChannel: TextView
     private lateinit var infoTime: TextView
     private lateinit var infoRemaining: TextView
+    private lateinit var infoNext: TextView
     private lateinit var infoProgress: ProgressBar
     // PiP 预览（TiviMate 标志性功能）
     private lateinit var pipContainer: View
@@ -102,7 +103,7 @@ class MainActivity : AppCompatActivity() {
     private var infoCardHideRunnable: Runnable? = null
     /** tvgId -> (当前节目名, 进度%, 开始, 结束)，EPG 加载后填充，供信息卡 & 列表复用 */
     private var nowPlaying: Map<String, ProgramNow> = emptyMap()
-    data class ProgramNow(val title: String, val pct: Int, val start: Long, val stop: Long)
+    data class ProgramNow(val title: String, val pct: Int, val start: Long, val stop: Long, val nextTitle: String = "")
     private var allChannels: List<Channel> = emptyList()
     private var currentGroup: String? = null
     private var currentSource = 0
@@ -162,6 +163,7 @@ class MainActivity : AppCompatActivity() {
         infoChannel = findViewById(R.id.info_channel)
         infoTime = findViewById(R.id.info_time)
         infoRemaining = findViewById(R.id.info_remaining)
+        infoNext = findViewById(R.id.info_next)
         infoProgress = findViewById(R.id.info_progress)
         pipContainer = findViewById(R.id.pip_container)
         pipPlayerView = findViewById(R.id.pip_player)
@@ -472,8 +474,17 @@ class MainActivity : AppCompatActivity() {
     private fun setUiVisible(show: Boolean) {
         uiLayer.visibility = if (show) View.VISIBLE else View.GONE
         if (show) {
-            // 浮层出现时把焦点给到频道列表，方便遥控器操作
-            recycler.requestFocus()
+            // 金标准：打开面板时滚动到当前播放频道，焦点落在它附近（而非列表顶部）
+            if (currentPos in allChannels.indices) {
+                recycler.scrollToPosition(currentPos)
+                if (posterMode) posterGrid.scrollToPosition(currentPos)
+                recycler.post {
+                    recycler.findViewHolderForAdapterPosition(currentPos)?.itemView?.requestFocus()
+                        ?: recycler.requestFocus()
+                }
+            } else {
+                recycler.requestFocus()
+            }
             if (!showingEpg && TiviMatePrefs.pipEnabled(this)) pipContainer.visibility = View.VISIBLE
         } else {
             // 关闭浮层 → 释放 PiP 解码器，避免占用资源
@@ -508,11 +519,19 @@ class MainActivity : AppCompatActivity() {
                 infoTime.text = ""; infoRemaining.text = ""
             }
             infoProgress.visibility = View.VISIBLE
+            // 下一节目预告（金标准：信息卡显示"接下来"）
+            if (now.nextTitle.isNotEmpty()) {
+                infoNext.text = "接下来：${now.nextTitle}"
+                infoNext.visibility = View.VISIBLE
+            } else {
+                infoNext.visibility = View.GONE
+            }
         } else {
             infoTitle.text = ch.name
             infoTime.text = "正在播放"
             infoRemaining.text = ""
             infoProgress.visibility = View.GONE
+            infoNext.visibility = View.GONE
         }
     }
 
@@ -578,7 +597,8 @@ class MainActivity : AppCompatActivity() {
                     val cur = row.programmes.firstOrNull { p -> p.start <= result.now && p.stop > result.now }
                     val pct = if (cur != null && cur.stop > cur.start)
                         ((result.now - cur.start) * 100 / (cur.stop - cur.start)).toInt().coerceIn(0, 100) else 0
-                    row.tvgId to ProgramNow(cur?.title ?: "", pct, cur?.start ?: 0, cur?.stop ?: 0)
+                    val next = if (cur != null) row.programmes.firstOrNull { it.start >= cur.stop } else null
+                    row.tvgId to ProgramNow(cur?.title ?: "", pct, cur?.start ?: 0, cur?.stop ?: 0, next?.title ?: "")
                 }
                 nowPlaying = nowData
                 val nowPairs = nowData.mapValues { it.value.title to it.value.pct }

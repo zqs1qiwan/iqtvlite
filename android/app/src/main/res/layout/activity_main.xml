@@ -75,6 +75,18 @@
             android:layout_marginTop="12dp"
             android:max="100"
             android:progressDrawable="@drawable/progress_bar" />
+
+        <!-- 接下来播放（TiviMate/APTV 金标准：信息卡带下一节目预告） -->
+        <TextView
+            android:id="@+id/info_next"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:textColor="@color/tm_text_2"
+            android:textSize="14sp"
+            android:maxLines="1"
+            android:ellipsize="end"
+            android:visibility="gone" />
     </LinearLayout>
 
     <!-- ②b PiP 频道预览小窗（浏览列表时显示焦点频道，静音；TiviMate 标志性功能） -->
