@@ -679,7 +679,7 @@ class MainActivity : AppCompatActivity() {
                             }
                         }
                         else -> {
-                            val actual = extractPlaylistUrl(body)
+                            val actual = PlaylistUrlResolver.extractPlaylistUrl(body)
                             if (actual != null) http.newCall(Request.Builder().url(actual).build())
                                 .execute().use { it.body!!.string() }
                             else body
@@ -707,23 +707,6 @@ class MainActivity : AppCompatActivity() {
                 Toast.makeText(this@MainActivity, "加载失败", Toast.LENGTH_SHORT).show()
             }
         }
-    }
-
-    /**
-     * 从 laobaitv.net 的 HTML 落地页里找真实 M3U 地址。
-     *
-     * 注意：http://iptv.laobaitv.net 实际上是一个**IPTV 配置查询页**（带 isp/region/city 参数），
-     * 页面里没有直接的 .m3u 链接。硬的正则要避免误匹配到 Google Fonts（含 "api"）等资源。
-     * 找不到真实播放列表时返回 null，调用方自动回退到第一个源（lbzs.laobaitv.net）。
-     */
-    private fun extractPlaylistUrl(html: String): String? {
-        // ① 明确的 .m3u / .m3u8 链接（排除字体/CDN 资源）
-        val direct = Regex("""https?://[^"''<>\s\\]+\.m3u8?(?:\?[^"''<>\s\\]*)?""", RegexOption.IGNORE_CASE)
-        direct.find(html)?.value?.let { if (!it.contains("googleapis")) return it }
-        // ② 显式标注的播放列表生成接口（data-* 属性 / href）
-        val api = Regex("""(?:href|src|data-url|action)=["'](https?://[^"']*(?:get\.php|playlist|\.m3u)[^"']*)["']""", RegexOption.IGNORE_CASE)
-        api.find(html)?.groups?.get(1)?.value?.let { return it }
-        return null
     }
 
     /** 频道长按操作菜单（TiviMate 风格） */
@@ -977,7 +960,7 @@ class MainActivity : AppCompatActivity() {
                 setDataAndType(android.net.Uri.parse(url), "application/vnd.apple.mpegurl")
                 addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
             }
-            val ua = resolveUserAgent(ch.userAgent)
+            val ua = PlaylistUrlResolver.resolveUserAgent(ch.userAgent)
             intent.putExtra("User-Agent", ua) // VLC / 部分播放器支持
             startActivity(intent)
             Toast.makeText(this, "已交给外部播放器", Toast.LENGTH_SHORT).show()
@@ -995,7 +978,7 @@ class MainActivity : AppCompatActivity() {
         val parts = url.split("|", limit = 2)
         url = parts[0]
         val rawUa = ch.userAgent ?: parts.getOrNull(1)?.removePrefix("User-Agent=")
-        val ua = resolveUserAgent(rawUa)
+        val ua = PlaylistUrlResolver.resolveUserAgent(rawUa)
         android.util.Log.i(TAG, "playing ${ch.name} url=${url.take(60)} ua=$ua")
         // 换台前更新流的 UA（OkHttp interceptor 每个请求读取）
         PlaybackService.setStreamUserAgent(ua)
@@ -1044,14 +1027,6 @@ class MainActivity : AppCompatActivity() {
      * 必须映射成完整的 UA 字符串 —— 实测老白的 CCTV1/CCTV2 源用 TiviMate UA 返回 403，
      * 只有 VLC UA 才能播放。
      */
-    private fun resolveUserAgent(raw: String?): String = when {
-        raw == null -> "TiviMate/5.1.6 (Android 12)"
-        raw.equals("VLC", ignoreCase = true) || raw.startsWith("VLC/") -> "VLC/3.0.20 LibVLC/3.0.20"
-        raw.equals("TiviMate", ignoreCase = true) || raw.startsWith("TiviMate/") -> "TiviMate/5.1.6 (Android 12)"
-        raw.startsWith("Mozilla/") -> raw
-        else -> raw // 自定义完整 UA
-    }
-
     /**
      * Catch-up 回看：长按 EPG 里已播出的节目，由 Rust core 生成归档 URL 并播放。
      * 支持播放列表标记的全部 catchup 模式（Shift/Append/Default/Flussonic）。
@@ -1099,7 +1074,7 @@ class MainActivity : AppCompatActivity() {
 
     /** 直接播放一个 URL（catch-up 用），不修改当前频道索引。 */
     private fun playUrlDirect(url: String, label: String, rawUa: String?) {
-        val ua = resolveUserAgent(rawUa)
+        val ua = PlaylistUrlResolver.resolveUserAgent(rawUa)
         PlaybackService.setStreamUserAgent(ua)
         val mediaItem = MediaItem.Builder().setUri(url).build()
         player.setMediaItem(mediaItem)
