@@ -1,5 +1,8 @@
 name: Build Test APK
 
+permissions:
+  contents: write   # 允许 push tag 时创建 Release 并上传 APK
+
 on:
   push:
     branches: [main]
