@@ -4,7 +4,9 @@ import android.os.Bundle
 import android.util.Log
 import android.view.KeyEvent
 import android.view.View
+import android.view.ViewGroup
 import android.widget.*
+import java.util.Date
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import androidx.media3.common.MediaItem
@@ -180,6 +182,26 @@ class MainActivity : AppCompatActivity() {
         groupScroll = findViewById(R.id.group_scroll)
         epgScroll = findViewById(R.id.epg_scroll)
         epgRecycler = findViewById(R.id.epg_recycler)
+        // EPG 时间刻度轴：从当前整点开始，每小时一格（2 slot × 160dp），与节目行对齐
+        findViewById<LinearLayout>(R.id.epg_ruler).let { ruler ->
+            val density = resources.displayMetrics.density
+            val hourPx = (320 * density).toInt()
+            val cal = java.util.Calendar.getInstance()
+            cal.set(java.util.Calendar.MINUTE, 0)
+            cal.set(java.util.Calendar.SECOND, 0)
+            cal.set(java.util.Calendar.MILLISECOND, 0)
+            val fmt = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
+            for (i in 0..6) {
+                val tv = TextView(this).apply {
+                    text = fmt.format(Date(cal.timeInMillis + i * 3600_000L))
+                    textSize = 13f
+                    setTextColor(android.graphics.Color.parseColor("#9AA4B2"))
+                    gravity = android.view.Gravity.CENTER_VERTICAL or android.view.Gravity.CENTER_HORIZONTAL
+                    layoutParams = LinearLayout.LayoutParams(hourPx, ViewGroup.LayoutParams.MATCH_PARENT)
+                }
+                ruler.addView(tv)
+            }
+        }
         posterGrid = findViewById(R.id.poster_grid)
 
         // ── EPG 网格 ────────────────────────────────────────────────

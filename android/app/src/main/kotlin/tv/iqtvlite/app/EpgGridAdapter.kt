@@ -86,7 +86,7 @@ class EpgGridAdapter(
 
             val title = TextView(ctx).apply {
                 text = p.title
-                textSize = 13f
+                textSize = 15f
                 setTextColor(Color.parseColor("#E8EDF2"))
                 maxLines = 2
                 layoutParams = FrameLayout.LayoutParams(

@@ -76,6 +76,18 @@ Verify:        adb connect 192.168.2.245:5555 && adb -s ... install -r APK
 - Ask first: 无（用户已全权批准，直接循环至交付）
 - Never: 提交 secrets / 引入录像 / 破坏遥控器全覆盖 / 留半成品
 
-## 9. 交付状态
-- 当前 Release: v1.8.0-ui-overhaul（UI 重构 + 扫码推源 + 引导）
-- 本轮目标: 清除 DVR 技术债 + 金标准交互对齐 + 性能达标 + 循环真机测试
+## 11. 交互金标准对齐状态（v1.8.1）
+详见 `docs/PRD/interaction-golden-standard.md` 与真机截图 `shots/v3_epg2.png`：
+- ✅ 满屏播放默认态 + 换台信息卡
+- ✅ 智能 OK / 左右切列表与 EPG / 上下换台 / 数字跳转 / 返回逐层关闭
+- ✅ 频道列表：分组/搜索/收藏/PiP 预览/进度条仅当前频道
+- ✅ EPG 时间刻度轴（本轮新增）+ 当前节目高亮进度 + 回看入口
+- ✅ 扫码推源 + 首次引导
+
+## 9. 性能基线
+见 `docs/PRD/perf-baseline.md`。冷启动可播放 3.6s、空闲 PSS 85.5MB（TR100-G9 低端机，诚实记录，不做过度优化）。
+
+## 10. 交付状态
+- 已发布 Release: v1.8.0-ui-overhaul（UI 重构 + 扫码推源 + 引导）
+- 本轮: DVR 全链路删除（CI 全绿）+ EPG 时间轴 + 金标准对齐
+- 待发布: v1.8.1（本轮改动，待打 tag）

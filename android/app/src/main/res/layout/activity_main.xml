@@ -327,11 +327,41 @@
                 android:visibility="gone"
                 android:background="@drawable/panel_side_bg">
 
-                <androidx.recyclerview.widget.RecyclerView
-                    android:id="@+id/epg_recycler"
+                <!-- 刻度与节目行同在一个横向滚动容器，保证始终对齐 -->
+                <LinearLayout
                     android:layout_width="wrap_content"
                     android:layout_height="match_parent"
-                    android:scrollbars="vertical" />
+                    android:orientation="vertical">
+
+                    <!-- 时间刻度轴（SLOT 160dp/30min，与节目块对齐） -->
+                    <LinearLayout
+                        android:layout_width="wrap_content"
+                        android:layout_height="36dp"
+                        android:orientation="horizontal"
+                        android:background="@drawable/panel_top_bg">
+
+                        <TextView
+                            android:layout_width="140dp"
+                            android:layout_height="match_parent"
+                            android:gravity="center"
+                            android:text="频道"
+                            android:textColor="@color/tm_text_2"
+                            android:textSize="13sp" />
+
+                        <LinearLayout
+                            android:id="@+id/epg_ruler"
+                            android:layout_width="wrap_content"
+                            android:layout_height="match_parent"
+                            android:orientation="horizontal" />
+                    </LinearLayout>
+
+                    <androidx.recyclerview.widget.RecyclerView
+                        android:id="@+id/epg_recycler"
+                        android:layout_width="wrap_content"
+                        android:layout_height="0dp"
+                        android:layout_weight="1"
+                        android:scrollbars="vertical" />
+                </LinearLayout>
             </HorizontalScrollView>
         </LinearLayout>
     </LinearLayout>

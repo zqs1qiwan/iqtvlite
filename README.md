@@ -22,7 +22,7 @@
 
 ## 状态
 
-🚧 **开发中** —— 领域层已完成，UI 层待 M0 spike。
+✅ **已交付** —— Kotlin 原生 UI + Rust core，真机 TR100-G9 端到端验证通过。最新 Release v1.8.0。
 
 | 模块 | 状态 |
 |---|---|
@@ -33,11 +33,14 @@
 | 播放层 `iqtvlite-player`（回退状态机） | ✅ 13 测试 |
 | 焦点层 `iqtvlite-tvfocus`（空间导航） | ✅ 7 测试 |
 | 集成测试（真实形态 fixture） | ✅ 19 测试 |
-| **Surface 合成方案**（ADR-008，最高风险） | ⬜ M0 spike |
-| Slint UI + Kotlin 胶水 | ⬜ M0 spike |
-| EPG 网格 / DVR / 多画面 / Catch-up UI | ⬜ M3+ |
+| Android TV UI（满屏播放 + 浮层 + 海报墙） | ✅ 真机验证 |
+| EPG 时间轴网格 + 时间刻度 | ✅ |
+| 手机扫码推源 / 首次引导 / PiP / 多画面 | ✅ |
+| DVR 录制 | ❌ 明确不做（已全链路删除） |
 
-**合计 127 个测试，clippy `-D warnings` 零告警。**
+**CI 全绿：cargo fmt / clippy -D warnings / cargo test / APK 构建全部通过。**
+
+> 开发准入与功能清单见 [docs/PRD.md](docs/PRD.md)（唯一真相源）。
 
 ### 本地构建
 
