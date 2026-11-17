@@ -29,12 +29,14 @@ class ChannelAdapter(
     /** 收藏/最近观看的 ID 列表（由 MainActivity 更新） */
     private var favIds: Set<Long> = emptySet()
     private var recentIds: Set<Long> = emptySet()
+    private var mostWatchedIds: List<Long> = emptyList()
     private var currentQuery = ""
     private var currentGroupFilter: String? = null
 
-    fun setLists(favorites: List<Long>, recents: List<Long>) {
+    fun setLists(favorites: List<Long>, recents: List<Long>, mostWatched: List<Long> = emptyList()) {
         favIds = favorites.toSet()
         recentIds = recents.toSet()
+        mostWatchedIds = mostWatched
     }
 
     /**
@@ -48,6 +50,7 @@ class ChannelAdapter(
         filtered = when (group) {
             "__favorites__" -> items.filter { favIds.contains(it.id) }
             "__recents__" -> recentIds.mapNotNull { id -> items.find { it.id == id } }
+            "__mostwatched__" -> mostWatchedIds.mapNotNull { id -> items.find { it.id == id } }
             null -> items
             else -> items.filter { ch ->
                 val effectiveGroup = customGroups[ch.tvgId ?: ch.providerId] ?: ch.group

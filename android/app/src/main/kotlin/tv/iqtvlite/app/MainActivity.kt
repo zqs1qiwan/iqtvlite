@@ -363,7 +363,7 @@ class MainActivity : AppCompatActivity() {
             onSelect = { ch -> play(ch) },
             onToggleFavorite = { ch ->
                 val added = FavoritesStore.toggleFavorite(this, ch.id)
-                adapter.setLists(FavoritesStore.favorites(this), FavoritesStore.recents(this))
+                adapter.setLists(FavoritesStore.favorites(this), FavoritesStore.recents(this), FavoritesStore.mostWatched(this))
                 adapter.refresh()
                 Toast.makeText(this, if (added) "★ 已收藏 ${ch.name}" else "☆ 已取消收藏", Toast.LENGTH_SHORT).show()
             },
@@ -727,7 +727,7 @@ class MainActivity : AppCompatActivity() {
         val hidden = TiviMatePrefs.hiddenChannels(this@MainActivity)
         if (hidden.isNotEmpty()) allChannels = allChannels.filterNot { hidden.contains(it.id) }
         adapter.submit(allChannels)
-        adapter.setLists(FavoritesStore.favorites(this@MainActivity), FavoritesStore.recents(this@MainActivity))
+        adapter.setLists(FavoritesStore.favorites(this@MainActivity), FavoritesStore.recents(this@MainActivity), FavoritesStore.mostWatched(this@MainActivity))
         adapter.refresh()
         posterAdapter.submit(allChannels, FavoritesStore.favorites(this@MainActivity))
         buildGroupChips(result.groups)
@@ -810,7 +810,7 @@ class MainActivity : AppCompatActivity() {
                 when (which) {
                     0 -> {
                         FavoritesStore.toggleFavorite(this, ch.id)
-                        adapter.setLists(FavoritesStore.favorites(this), FavoritesStore.recents(this))
+                        adapter.setLists(FavoritesStore.favorites(this), FavoritesStore.recents(this), FavoritesStore.mostWatched(this))
                         adapter.refresh()
                     }
                     1 -> {
@@ -881,7 +881,7 @@ class MainActivity : AppCompatActivity() {
         val hidden = TiviMatePrefs.hiddenChannels(this)
         val visible = allChannels.filterNot { hidden.contains(it.id) }
         adapter.submit(visible)
-        adapter.setLists(FavoritesStore.favorites(this), FavoritesStore.recents(this))
+        adapter.setLists(FavoritesStore.favorites(this), FavoritesStore.recents(this), FavoritesStore.mostWatched(this))
         adapter.refresh()
     }
 
@@ -892,7 +892,7 @@ class MainActivity : AppCompatActivity() {
         // 过滤隐藏分组；重命名仅影响显示，过滤仍用原始组名
         val visibleGroups = groups.filterNot { hidden.contains(it) }
         // 虚拟分组：收藏 / 最近观看 / 全部（TiviMate 风格）
-        val chips = listOf("★收藏" to "__favorites__", "最近观看" to "__recents__", "全部" to null) +
+        val chips = listOf("★收藏" to "__favorites__", "最近观看" to "__recents__", "常看" to "__mostwatched__", "全部" to null) +
             visibleGroups.take(50).map { (names[it] ?: it) to it }
         chips.forEach { (label, key) ->
             Button(this).apply {
@@ -912,7 +912,7 @@ class MainActivity : AppCompatActivity() {
                 ).apply { setMargins(0, 0, 14, 0) }
                 setOnClickListener {
                     currentGroup = key
-                    adapter.setLists(FavoritesStore.favorites(this@MainActivity), FavoritesStore.recents(this@MainActivity))
+                    adapter.setLists(FavoritesStore.favorites(this@MainActivity), FavoritesStore.recents(this@MainActivity), FavoritesStore.mostWatched(this@MainActivity))
                     adapter.filter(searchEdit.text.toString(), key)
                     val count = if (key == null) allChannels.size else adapter.itemCount
                     status.text = "$label: $count 个频道"
@@ -928,7 +928,7 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
                 // 长按真实分组 → 隐藏 / 重命名（TiviMate 功能）
-                if (key != null && key != "__favorites__" && key != "__recents__") {
+                if (key != null && key != "__favorites__" && key != "__recents__" && key != "__mostwatched__") {
                     setOnLongClickListener {
                         showGroupOptions(key, label)
                         true
@@ -937,7 +937,7 @@ class MainActivity : AppCompatActivity() {
                 groupRow.addView(this)
             }
         }
-        adapter.setLists(FavoritesStore.favorites(this), FavoritesStore.recents(this))
+        adapter.setLists(FavoritesStore.favorites(this), FavoritesStore.recents(this), FavoritesStore.mostWatched(this))
     }
 
     /** 分组长按菜单：隐藏分组 / 重命名 */
@@ -1002,7 +1002,8 @@ class MainActivity : AppCompatActivity() {
         urlIndex = 0
         adapter.setPlaying(ch.id)   // 进度条只显示在当前播放频道
         FavoritesStore.markWatched(this, ch.id)
-        adapter.setLists(FavoritesStore.favorites(this), FavoritesStore.recents(this))
+        FavoritesStore.recordPlay(this, ch.id)   // R6 播放统计（本地）
+        adapter.setLists(FavoritesStore.favorites(this), FavoritesStore.recents(this), FavoritesStore.mostWatched(this))
         adapter.refresh()
         Log.i(TAG, "WATCHED ${ch.id} ${ch.name} recents=${FavoritesStore.recents(this).size}")
         // 记住上次频道（秒播：下次启动直接续播）

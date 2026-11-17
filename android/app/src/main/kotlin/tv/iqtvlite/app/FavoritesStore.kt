@@ -17,6 +17,7 @@ object FavoritesStore {
     private const val PREF = "iqtvlite_favorites"
     private const val KEY_FAVS = "fav_ids"
     private const val KEY_RECENTS = "recent_ids"
+    private const val KEY_PLAY_COUNTS = "play_counts"
     private const val MAX_RECENTS = 30
 
     private fun prefs(ctx: Context): SharedPreferences =
@@ -66,4 +67,29 @@ object FavoritesStore {
     }
 
     fun clearRecents(ctx: Context) = writeIds(ctx, KEY_RECENTS, emptyList())
+
+    // ── R6 播放统计（纯本地，零遥测）────────────────────────────────
+    /** 频道 ID → 播放次数（JSONObject 存 SharedPreferences，稳定 ID 跨源持久）。 */
+    fun playCounts(ctx: Context): Map<Long, Int> {
+        val raw = prefs(ctx).getString(KEY_PLAY_COUNTS, null) ?: return emptyMap()
+        return try {
+            val o = org.json.JSONObject(raw)
+            o.keys().asSequence().associate { k -> k.toLong() to o.getInt(k) }
+        } catch (_: Exception) { emptyMap() }
+    }
+
+    /** 播放频道时累加次数。 */
+    fun recordPlay(ctx: Context, id: Long) {
+        val counts = playCounts(ctx).toMutableMap()
+        counts[id] = (counts[id] ?: 0) + 1
+        val o = org.json.JSONObject()
+        counts.forEach { (k, v) -> o.put(k.toString(), v) }
+        prefs(ctx).edit().putString(KEY_PLAY_COUNTS, o.toString()).apply()
+    }
+
+    /** 常看频道 ID（按播放次数降序，前 N 个）。 */
+    fun mostWatched(ctx: Context, limit: Int = 10): List<Long> =
+        playCounts(ctx).toList().sortedByDescending { it.second }.take(limit).map { it.first }
+
+    fun clearStats(ctx: Context) = prefs(ctx).edit().remove(KEY_PLAY_COUNTS).apply()
 }
