@@ -91,5 +91,6 @@ Verify:        adb connect 192.168.2.245:5555 && adb -s ... install -r APK
 - ✅ v1.8.0：UI 重构（影院配色/logo/进度条/PiP/顶栏）+ 扫码推源 + 首次引导
 - ✅ v1.8.1：DVR 全链路删除（CI 全绿）+ EPG 时间刻度轴 + 交互金标准对齐
 - ✅ v1.8.2：深色对话框 + 菜单键/信息键 + PlaylistUrlResolver 结构优化
+- ✅ v1.8.3：金标准完全对齐（信息卡下一节目预告 + 打开面板定位当前频道）
 - 全部 Release 由 GitHub CI 自动发布；真机 TR100-G9 逐项验证通过
 - 剩余：TD-2 MainActivity Controller 拆分（暂缓——功能稳定，避免为拆分引入回归；已外置纯逻辑）
