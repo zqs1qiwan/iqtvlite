@@ -8,9 +8,18 @@
     android:clickable="true"
     android:background="@drawable/poster_card_bg">
 
-    <!-- 背景层：柔和渐变，聚焦时轻微放大 -->
-    <View
+    <!-- 背景层：频道 Logo 的模糊版本（真分层视差素材），聚焦时反向微移 -->
+    <ImageView
         android:id="@+id/poster_bg_layer"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:scaleType="centerCrop"
+        android:alpha="0.55"
+        android:contentDescription="blurred backdrop" />
+
+    <!-- 光晕叠加：保证文字可读 -->
+    <View
+        android:id="@+id/poster_glow"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:background="@drawable/poster_glow" />

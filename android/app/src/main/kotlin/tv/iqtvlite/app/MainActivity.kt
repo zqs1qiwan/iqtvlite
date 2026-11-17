@@ -316,6 +316,7 @@ class MainActivity : AppCompatActivity() {
 
         // ── tvOS 海报卡浏览器（4 列网格，焦点视差） ──────────────────
         posterAdapter = PosterAdapter(
+            scope = lifecycleScope,
             onSelect = { ch -> play(ch) },
             onFocus = { ch ->
                 if (TiviMatePrefs.pipEnabled(this)) {

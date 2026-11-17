@@ -6,7 +6,7 @@ import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
-import coil.load
+import kotlinx.coroutines.CoroutineScope
 
 /**
  * tvOS 风格海报卡浏览器（GridLayoutManager）。
@@ -15,6 +15,7 @@ import coil.load
  * 背景光晕层同步点亮 —— 三层不同位移营造 Apple TV 的纵深感。
  */
 class PosterAdapter(
+    private val scope: CoroutineScope,
     private val onSelect: (Channel) -> Unit,
     private val onFocus: (Channel) -> Unit,
 ) : RecyclerView.Adapter<PosterAdapter.VH>() {
@@ -42,6 +43,7 @@ class PosterAdapter(
     class VH(view: View) : RecyclerView.ViewHolder(view) {
         val card: View = view.findViewById(R.id.poster_card)
         val bgLayer: View = view.findViewById(R.id.poster_bg_layer)
+        val glow: View = view.findViewById(R.id.poster_glow)
         val logoLayer: View = view.findViewById(R.id.poster_logo_layer)
         val textLayer: View = view.findViewById(R.id.poster_text_layer)
         val logo: ImageView = view.findViewById(R.id.poster_logo)
@@ -63,8 +65,9 @@ class PosterAdapter(
         holder.number.text = (position + 1).toString().padStart(3, '0') + if (favIds.contains(ch.id)) " ★" else ""
         holder.name.text = ch.name
         holder.programme.text = ch.tvgId?.let { nowByTvg[it]?.first } ?: ch.group
-        holder.logo.setImageResource(R.drawable.ic_tv)
-        if (ch.logo != null) holder.logo.load(ch.logo) { crossfade(true) }
+        // 真分层视差：前景清晰 Logo + 背景模糊 Logo（由同一张图生成）
+        LayeredPoster.load(scope, holder.card.context, holder.logo,
+            holder.bgLayer as ImageView, ch.logo)
 
         // 卡片整体 stateListAnimator（tvOS 焦点放大 + 抬升）
         holder.card.stateListAnimator = android.animation.AnimatorInflater.loadStateListAnimator(
@@ -72,13 +75,15 @@ class PosterAdapter(
         )
         holder.card.setOnFocusChangeListener { _, hasFocus ->
             if (hasFocus) {
-                // 视差：Logo 前景层放大更多 + 上浮；文字层轻微上移
-                holder.logoLayer.animate().scaleX(1.18f).scaleY(1.18f).translationY(-10f).setDuration(160).start()
-                holder.textLayer.animate().translationY(-4f).setDuration(160).start()
+                // 真视差：前景 Logo 放大上浮，背景模糊层反向缩小下移（景深）
+                holder.logoLayer.animate().scaleX(1.20f).scaleY(1.20f).translationY(-14f).setDuration(180).start()
+                holder.bgLayer.animate().scaleX(1.1f).scaleY(1.1f).translationY(8f).alpha(0.35f).setDuration(220).start()
+                holder.textLayer.animate().translationY(-6f).setDuration(180).start()
                 onFocus(ch)
             } else {
-                holder.logoLayer.animate().scaleX(1f).scaleY(1f).translationY(0f).setDuration(160).start()
-                holder.textLayer.animate().translationY(0f).setDuration(160).start()
+                holder.logoLayer.animate().scaleX(1f).scaleY(1f).translationY(0f).setDuration(180).start()
+                holder.bgLayer.animate().scaleX(1f).scaleY(1f).translationY(0f).alpha(0.55f).setDuration(180).start()
+                holder.textLayer.animate().translationY(0f).setDuration(180).start()
             }
         }
         holder.card.setOnClickListener { onSelect(ch) }
