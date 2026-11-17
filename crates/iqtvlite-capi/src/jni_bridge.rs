@@ -6,9 +6,8 @@ use jni::sys::jstring;
 use jni::JNIEnv;
 
 use crate::{
-    iqt_build_catchup_url, iqt_build_merged_epg_grid, iqt_extract_query,
-    iqt_free_string, iqt_merge_epg_sources, iqt_parse_epg_grid, iqt_parse_m3u, iqt_stable_id,
-    iqt_version,
+    iqt_build_catchup_url, iqt_build_merged_epg_grid, iqt_extract_query, iqt_free_string,
+    iqt_merge_epg_sources, iqt_parse_epg_grid, iqt_parse_m3u, iqt_stable_id, iqt_version,
 };
 use std::ffi::CString;
 use std::os::raw::c_char;
