@@ -1,11 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- tvOS 海报卡焦点效果：聚焦放大 15% + 抬升阴影（接近 Apple TV 图标 ~23% 缩放） -->
+<!-- tvOS 海报卡焦点效果：放大 + 抬升 + 轻微 3D 倾斜（视差深度感） -->
 <selector xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:state_focused="true">
         <set>
-            <objectAnimator android:propertyName="scaleX" android:valueTo="1.15" android:duration="160" />
-            <objectAnimator android:propertyName="scaleY" android:valueTo="1.15" android:duration="160" />
-            <objectAnimator android:propertyName="translationZ" android:valueTo="16dp" android:duration="160" />
+            <objectAnimator android:propertyName="scaleX" android:valueTo="1.14" android:duration="160" />
+            <objectAnimator android:propertyName="scaleY" android:valueTo="1.14" android:duration="160" />
+            <objectAnimator android:propertyName="translationZ" android:valueTo="18dp" android:duration="160" />
+            <objectAnimator android:propertyName="rotationX" android:valueTo="-4" android:duration="200" />
+            <objectAnimator android:propertyName="rotationY" android:valueTo="2" android:duration="200" />
         </set>
     </item>
     <item>
@@ -13,6 +15,8 @@
             <objectAnimator android:propertyName="scaleX" android:valueTo="1.0" android:duration="160" />
             <objectAnimator android:propertyName="scaleY" android:valueTo="1.0" android:duration="160" />
             <objectAnimator android:propertyName="translationZ" android:valueTo="0dp" android:duration="160" />
+            <objectAnimator android:propertyName="rotationX" android:valueTo="0" android:duration="160" />
+            <objectAnimator android:propertyName="rotationY" android:valueTo="0" android:duration="160" />
         </set>
     </item>
 </selector>

@@ -39,6 +39,8 @@ class PlaybackService : MediaSessionService() {
             .readTimeout(30, TimeUnit.SECONDS)
             // TR100-G9 盒子 IPv6 出口不通 → 强制 IPv4（见 NetUtil）
             .dns(NetUtil.ipv4OnlyDns)
+            // 与 PiP 预览共享连接池：浏览时预热的连接换台可直接复用（降低 ZAP_MS）
+            .connectionPool(NetUtil.sharedConnectionPool)
             .addInterceptor { chain ->
                 // 每请求读取当前 UA —— 不同频道要求不同 UA（实测 CCTV1 要 VLC）
                 val req = chain.request().newBuilder()

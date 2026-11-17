@@ -108,6 +108,7 @@ class MainActivity : AppCompatActivity() {
         .readTimeout(30, TimeUnit.SECONDS)
         // TR100-G9 盒子 IPv6 出口不通 → 强制 IPv4（见 NetUtil，实测 curl -6 超时 / -4 秒回）
         .dns(NetUtil.ipv4OnlyDns)
+        .connectionPool(NetUtil.sharedConnectionPool)
         // 实测：iptv.laobaitv.net 会拒绝非浏览器 UA（TiviMate/VLC/iqtvlite 全部失败），
         // 只有 Mozilla 能拿到内容 → 播放列表/EPG 下载统一用浏览器 UA。
         // 流播放的 UA 单独由 PlaybackService 按频道设置（VLC）。

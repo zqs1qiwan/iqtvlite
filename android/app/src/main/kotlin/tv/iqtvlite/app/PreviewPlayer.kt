@@ -40,6 +40,8 @@ class PreviewPlayer(private val ctx: Context) {
         .connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(15, TimeUnit.SECONDS)
         .dns(NetUtil.ipv4OnlyDns)
+        // 与主播放共享连接池：PiP 浏览预热连接，换台复用
+        .connectionPool(NetUtil.sharedConnectionPool)
         .addInterceptor { chain ->
             val req = chain.request().newBuilder()
                 .header("User-Agent", currentUa.get())
