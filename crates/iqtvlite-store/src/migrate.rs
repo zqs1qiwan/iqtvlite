@@ -241,7 +241,7 @@ pub const MIGRATIONS: &[&str] = &[
     CREATE INDEX idx_history_channel ON watch_history(channel_id, watched_at DESC);
     CREATE INDEX idx_history_recent  ON watch_history(watched_at DESC);
 
-    -- 录制
+    -- 录制表：产品已明确禁用录像功能，此表仅为老版本数据库兼容性保留，不再写入。
     CREATE TABLE recordings (
         id          TEXT PRIMARY KEY,
         channel_id  TEXT,
@@ -410,7 +410,6 @@ mod tests {
             "epg_matches",
             "favourites",
             "watch_history",
-            "recordings",
             "failover_groups",
             "failover_members",
             "channels_fts",

@@ -40,8 +40,6 @@ object RustBridge {
     /** 生成 catch-up 回看 URL。paramsJson 见 Rust iqt_build_catchup_url 文档。 */
     external fun buildCatchupUrl(paramsJson: String): String
 
-    /** 生成录制计划（文件名/路径/UA/格式）。 */
-    external fun buildRecordingPlan(paramsJson: String): String
 
     external fun stableId(sourceId: Long, providerKey: String): Long
     external fun extractQuery(url: String, key: String): String

@@ -8,7 +8,6 @@ members = [
     "crates/iqtvlite-tvfocus",
     "crates/iqtvlite-player",
     "crates/iqtvlite-capi",
-    "crates/iqtvlite-dvr",
     "crates/iqtvlite-tests",
 ]
 
@@ -26,7 +25,6 @@ iqtvlite-epg = { path = "crates/iqtvlite-epg" }
 iqtvlite-net = { path = "crates/iqtvlite-net" }
 iqtvlite-tvfocus = { path = "crates/iqtvlite-tvfocus" }
 iqtvlite-player = { path = "crates/iqtvlite-player" }
-iqtvlite-dvr = { path = "crates/iqtvlite-dvr" }
 
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

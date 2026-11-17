@@ -23,7 +23,6 @@ use iqtvlite_core::id::{global_id, m3u_provider_key, SourceId};
 use iqtvlite_core::model::catchup::{CatchupConfig, CatchupContext, CatchupResolver, CatchupType};
 use iqtvlite_core::parse::m3u;
 use iqtvlite_core::parse::xmltv::{parse_reader, XmltvChannel, XmltvProgramme};
-use iqtvlite_dvr::{estimate_size_mb, OutputFormat, RecordingSource, RecordingTask};
 use iqtvlite_epg::{build_grid, merge_sources, EpgSourceInput, GridConfig};
 
 /// 把 Rust String 转成 C 字符串（调用方必须用 `iqt_free_string` 释放）。
@@ -309,91 +308,6 @@ fn build_catchup_url(raw: &str) -> Result<String, String> {
     resolver
         .resolve(&ctx)
         .ok_or_else(|| "该频道不支持 catch-up（类型或模板无效）".to_string())
-}
-
-/// 生成录制任务的本地文件名与计划信息。
-///
-/// 输入 JSON：`{"title":"...","id":123,"url":"http://...","altUrls":[...],
-///             "source":"instant|scheduled|catchup","outputDir":"/sdcard/...",
-///             "startTs":0,"stopTs":0,"userAgent":"..."}`
-/// 返回：`{"ok":true,"fileName":"...","outputPath":"...","format":"ts|hls",
-///         "url":"...","userAgent":"...","estimateMb":N}`
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn iqt_build_recording_plan(params_json: *const c_char) -> *mut c_char {
-    let raw = unsafe { from_c(params_json) };
-    let result = match build_recording_plan(raw) {
-        Ok(v) => v,
-        Err(e) => serde_json::json!({ "ok": false, "error": e }),
-    };
-    to_c(result.to_string())
-}
-
-fn build_recording_plan(raw: &str) -> Result<serde_json::Value, String> {
-    let v: serde_json::Value = serde_json::from_str(raw).map_err(|e| e.to_string())?;
-    let get_str = |k: &str| v.get(k).and_then(|x| x.as_str()).unwrap_or("").to_string();
-    let title = get_str("title");
-    if title.is_empty() {
-        return Err("缺少 title".into());
-    }
-    let id = v.get("id").and_then(|x| x.as_i64()).unwrap_or(0);
-    let url = get_str("url");
-    if url.is_empty() {
-        return Err("缺少 url".into());
-    }
-    let output_dir = {
-        let d = get_str("outputDir");
-        if d.is_empty() {
-            "/sdcard/Download/iqtvlite".to_string()
-        } else {
-            d
-        }
-    };
-    let source = match get_str("source").as_str() {
-        "scheduled" => RecordingSource::Scheduled,
-        "catchup" => RecordingSource::Catchup,
-        _ => RecordingSource::Instant,
-    };
-    let alt_urls: Vec<String> = v
-        .get("altUrls")
-        .and_then(|x| x.as_array())
-        .map(|a| {
-            a.iter()
-                .filter_map(|x| x.as_str().map(str::to_string))
-                .collect()
-        })
-        .unwrap_or_default();
-    let task = RecordingTask {
-        id,
-        channel_id: v.get("channelId").and_then(|x| x.as_i64()).unwrap_or(0),
-        title: title.clone(),
-        source,
-        url: url.clone(),
-        alt_urls,
-        user_agent: {
-            let ua = get_str("userAgent");
-            if ua.is_empty() {
-                None
-            } else {
-                Some(ua)
-            }
-        },
-        referrer: None,
-        output_format: OutputFormat::from_url(&url),
-        output_path: output_dir.clone(),
-        start_ts: v.get("startTs").and_then(|x| x.as_i64()).unwrap_or(0),
-        stop_ts: v.get("stopTs").and_then(|x| x.as_i64()).unwrap_or(0),
-        max_bytes: v.get("maxBytes").and_then(|x| x.as_u64()).unwrap_or(0),
-    };
-    let file_name = format!("{}.{}", task.file_name(), task.output_format.extension());
-    Ok(serde_json::json!({
-        "ok": true,
-        "fileName": file_name,
-        "outputPath": format!("{}/{}", output_dir.trim_end_matches('/'), file_name),
-        "format": task.output_format.extension(),
-        "url": url,
-        "userAgent": task.user_agent,
-        "estimateMb": estimate_size_mb(2000, (task.stop_ts - task.start_ts).max(0) as u64),
-    }))
 }
 
 /// 合并多个 EPG 源并直接生成 EPG 网格（Android UI 一次调用）。
@@ -731,31 +645,7 @@ mod tests {
         );
     }
 
-    #[test]
-    fn build_recording_plan_ts() {
-        let json = r#"{"title":"CCTV-1 综合/新闻","id":123,"url":"http://x/live.ts","source":"instant","outputDir":"/sdcard/Rec"}"#;
-        let ptr = unsafe { iqt_build_recording_plan(CString::new(json).unwrap().as_ptr()) };
-        let s = unsafe { CStr::from_ptr(ptr).to_str().unwrap().to_string() };
-        unsafe { iqt_free_string(ptr) };
-        let v: serde_json::Value = serde_json::from_str(&s).unwrap();
-        assert_eq!(v["ok"], true);
-        assert_eq!(v["format"], "ts");
-        assert_eq!(v["fileName"], "CCTV-1 综合_新闻_123.ts");
-        assert!(v["outputPath"]
-            .as_str()
-            .unwrap()
-            .starts_with("/sdcard/Rec/"));
-    }
 
-    #[test]
-    fn build_recording_plan_hls() {
-        let json = r#"{"title":"Test","id":1,"url":"http://x/live.m3u8","source":"instant"}"#;
-        let ptr = unsafe { iqt_build_recording_plan(CString::new(json).unwrap().as_ptr()) };
-        let s = unsafe { CStr::from_ptr(ptr).to_str().unwrap().to_string() };
-        unsafe { iqt_free_string(ptr) };
-        let v: serde_json::Value = serde_json::from_str(&s).unwrap();
-        assert_eq!(v["format"], "m3u8");
-    }
 
     #[test]
     fn query_param_works() {
