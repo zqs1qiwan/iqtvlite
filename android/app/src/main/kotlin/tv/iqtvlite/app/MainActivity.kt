@@ -216,6 +216,7 @@ class MainActivity : AppCompatActivity() {
         coldPhase("views+findViewById")
         player = PlaybackService.ensurePlayer(this)
         PlaybackService.applyPlaybackPrefs(this, TiviMatePrefs.playbackPrefs(this))
+        PlaybackService.applyAspectMode(TiviMatePrefs.aspectMode(this))
         playerView.player = player
         coldPhase("playerInit")
         // TiviMate 风格：不用 Media3 控制条（它拦截 OK/方向键），导航完全交给我们的浮层逻辑
@@ -667,7 +668,7 @@ class MainActivity : AppCompatActivity() {
         val fav = if (FavoritesStore.isFavorite(this, ch.id)) "☆ 取消收藏" else "★ 收藏"
         val lock = if (TiviMatePrefs.isLocked(this, ch.id)) "🔓 解锁频道" else "🔒 锁定频道"
         val hide = if (TiviMatePrefs.isHidden(this, ch.id)) "👁 显示频道" else "🚫 隐藏频道"
-        val actions = arrayOf(fav, lock, hide, "⏰ 设置提醒", "✏️ 移动到分组…")
+        val actions = arrayOf(fav, lock, hide, "⏰ 设置提醒", "✏️ 移动到分组…", "🖥 画面比例 / 解码")
         androidx.appcompat.app.AlertDialog.Builder(this)
             .setTitle(ch.name)
             .setItems(actions) { _, which ->
@@ -694,9 +695,40 @@ class MainActivity : AppCompatActivity() {
                         Toast.makeText(this, "已设置提醒（5 分钟后）", Toast.LENGTH_SHORT).show()
                     }
                     4 -> showGroupPicker(ch)
+                    5 -> showPlaybackOptions(ch)
                 }
             }
             .setNegativeButton("取消", null).show()
+    }
+
+    /** 画面比例 + 解码器选项（TiviMate 风格，单频道即时生效） */
+    private fun showPlaybackOptions(ch: Channel) {
+        val aspect = TiviMatePrefs.aspectMode(this)
+        val fb = TiviMatePrefs.decoderFallback(this)
+        val aspectLabel = when (aspect) { 1 -> "铺满裁切"; 2 -> "完整显示(黑边)"; else -> "自适应" }
+        val opts = arrayOf(
+            "画面比例: $aspectLabel（点击切换）",
+            "硬解失败回退软解: ${if (fb) "开" else "关"}（点击切换）",
+        )
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("${ch.name} · 播放选项")
+            .setItems(opts) { _, which ->
+                when (which) {
+                    0 -> {
+                        val next = (aspect + 1) % 3
+                        TiviMatePrefs.setAspectMode(this, next)
+                        PlaybackService.applyAspectMode(next)
+                        Toast.makeText(this, "画面比例: ${when (next) { 1 -> "铺满裁切"; 2 -> "完整显示"; else -> "自适应" }}", Toast.LENGTH_SHORT).show()
+                        showPlaybackOptions(ch)
+                    }
+                    1 -> {
+                        TiviMatePrefs.setDecoderFallback(this, !fb)
+                        Toast.makeText(this, "软解回退: ${if (!fb) "开（下次播放生效）" else "关"}", Toast.LENGTH_SHORT).show()
+                        showPlaybackOptions(ch)
+                    }
+                }
+            }
+            .setNegativeButton("完成", null).show()
     }
 
     private fun showGroupPicker(ch: Channel) {

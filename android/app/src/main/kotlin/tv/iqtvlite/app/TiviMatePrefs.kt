@@ -31,6 +31,8 @@ object TiviMatePrefs {
     private const val KEY_HIDDEN_GROUPS = "hidden_groups"
     private const val KEY_GROUP_NAMES = "group_names"
     private const val KEY_PIP_ENABLED = "pip_enabled"
+    private const val KEY_ASPECT_MODE = "aspect_mode"
+    private const val KEY_DECODER_FALLBACK = "decoder_fallback"
 
     private fun prefs(ctx: Context): SharedPreferences =
         ctx.getSharedPreferences(PREF, Context.MODE_PRIVATE)
@@ -177,6 +179,18 @@ object TiviMatePrefs {
     fun pipEnabled(ctx: Context): Boolean = prefs(ctx).getBoolean(KEY_PIP_ENABLED, true)
     fun setPipEnabled(ctx: Context, enabled: Boolean) {
         prefs(ctx).edit().putBoolean(KEY_PIP_ENABLED, enabled).apply()
+    }
+
+    // ── 画面比例 / 解码器偏好 ────────────────────────────────────────
+    /** 0=自适应(默认), 1=铺满裁切(crop), 2=完整显示(letterbox) */
+    fun aspectMode(ctx: Context): Int = prefs(ctx).getInt(KEY_ASPECT_MODE, 0)
+    fun setAspectMode(ctx: Context, mode: Int) {
+        prefs(ctx).edit().putInt(KEY_ASPECT_MODE, mode).apply()
+    }
+    /** 硬解失败时自动回退软解（某些频道硬解花屏时有用） */
+    fun decoderFallback(ctx: Context): Boolean = prefs(ctx).getBoolean(KEY_DECODER_FALLBACK, true)
+    fun setDecoderFallback(ctx: Context, enabled: Boolean) {
+        prefs(ctx).edit().putBoolean(KEY_DECODER_FALLBACK, enabled).apply()
     }
 
     // ── 上次观看频道（TiviMate 秒播：启动自动播放）─────────────────

@@ -108,7 +108,11 @@ class PlaybackService : MediaSessionService() {
                 .setPrioritizeTimeOverSizeThresholds(true)
                 .build()
 
-            return ExoPlayer.Builder(context)
+            // 硬解预warm：减少首个视频帧的解码器初始化耗时（降低冷换台）
+            val renderersFactory = androidx.media3.exoplayer.DefaultRenderersFactory(context)
+                .setEnableDecoderFallback(true)
+                .experimentalSetEnableMediaCodecVideoRendererPrewarming(true)
+            return ExoPlayer.Builder(context, renderersFactory)
                 .setMediaSourceFactory(mediaSourceFactory)
                 .setLoadControl(loadControl)
                 .build()
@@ -147,6 +151,18 @@ class PlaybackService : MediaSessionService() {
                 else C.VIDEO_CHANGE_FRAME_RATE_STRATEGY_OFF,
             )
             android.util.Log.i(TAG, "prefs applied afr=${prefs.autoFrameRate} passthrough=${prefs.audioPassthrough}")
+        }
+
+        /** 画面比例：0=自适应, 1=铺满裁切, 2=完整显示（黑边） */
+        fun applyAspectMode(mode: Int) {
+            val player = sharedPlayer ?: return
+            val scaling = when (mode) {
+                1 -> C.VIDEO_SCALING_MODE_SCALE_TO_FIT_WITH_CROPPING
+                2 -> C.VIDEO_SCALING_MODE_SCALE_TO_FIT
+                else -> C.VIDEO_SCALING_MODE_DEFAULT
+            }
+            player.setVideoScalingMode(scaling)
+            android.util.Log.i(TAG, "aspect mode=$mode scaling=$scaling")
         }
     }
 

@@ -1,17 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Apple TV / tvOS 风格配色：深色为底，颜色让位于内容，系统蓝做点缀 -->
+<!-- 配色取自 TiviMate v2.1.5 解包的真实设计令牌（apktool 反编译 colors.xml） -->
 <resources>
-    <color name="tm_bg">#000000</color>              <!-- 视频底 -->
-    <color name="tm_surface">#1C1C1EE6</color>       <!-- 毛玻璃顶栏 -->
-    <color name="tm_surface_2">#2C2C2EE6</color>     <!-- 分组条 -->
-    <color name="tm_focus">#0A84FF</color>           <!-- Apple 系统蓝（进度/强调） -->
-    <color name="tm_focus_bg">#FFFFFF2E</color>      <!-- 焦点：半透明白（不用硬蓝边框） -->
-    <color name="tm_text">#F5F5F7</color>            <!-- Apple 主标签色 -->
-    <color name="tm_text_2">#A1A1A6</color>          <!-- Apple 副标签色 -->
-    <color name="tm_text_3">#6E6E73</color>          <!-- 三级文字 -->
-    <color name="tm_progress">#0A84FF</color>
-    <color name="tm_progress_bg">#48484A</color>
-    <color name="tm_accent">#FFD60A</color>
-    <!-- 兼容旧引用 -->
-    <color name="focus_bg">#FFFFFF2E</color>
+    <!-- TiviMate 主背景：#060606 / #131313 / #202020 / #263238 -->
+    <color name="tm_bg">#FF060606</color>
+    <color name="tm_surface">#E6131313</color>        <!-- 半透明顶栏 -->
+    <color name="tm_surface_2">#E6202020</color>      <!-- 分组条 -->
+    <!-- TiviMate 主强调蓝：#2196F3（焦点/进度）；亮色 #90CAF9 -->
+    <color name="tm_focus">#FF2196F3</color>
+    <color name="tm_focus_bg">#332196F3</color>       <!-- 焦点半透明蓝底 -->
+    <!-- TiviMate 文字：#EEEEEE 主 / #BDBDBD 次 / #757575 三级 -->
+    <color name="tm_text">#FFEEEEEE</color>
+    <color name="tm_text_2">#FFBDBDBD</color>
+    <color name="tm_text_3">#FF757575</color>
+    <color name="tm_progress">#FF2196F3</color>
+    <color name="tm_progress_bg">#FF37474F</color>    <!-- TiviMate 蓝灰 -->
+    <color name="tm_accent">#FFFFC107</color>         <!-- TiviMate 琥珀色 -->
+    <color name="focus_bg">#332196F3</color>
 </resources>
