@@ -49,7 +49,7 @@
 | F8 | Catch-up 回看（供应商支持时） | ✅ | §5.8 |
 | F9 | 家长控制 / 备份还原 / 字幕音轨 | ✅ | §5.9 |
 | F10 | 快捷键：数字跳转/频道上下键 | ✅ | §5.10 |
-| — | ~~DVR 录制~~ | ❌ 删除中 | §6 |
+| — | ~~DVR 录制~~ | ❌ 已删除（硬约束） | §6 |
 
 ## 5. 技术栈
 - Kotlin + Android Views（原生，非 Compose）+ Media3 ExoPlayer 1.11.1
@@ -76,14 +76,6 @@ Verify:        adb connect 192.168.2.245:5555 && adb -s ... install -r APK
 - Ask first: 无（用户已全权批准，直接循环至交付）
 - Never: 提交 secrets / 引入录像 / 破坏遥控器全覆盖 / 留半成品
 
-## 11. 交互金标准对齐状态（v1.8.1）
-详见 `docs/PRD/interaction-golden-standard.md` 与真机截图 `shots/v3_epg2.png`：
-- ✅ 满屏播放默认态 + 换台信息卡
-- ✅ 智能 OK / 左右切列表与 EPG / 上下换台 / 数字跳转 / 返回逐层关闭
-- ✅ 频道列表：分组/搜索/收藏/PiP 预览/进度条仅当前频道
-- ✅ EPG 时间刻度轴（本轮新增）+ 当前节目高亮进度 + 回看入口
-- ✅ 扫码推源 + 首次引导
-
 ## 9. 性能基线
 见 `docs/PRD/perf-baseline.md`。冷启动可播放 3.6s、空闲 PSS 85.5MB（TR100-G9 低端机，诚实记录，不做过度优化）。
 
@@ -94,3 +86,11 @@ Verify:        adb connect 192.168.2.245:5555 && adb -s ... install -r APK
 - ✅ v1.8.3：金标准完全对齐（信息卡下一节目预告 + 打开面板定位当前频道）
 - 全部 Release 由 GitHub CI 自动发布；真机 TR100-G9 逐项验证通过
 - 剩余：TD-2 MainActivity Controller 拆分（暂缓——功能稳定，避免为拆分引入回归；已外置纯逻辑）
+
+## 11. 交互金标准对齐状态
+详见 `docs/PRD/interaction-golden-standard.md` 与真机截图 `shots/v3_epg2.png`：
+- ✅ 满屏播放默认态 + 换台信息卡
+- ✅ 智能 OK / 左右切列表与 EPG / 上下换台 / 数字跳转 / 返回逐层关闭
+- ✅ 频道列表：分组/搜索/收藏/PiP 预览/进度条仅当前频道
+- ✅ EPG 时间刻度轴（本轮新增）+ 当前节目高亮进度 + 回看入口
+- ✅ 扫码推源 + 首次引导
