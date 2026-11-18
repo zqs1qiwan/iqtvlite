@@ -86,6 +86,7 @@ jobs:
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep -E 'package:|native-code:|sdkVersion|targetSdkVersion|application-label:'
           TEST_APK=android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
           test -s "$TEST_APK"
+          python3 scripts/verify_instrumentation_pair.py "$APK" "$TEST_APK" --report android/app/build/reports/instrumentation-contract.json
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs "$TEST_APK"
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump xmltree "$TEST_APK" AndroidManifest.xml | grep -E 'targetPackage|AndroidJUnitRunner'
           for ABI in armeabi-v7a arm64-v8a; do

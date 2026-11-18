@@ -29,5 +29,9 @@ Thumbs.db
 *.xmltv
 /local/
 
+# Python verification caches
+__pycache__/
+*.pyc
+
 # 构建日志
 *.log

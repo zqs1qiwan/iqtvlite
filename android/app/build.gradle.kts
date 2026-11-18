@@ -38,6 +38,9 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            if (providers.gradleProperty("ISOLATED_TEST_PACKAGE").orNull == "true") {
+                proguardFile("instrumentation-shared-keep.pro")
+            }
             if (stableSigning) signingConfig = signingConfigs.getByName("ciStable")
         }
         release {
