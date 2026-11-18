@@ -33,6 +33,14 @@ object TiviMatePrefs {
     private const val KEY_PIP_ENABLED = "pip_enabled"
     private const val KEY_ASPECT_MODE = "aspect_mode"
     private const val KEY_DECODER_FALLBACK = "decoder_fallback"
+    // ── TiviMate P0 配置项（遥控器 / 启动 / 刷新）────────────────────
+    private const val KEY_STARTUP_BEHAVIOR = "startup_behavior"      // 0=回上次台 1=打开频道列表
+    private const val KEY_UPDOWN_ACTION = "updown_action"            // 0=换台 1=切分组
+    private const val KEY_RIGHT_ACTION = "right_action"              // 0=上一台 1=信息卡
+    private const val KEY_NUMBER_JUMP = "number_jump_enabled"        // 数字直跳开关
+    private const val KEY_PLAYLIST_REFRESH = "playlist_refresh"      // 0=关 1=启动 2=每12h 3=启动+每12h
+    private const val KEY_EPG_REFRESH = "epg_refresh"                // 0=关 1=启动 2=每6h 3=启动+每6h
+    private const val KEY_PROGRAM_CLICK = "program_click"            // 0=播放 1=回看优先
 
     private fun prefs(ctx: Context): SharedPreferences =
         ctx.getSharedPreferences(PREF, Context.MODE_PRIVATE)
@@ -236,6 +244,22 @@ object TiviMatePrefs {
 
     // ── 备份 / 恢复 ─────────────────────────────────────────────────
     private fun longsArray(ids: List<Long>) = JSONArray().apply { ids.forEach { put(it) } }
+
+    // ── TiviMate P0 配置读写 ───────────────────────────────────────
+    fun startupBehavior(ctx: Context) = prefs(ctx).getInt(KEY_STARTUP_BEHAVIOR, 0)
+    fun setStartupBehavior(ctx: Context, v: Int) = prefs(ctx).edit().putInt(KEY_STARTUP_BEHAVIOR, v).apply()
+    fun updownAction(ctx: Context) = prefs(ctx).getInt(KEY_UPDOWN_ACTION, 0)
+    fun setUpdownAction(ctx: Context, v: Int) = prefs(ctx).edit().putInt(KEY_UPDOWN_ACTION, v).apply()
+    fun rightAction(ctx: Context) = prefs(ctx).getInt(KEY_RIGHT_ACTION, 0)
+    fun setRightAction(ctx: Context, v: Int) = prefs(ctx).edit().putInt(KEY_RIGHT_ACTION, v).apply()
+    fun numberJumpEnabled(ctx: Context) = prefs(ctx).getBoolean(KEY_NUMBER_JUMP, true)
+    fun setNumberJumpEnabled(ctx: Context, v: Boolean) = prefs(ctx).edit().putBoolean(KEY_NUMBER_JUMP, v).apply()
+    fun playlistRefresh(ctx: Context) = prefs(ctx).getInt(KEY_PLAYLIST_REFRESH, 3)
+    fun setPlaylistRefresh(ctx: Context, v: Int) = prefs(ctx).edit().putInt(KEY_PLAYLIST_REFRESH, v).apply()
+    fun epgRefresh(ctx: Context) = prefs(ctx).getInt(KEY_EPG_REFRESH, 3)
+    fun setEpgRefresh(ctx: Context, v: Int) = prefs(ctx).edit().putInt(KEY_EPG_REFRESH, v).apply()
+    fun programClick(ctx: Context) = prefs(ctx).getInt(KEY_PROGRAM_CLICK, 1)
+    fun setProgramClick(ctx: Context, v: Int) = prefs(ctx).edit().putInt(KEY_PROGRAM_CLICK, v).apply()
 
     fun exportBackup(ctx: Context): JSONObject {
         val p = prefs(ctx)

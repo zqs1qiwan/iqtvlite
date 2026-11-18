@@ -44,6 +44,8 @@
         <item name="android:windowAnimationStyle">@style/DrawerAnim</item>
         <item name="android:textColorPrimary">@color/tm_text</item>
         <item name="colorAccent">@color/tm_focus</item>
+        <item name="alertDialogTheme">@style/IqtvDialogTheme</item>
+        <item name="android:alertDialogTheme">@style/IqtvDialogTheme</item>
     </style>
 
     <style name="DrawerAnim">

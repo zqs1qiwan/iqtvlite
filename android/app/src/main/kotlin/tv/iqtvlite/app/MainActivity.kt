@@ -450,11 +450,17 @@ class MainActivity : AppCompatActivity() {
         val cacheHit = loadFromCache(0)
         coldPhase("loadFromCache")
         Log.i(TAG, "COLD_START_CACHE hit=$cacheHit ms=${System.currentTimeMillis() - coldStartTime}")
-        // ② TiviMate 秒播：用缓存里的上次频道立即开播（不等网络刷新）
-        if (cacheHit) autoPlayLastChannel()
+        // ② 启动行为配置：回上次台（默认）或打开频道列表
+        if (TiviMatePrefs.startupBehavior(this) == 0 && cacheHit) autoPlayLastChannel()
+        else if (cacheHit) applyDrawerState(1)
         coldPhase("autoPlayLastChannel")
-        // ③ 后台拉网络 → 成功后刷新（不打断当前播放）
-        loadSource(0)
+        // ③ 后台拉网络 → 成功后刷新（受"播放列表刷新"配置控制）
+        val plRefresh = TiviMatePrefs.playlistRefresh(this)
+        if (plRefresh == 1 || plRefresh == 3) loadSource(0)
+        else if (!cacheHit) loadSource(0)   // 无缓存时无论如何都要拉一次
+        // EPG 启动刷新（受配置控制）
+        val epgRefresh = TiviMatePrefs.epgRefresh(this)
+        if (epgRefresh == 1 || epgRefresh == 3) loadEpg()
         // ④ 首次启动引导（只在第一次显示，按任意键消失）
         firstRunGuide = findViewById(R.id.first_run_guide)
         if (!prefs.getBoolean("guide_seen", false)) {
@@ -1243,7 +1249,10 @@ class MainActivity : AppCompatActivity() {
     override fun onKeyUp(keyCode: Int, event: KeyEvent?): Boolean {
         if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT && !uiIsVisible()) {
             rightLongPressRunnable?.let { uiHandler.removeCallbacks(it) }
-            if (!rightLongPressFired) switchToPrevious()
+            if (!rightLongPressFired) {
+                if (TiviMatePrefs.rightAction(this) == 0) switchToPrevious()
+                else allChannels.getOrNull(currentPos)?.let { showInfoCard(it) }
+            }
             rightLongPressFired = false
             return true
         }
@@ -1309,10 +1318,18 @@ class MainActivity : AppCompatActivity() {
             }
             // 上/下：换台
             KeyEvent.KEYCODE_CHANNEL_UP, KeyEvent.KEYCODE_DPAD_UP -> {
-                if (!uiIsVisible()) { zap(1); return true }
+                if (!uiIsVisible()) {
+                    if (TiviMatePrefs.updownAction(this) == 0) zap(1)
+                    else applyDrawerState(2)  // 切分组
+                    return true
+                }
             }
             KeyEvent.KEYCODE_CHANNEL_DOWN, KeyEvent.KEYCODE_DPAD_DOWN -> {
-                if (!uiIsVisible()) { zap(-1); return true }
+                if (!uiIsVisible()) {
+                    if (TiviMatePrefs.updownAction(this) == 0) zap(-1)
+                    else applyDrawerState(2)
+                    return true
+                }
             }
             // 菜单键：打开设置抽屉（同右键）
             KeyEvent.KEYCODE_MENU -> {
@@ -1328,8 +1345,8 @@ class MainActivity : AppCompatActivity() {
                 return true
             }
         }
-        // 数字键：频道号跳转（TiviMate 功能，1.5s 内连续输入组合成频道号）
-        if (keyCode in KeyEvent.KEYCODE_0..KeyEvent.KEYCODE_9) {
+        // 数字键：频道号跳转（可配置开关）
+        if (keyCode in KeyEvent.KEYCODE_0..KeyEvent.KEYCODE_9 && TiviMatePrefs.numberJumpEnabled(this)) {
             val digit = keyCode - KeyEvent.KEYCODE_0
             numberJumpBuffer += digit.toString()
             status.text = "跳转到频道 $numberJumpBuffer…"

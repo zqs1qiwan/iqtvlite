@@ -75,6 +75,9 @@ class SettingsActivity : AppCompatActivity() {
             }
             startActivity(intent)
         }
+        setupRow(R.id.row_playback_settings, R.id.sub_playback_settings, "播放与遥控设置", "启动行为 · 按键映射 · 数字跳台 · 自动刷新") {
+            showPlaybackRemoteSettings()
+        }
         setupRow(R.id.row_reminders, R.id.sub_reminders, "提醒管理", "查看 / 删除已设置的节目提醒") {
             val list = TiviMatePrefs.reminders(this)
             val names = if (list.isEmpty()) arrayOf("暂无提醒") else
@@ -171,6 +174,73 @@ class SettingsActivity : AppCompatActivity() {
                 .show()
         }
         refreshDialog()
+    }
+
+    /** TiviMate 意义驱动的核心配置：启动/按键/数字跳台/刷新/节目点击 */
+    private fun showPlaybackRemoteSettings() {
+        val items = arrayOf(
+            "启动行为：${if (TiviMatePrefs.startupBehavior(this) == 0) "回到上次频道" else "打开频道列表"}",
+            "上/下键：${if (TiviMatePrefs.updownAction(this) == 0) "换台" else "切分组"}",
+            "右键短按：${if (TiviMatePrefs.rightAction(this) == 0) "上一个频道" else "信息卡"}",
+            "数字键跳台：${if (TiviMatePrefs.numberJumpEnabled(this)) "开启" else "关闭"}",
+            "播放列表刷新：${refreshLabel(TiviMatePrefs.playlistRefresh(this))}",
+            "EPG 刷新：${refreshLabel(TiviMatePrefs.epgRefresh(this))}",
+            "点击节目：${if (TiviMatePrefs.programClick(this) == 1) "回看优先" else "直接播放"}",
+        )
+        AlertDialog.Builder(this)
+            .setTitle("播放与遥控设置")
+            .setItems(items) { _, which ->
+                when (which) {
+                    0 -> {
+                        val v = arrayOf("回到上次频道", "打开频道列表")
+                        AlertDialog.Builder(this).setTitle("启动行为").setItems(v) { _, i ->
+                            TiviMatePrefs.setStartupBehavior(this, i); showPlaybackRemoteSettings()
+                        }.setNegativeButton("取消") { _, _ -> showPlaybackRemoteSettings() }.show()
+                    }
+                    1 -> {
+                        val v = arrayOf("换台", "切分组")
+                        AlertDialog.Builder(this).setTitle("上/下键动作").setItems(v) { _, i ->
+                            TiviMatePrefs.setUpdownAction(this, i); showPlaybackRemoteSettings()
+                        }.setNegativeButton("取消") { _, _ -> showPlaybackRemoteSettings() }.show()
+                    }
+                    2 -> {
+                        val v = arrayOf("上一个频道", "信息卡")
+                        AlertDialog.Builder(this).setTitle("右键短按动作").setItems(v) { _, i ->
+                            TiviMatePrefs.setRightAction(this, i); showPlaybackRemoteSettings()
+                        }.setNegativeButton("取消") { _, _ -> showPlaybackRemoteSettings() }.show()
+                    }
+                    3 -> {
+                        val on = !TiviMatePrefs.numberJumpEnabled(this)
+                        TiviMatePrefs.setNumberJumpEnabled(this, on)
+                        Toast.makeText(this, "数字跳台${if (on) "已开启" else "已关闭"}", Toast.LENGTH_SHORT).show()
+                        showPlaybackRemoteSettings()
+                    }
+                    4 -> {
+                        val v = arrayOf("关闭", "仅启动时", "每12小时", "启动+每12小时")
+                        AlertDialog.Builder(this).setTitle("播放列表刷新").setItems(v) { _, i ->
+                            TiviMatePrefs.setPlaylistRefresh(this, i); showPlaybackRemoteSettings()
+                        }.setNegativeButton("取消") { _, _ -> showPlaybackRemoteSettings() }.show()
+                    }
+                    5 -> {
+                        val v = arrayOf("关闭", "仅启动时", "每6小时", "启动+每6小时")
+                        AlertDialog.Builder(this).setTitle("EPG 刷新").setItems(v) { _, i ->
+                            TiviMatePrefs.setEpgRefresh(this, i); showPlaybackRemoteSettings()
+                        }.setNegativeButton("取消") { _, _ -> showPlaybackRemoteSettings() }.show()
+                    }
+                    6 -> {
+                        val v = arrayOf("直接播放", "回看优先")
+                        AlertDialog.Builder(this).setTitle("点击节目行为").setItems(v) { _, i ->
+                            TiviMatePrefs.setProgramClick(this, i); showPlaybackRemoteSettings()
+                        }.setNegativeButton("取消") { _, _ -> showPlaybackRemoteSettings() }.show()
+                    }
+                }
+            }
+            .setNegativeButton("返回", null)
+            .show()
+    }
+
+    private fun refreshLabel(v: Int) = when (v) {
+        0 -> "关闭"; 1 -> "仅启动时"; 2 -> "定时"; else -> "启动+定时"
     }
 
     private fun setupRow(rowId: Int, subId: Int, title: String, subtitle: String, onClick: () -> Unit) {
