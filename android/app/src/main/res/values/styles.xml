@@ -10,7 +10,11 @@
         <item name="colorPrimary">@color/tm_focus</item>
         <item name="colorAccent">@color/tm_focus</item>
         <item name="android:colorAccent">@color/tm_focus</item>
-        <item name="colorControlHighlight">#22FFFFFF</item>
+        <item name="colorControlHighlight">@android:color/transparent</item>
+        <item name="android:colorFocusedHighlight">@android:color/transparent</item>
+        <item name="android:colorActivatedHighlight">@android:color/transparent</item>
+        <item name="android:colorPressedHighlight">@android:color/transparent</item>
+        <item name="android:colorLongPressedHighlight">@android:color/transparent</item>
         <item name="android:windowNoTitle">true</item>
         <item name="android:windowFullscreen">true</item>
         <item name="android:buttonStyle">@style/TvButton</item>

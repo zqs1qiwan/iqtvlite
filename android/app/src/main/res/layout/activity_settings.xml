@@ -3,7 +3,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:background="#E80C1116">
+    android:background="@color/tm_surface">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -11,13 +11,13 @@
         android:orientation="horizontal"
         android:gravity="center_vertical"
         android:paddingStart="24dp"
-        android:background="#131B24">
+        android:background="@color/tm_surface">
         <TextView
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:text="设置"
-            android:textColor="#E8EDF2"
+            android:textColor="@color/tm_text"
             android:textSize="26sp" />
         <Button android:id="@+id/btn_back" android:layout_width="wrap_content"
             android:layout_height="wrap_content" android:text="返回" android:minWidth="0dp" />
@@ -29,56 +29,56 @@
 
             <LinearLayout android:id="@+id/row_pin" android:layout_width="match_parent" android:layout_height="wrap_content"
                 android:orientation="vertical" android:background="@drawable/focus_border" android:padding="16dp" android:layout_marginBottom="8dp">
-                <TextView android:id="@+id/title_pin" android:text="家长控制 PIN" android:textColor="#E8EDF2" android:textSize="20sp" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
-                <TextView android:id="@+id/sub_pin" android:text="设置或清除 PIN 锁" android:textColor="#9AA7B4" android:textSize="15sp" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
+                <TextView android:id="@+id/title_pin" android:text="家长控制 PIN" android:textColor="@color/tm_text" android:textSize="20sp" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
+                <TextView android:id="@+id/sub_pin" android:text="设置或清除 PIN 锁" android:textColor="@color/tm_text_2" android:textSize="15sp" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
             </LinearLayout>
 
             <LinearLayout android:id="@+id/row_backup" android:layout_width="match_parent" android:layout_height="wrap_content"
                 android:orientation="vertical" android:background="@drawable/focus_border" android:padding="16dp" android:layout_marginBottom="8dp">
-                <TextView android:id="@+id/title_backup" android:text="备份设置" android:textColor="#E8EDF2" android:textSize="20sp" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
-                <TextView android:id="@+id/sub_backup" android:text="导出全部配置到 JSON 文件" android:textColor="#9AA7B4" android:textSize="15sp" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
+                <TextView android:id="@+id/title_backup" android:text="备份设置" android:textColor="@color/tm_text" android:textSize="20sp" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
+                <TextView android:id="@+id/sub_backup" android:text="导出全部配置到 JSON 文件" android:textColor="@color/tm_text_2" android:textSize="15sp" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
             </LinearLayout>
 
             <LinearLayout android:id="@+id/row_restore" android:layout_width="match_parent" android:layout_height="wrap_content"
                 android:orientation="vertical" android:background="@drawable/focus_border" android:padding="16dp" android:layout_marginBottom="8dp">
-                <TextView android:id="@+id/title_restore" android:text="恢复设置" android:textColor="#E8EDF2" android:textSize="20sp" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
-                <TextView android:id="@+id/sub_restore" android:text="从备份文件导入配置" android:textColor="#9AA7B4" android:textSize="15sp" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
+                <TextView android:id="@+id/title_restore" android:text="恢复设置" android:textColor="@color/tm_text" android:textSize="20sp" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
+                <TextView android:id="@+id/sub_restore" android:text="从备份文件导入配置" android:textColor="@color/tm_text_2" android:textSize="15sp" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
             </LinearLayout>
 
             <LinearLayout android:id="@+id/row_diagnostics" android:layout_width="match_parent" android:layout_height="wrap_content"
                 android:orientation="vertical" android:background="@drawable/focus_border" android:padding="16dp" android:layout_marginBottom="8dp">
-                <TextView android:id="@+id/title_diagnostics" android:text="播放诊断" android:textColor="#E8EDF2" android:textSize="20sp" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
-                <TextView android:id="@+id/sub_diagnostics" android:text="查看首帧耗时/缓冲/分辨率/EPG匹配，可复制" android:textColor="#9AA7B4" android:textSize="15sp" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
+                <TextView android:id="@+id/title_diagnostics" android:text="播放诊断" android:textColor="@color/tm_text" android:textSize="20sp" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
+                <TextView android:id="@+id/sub_diagnostics" android:text="查看首帧耗时/缓冲/分辨率/EPG匹配，可复制" android:textColor="@color/tm_text_2" android:textSize="15sp" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
             </LinearLayout>
 
             <LinearLayout android:id="@+id/row_reminders" android:layout_width="match_parent" android:layout_height="wrap_content"
                 android:orientation="vertical" android:background="@drawable/focus_border" android:padding="16dp" android:layout_marginBottom="8dp">
-                <TextView android:id="@+id/title_reminders" android:text="提醒管理" android:textColor="#E8EDF2" android:textSize="20sp" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
-                <TextView android:id="@+id/sub_reminders" android:text="查看 / 删除节目提醒" android:textColor="#9AA7B4" android:textSize="15sp" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
+                <TextView android:id="@+id/title_reminders" android:text="提醒管理" android:textColor="@color/tm_text" android:textSize="20sp" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
+                <TextView android:id="@+id/sub_reminders" android:text="查看 / 删除节目提醒" android:textColor="@color/tm_text_2" android:textSize="15sp" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
             </LinearLayout>
 
             <LinearLayout android:id="@+id/row_epg_sources" android:layout_width="match_parent" android:layout_height="wrap_content"
                 android:orientation="vertical" android:background="@drawable/focus_border" android:padding="16dp" android:layout_marginBottom="8dp">
-                <TextView android:id="@+id/title_epg_sources" android:text="EPG 源管理" android:textColor="#E8EDF2" android:textSize="20sp" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
-                <TextView android:id="@+id/sub_epg_sources" android:text="添加 / 设置优先级" android:textColor="#9AA7B4" android:textSize="15sp" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
+                <TextView android:id="@+id/title_epg_sources" android:text="EPG 源管理" android:textColor="@color/tm_text" android:textSize="20sp" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
+                <TextView android:id="@+id/sub_epg_sources" android:text="添加 / 设置优先级" android:textColor="@color/tm_text_2" android:textSize="15sp" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
             </LinearLayout>
 
             <LinearLayout android:id="@+id/row_playback" android:layout_width="match_parent" android:layout_height="wrap_content"
                 android:orientation="vertical" android:background="@drawable/focus_border" android:padding="16dp" android:layout_marginBottom="8dp">
-                <TextView android:id="@+id/title_playback" android:text="播放设置" android:textColor="#E8EDF2" android:textSize="20sp" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
-                <TextView android:id="@+id/sub_playback" android:text="自动帧率 / 音频直通 / 外部播放器" android:textColor="#9AA7B4" android:textSize="15sp" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
+                <TextView android:id="@+id/title_playback" android:text="播放设置" android:textColor="@color/tm_text" android:textSize="20sp" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
+                <TextView android:id="@+id/sub_playback" android:text="自动帧率 / 音频直通 / 外部播放器" android:textColor="@color/tm_text_2" android:textSize="15sp" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
             </LinearLayout>
 
             <LinearLayout android:id="@+id/row_locked" android:layout_width="match_parent" android:layout_height="wrap_content"
                 android:orientation="vertical" android:background="@drawable/focus_border" android:padding="16dp" android:layout_marginBottom="8dp">
-                <TextView android:id="@+id/title_locked" android:text="锁定频道" android:textColor="#E8EDF2" android:textSize="20sp" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
-                <TextView android:id="@+id/sub_locked" android:text="当前锁定 0 个" android:textColor="#9AA7B4" android:textSize="15sp" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
+                <TextView android:id="@+id/title_locked" android:text="锁定频道" android:textColor="@color/tm_text" android:textSize="20sp" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
+                <TextView android:id="@+id/sub_locked" android:text="当前锁定 0 个" android:textColor="@color/tm_text_2" android:textSize="15sp" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
             </LinearLayout>
 
             <LinearLayout android:id="@+id/row_hidden" android:layout_width="match_parent" android:layout_height="wrap_content"
                 android:orientation="vertical" android:background="@drawable/focus_border" android:padding="16dp" android:layout_marginBottom="8dp">
-                <TextView android:id="@+id/title_hidden" android:text="隐藏频道" android:textColor="#E8EDF2" android:textSize="20sp" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
-                <TextView android:id="@+id/sub_hidden" android:text="当前隐藏 0 个" android:textColor="#9AA7B4" android:textSize="15sp" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
+                <TextView android:id="@+id/title_hidden" android:text="隐藏频道" android:textColor="@color/tm_text" android:textSize="20sp" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
+                <TextView android:id="@+id/sub_hidden" android:text="当前隐藏 0 个" android:textColor="@color/tm_text_2" android:textSize="15sp" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
             </LinearLayout>
         </LinearLayout>
     </ScrollView>

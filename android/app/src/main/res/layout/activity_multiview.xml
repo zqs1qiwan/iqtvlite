@@ -13,14 +13,14 @@
         android:gravity="center_vertical"
         android:paddingStart="16dp"
         android:paddingEnd="16dp"
-        android:background="#131B24">
+        android:background="@color/tm_surface">
 
         <TextView
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:text="多画面 2×2 · 点窗口切换声音"
-            android:textColor="#E8EDF2"
+            android:textColor="@color/tm_text"
             android:textSize="20sp" />
 
         <Button
@@ -62,7 +62,7 @@
                     android:layout_gravity="top|start"
                     android:layout_margin="8dp"
                     android:background="#A0000000"
-                    android:textColor="#E8EDF2"
+                    android:textColor="@color/tm_text"
                     android:textSize="14sp" />
                 <TextView
                     android:id="@+id/hint0"
@@ -90,7 +90,7 @@
                     android:layout_gravity="top|start"
                     android:layout_margin="8dp"
                     android:background="#A0000000"
-                    android:textColor="#E8EDF2"
+                    android:textColor="@color/tm_text"
                     android:textSize="14sp" />
                 <TextView
                     android:id="@+id/hint1"
@@ -126,7 +126,7 @@
                     android:layout_gravity="top|start"
                     android:layout_margin="8dp"
                     android:background="#A0000000"
-                    android:textColor="#E8EDF2"
+                    android:textColor="@color/tm_text"
                     android:textSize="14sp" />
                 <TextView
                     android:id="@+id/hint2"
@@ -154,7 +154,7 @@
                     android:layout_gravity="top|start"
                     android:layout_margin="8dp"
                     android:background="#A0000000"
-                    android:textColor="#E8EDF2"
+                    android:textColor="@color/tm_text"
                     android:textSize="14sp" />
                 <TextView
                     android:id="@+id/hint3"

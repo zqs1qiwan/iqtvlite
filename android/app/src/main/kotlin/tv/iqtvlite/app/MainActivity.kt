@@ -637,8 +637,8 @@ class MainActivity : AppCompatActivity() {
                 infoNext.visibility = View.GONE
             }
         } else {
-            infoTitle.text = ch.name
-            infoTime.text = "正在播放"
+            infoTitle.text = "暂无节目信息"
+            infoTime.text = ""
             infoRemaining.text = ""
             infoProgress.visibility = View.GONE
             infoNext.visibility = View.GONE
@@ -938,17 +938,21 @@ class MainActivity : AppCompatActivity() {
         val chips = listOf("★收藏" to "__favorites__", "最近观看" to "__recents__", "常看" to "__mostwatched__", "全部" to null) +
             visibleGroups.take(50).map { (names[it] ?: it) to it }
         chips.forEach { (label, key) ->
-            Button(this).apply {
+            TextView(this).apply {
                 text = label
                 isAllCaps = false
                 textSize = 15f
                 setTextColor(android.graphics.Color.parseColor("#A1A1A6"))
-                setBackgroundResource(R.drawable.group_chip)
-                // 关键：清除 AppCompat 默认 backgroundTint（否则焦点变黄色，很丑）
-                backgroundTintList = null
+                // 手动管理焦点/选中背景色，彻底绕开系统默认黄色焦点高亮
+                background = null
+                setBackgroundColor(android.graphics.Color.parseColor("#2C2C2E"))
+                stateListAnimator = null
+                gravity = android.view.Gravity.CENTER
                 minHeight = 0
-                minimumWidth = 0
                 setPadding(20, 14, 20, 14)
+                setOnFocusChangeListener { _, hasFocus ->
+                    setBackgroundColor(android.graphics.Color.parseColor(if (hasFocus) "#3A3A3C" else "#2C2C2E"))
+                }
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT,
@@ -962,10 +966,9 @@ class MainActivity : AppCompatActivity() {
                     // 选中态高亮（TiviMate 分组 tab）
                     for (i in 0 until groupRow.childCount) {
                         val c = groupRow.getChildAt(i)
-                        if (c is Button) {
+                        if (c is TextView) {
                             val selected = c.text == label
-                            c.setBackgroundResource(if (selected) R.drawable.group_chip_active else R.drawable.group_chip)
-                            c.backgroundTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.TRANSPARENT)
+                            c.tag = selected
                             c.setTextColor(android.graphics.Color.parseColor(if (selected) "#FFFFFF" else "#A1A1A6"))
                         }
                     }
