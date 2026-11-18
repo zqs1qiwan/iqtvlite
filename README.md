@@ -11,8 +11,9 @@ Android TV IPTV 播放器：Kotlin Compose for TV 负责界面、遥控焦点和
 - [迁移基线与真实模块边界](docs/MIGRATION_BASELINE.md)
 - [本次验证结果和待验项](docs/IMPLEMENTATION_VALIDATION.md)
 - [本轮原版交互规格](docs/TIVIMINI_INTERACTION_SPEC.md)
+- [云端 CI 候选、下载身份与验收边界](docs/CI_DELIVERY.md)
 
-当前候选需经新的 GitHub CI 与同一 APK 的目标机验收；旧版 Release/旧文档中的真机通过记录不能代替本候选结果。性能改进必须来自同机同源 B/C 测量，不能由 Rust 占比或编译成功推断。
+当前候选已通过新的 GitHub CI，r27/API24双ARM产物与配套测试APK身份见云端交付记录；同一 APK 的目标机验收仍待执行。旧版 Release/旧文档中的真机通过记录不能代替本候选结果。性能改进必须来自同机同源 B/C 测量，不能由 Rust 占比或编译成功推断。
 
 ## 构建
 
@@ -36,7 +37,7 @@ Windows 使用 `gradlew.bat`。本机缺少 MSVC link.exe，可按命令选择�
 
 正式身份保留 `tv.iqtvlite.app`。`-PISOLATED_TEST_PACKAGE=true` 生成独立的 `tv.iqtvlite.app.validation`，显示“iqtvlite 验证版”和独立版本后缀，使用单独 LAN 端口范围，可与旧包并存。JNI 类始终保持 `tv.iqtvlite.app.RustBridge`。
 
-CI 版本由 run number/commit 派生，也支持 `APP_VERSION_CODE`、`APP_VERSION_NAME` Gradle属性。现有旧包和新本地debug证书不同，不能覆盖升级。不得默认卸载或清数据；先比较证书并采用隔离包验收。
+CI 版本由 run number/commit 派生，也支持 `APP_VERSION_CODE`、`APP_VERSION_NAME` Gradle属性。现装生产包与本轮CI证书不同；CI主包和测试包是同签名匹配对，须取自同一run。不得默认卸载或清数据；采用隔离包验收。
 
 工作流提供可选的稳定签名环境配置。需要维护者安全配置 `ANDROID_SIGNING_KEYSTORE_BASE64`、`ANDROID_SIGNING_STORE_PASSWORD`、`ANDROID_SIGNING_KEY_ALIAS`、`ANDROID_SIGNING_KEY_PASSWORD` 四个 GitHub secrets。没有配置时仍是临时 debug 签名，不能承诺跨CI可升级。仓库不包含任何私钥或签名密码。
 
