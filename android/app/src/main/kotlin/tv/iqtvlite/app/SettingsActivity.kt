@@ -20,6 +20,13 @@ import java.io.File
 class SettingsActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // UX-1：设置以右侧半透明抽屉呈现，宽度 62% 屏宽，视频从左侧透出
+        val dm = resources.displayMetrics
+        window.setLayout((dm.widthPixels * 0.62).toInt(), dm.heightPixels)
+        val params = window.attributes
+        params.gravity = android.view.Gravity.END or android.view.Gravity.FILL_VERTICAL
+        params.x = 0
+        window.attributes = params
         setContentView(R.layout.activity_settings)
 
         setupRow(R.id.row_pin, R.id.sub_pin, "家长控制 PIN", "设置或清除 PIN 锁") {

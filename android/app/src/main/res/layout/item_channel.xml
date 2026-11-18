@@ -20,21 +20,14 @@
         android:textSize="20sp"
         android:fontFamily="sans-serif-medium" />
 
-    <!-- 频道 Logo：撑满容器，台标居中 -->
-    <FrameLayout
-        android:layout_width="60dp"
-        android:layout_height="60dp"
+    <!-- 频道 Logo：透明PNG直接显示，无边框无底色（台标本身是视觉主体） -->
+    <ImageView
+        android:id="@+id/channel_logo"
+        android:layout_width="72dp"
+        android:layout_height="56dp"
         android:layout_marginEnd="16dp"
-        android:background="@drawable/logo_frame">
-
-        <ImageView
-            android:id="@+id/channel_logo"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:layout_margin="6dp"
-            android:scaleType="fitCenter"
-            android:contentDescription="channel logo" />
-    </FrameLayout>
+        android:scaleType="fitCenter"
+        android:contentDescription="channel logo" />
 
     <!-- 文字区 -->
     <LinearLayout

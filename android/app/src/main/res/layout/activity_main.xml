@@ -1,19 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- TiviMate 风格：视频满屏铺底，所有 UI 都是按需浮出的半透明浮层 -->
+<!-- TiviMate 三栏抽屉：分组(左) | 频道列表(中) | 节目单EPG(右)，视频透出。默认全部隐藏。 -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@android:color/black">
 
-    <!-- ① 满屏播放器（永远在底层，尺寸不随 UI 变化） -->
+    <!-- ① 满屏播放器（永远在底层） -->
     <androidx.media3.ui.PlayerView
         android:id="@+id/player_view"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:keepScreenOn="true" />
 
-    <!-- ② 换台信息卡：右上浮出，几秒后消失（TiviMate 标志性元素） -->
+    <!-- ② 换台信息卡：台标+台名+当前节目+下一节目，右上浮出 -->
     <LinearLayout
         android:id="@+id/info_card"
         android:layout_width="640dp"
@@ -26,12 +26,43 @@
         android:background="@drawable/info_card_bg"
         android:visibility="gone">
 
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+            <ImageView
+                android:id="@+id/info_logo"
+                android:layout_width="88dp"
+                android:layout_height="56dp"
+                android:layout_marginEnd="14dp"
+                android:scaleType="fitCenter"
+                android:contentDescription="channel logo" />
+            <TextView
+                android:id="@+id/info_channel"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:textColor="@color/tm_focus"
+                android:textSize="22sp"
+                android:fontFamily="sans-serif-medium"
+                android:maxLines="1"
+                android:ellipsize="end" />
+            <TextView
+                android:id="@+id/info_number"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="@color/tm_text_3"
+                android:textSize="18sp" />
+        </LinearLayout>
+
         <TextView
             android:id="@+id/info_title"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
             android:textColor="@color/tm_text"
-            android:textSize="24sp"
+            android:textSize="20sp"
             android:fontFamily="sans-serif-medium"
             android:maxLines="1"
             android:ellipsize="end" />
@@ -42,23 +73,13 @@
             android:layout_marginTop="8dp"
             android:orientation="horizontal"
             android:gravity="center_vertical">
-
-            <TextView
-                android:id="@+id/info_channel"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:textColor="@color/tm_focus"
-                android:textSize="15sp" />
-
             <TextView
                 android:id="@+id/info_time"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:layout_marginStart="14dp"
                 android:textColor="@color/tm_text_2"
                 android:textSize="15sp" />
-
             <TextView
                 android:id="@+id/info_remaining"
                 android:layout_width="wrap_content"
@@ -76,7 +97,6 @@
             android:max="100"
             android:progressDrawable="@drawable/progress_bar" />
 
-        <!-- 接下来播放（TiviMate/APTV 金标准：信息卡带下一节目预告） -->
         <TextView
             android:id="@+id/info_next"
             android:layout_width="match_parent"
@@ -89,7 +109,7 @@
             android:visibility="gone" />
     </LinearLayout>
 
-    <!-- ②b PiP 频道预览小窗（浏览列表时显示焦点频道，静音；TiviMate 标志性功能） -->
+    <!-- ②b PiP 预览（焦点频道静音） -->
     <FrameLayout
         android:id="@+id/pip_container"
         android:layout_width="360dp"
@@ -100,14 +120,12 @@
         android:background="@drawable/pip_frame"
         android:clipChildren="true"
         android:visibility="gone">
-
         <androidx.media3.ui.PlayerView
             android:id="@+id/pip_player"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             app:use_controller="false"
             app:surface_type="texture_view" />
-
         <TextView
             android:id="@+id/pip_label"
             android:layout_width="match_parent"
@@ -121,7 +139,7 @@
             android:ellipsize="end" />
     </FrameLayout>
 
-    <!-- ③ UI 浮层：默认隐藏，按 OK / 方向键呼出。半透明，视频透出 -->
+    <!-- ③ TiviMate 三栏抽屉：默认隐藏，半透明 -->
     <LinearLayout
         android:id="@+id/ui_layer"
         android:layout_width="match_parent"
@@ -129,7 +147,7 @@
         android:orientation="vertical"
         android:visibility="gone">
 
-        <!-- 顶栏：品牌 + 状态 + 时钟 + 关闭提示 -->
+        <!-- 顶栏：品牌 + 状态 + 时钟 -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -140,7 +158,6 @@
             android:paddingBottom="10dp"
             android:background="@drawable/panel_top_bg"
             android:gravity="center_vertical">
-
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
@@ -148,7 +165,6 @@
                 android:textColor="@color/tm_text"
                 android:textSize="21sp"
                 android:fontFamily="sans-serif-black" />
-
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
@@ -157,7 +173,6 @@
                 android:textSize="21sp"
                 android:fontFamily="sans-serif-light"
                 android:layout_marginEnd="28dp" />
-
             <TextView
                 android:id="@+id/status"
                 android:layout_width="0dp"
@@ -167,7 +182,6 @@
                 android:textColor="@color/tm_text_2"
                 android:maxLines="1"
                 android:ellipsize="end" />
-
             <TextView
                 android:id="@+id/top_clock"
                 android:layout_width="wrap_content"
@@ -179,252 +193,117 @@
                 android:text="--:--" />
         </LinearLayout>
 
-        <!-- 控制行 -->
+        <!-- 左侧抽屉容器：宽度由代码按层级设置，右侧视频透出 -->
         <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:padding="8dp"
-            android:background="@drawable/panel_top_bg"
-            android:gravity="center_vertical">
-
-            <Spinner
-                android:id="@+id/source_spinner"
-                android:layout_width="170dp"
-                android:layout_height="48dp"
-                android:layout_marginEnd="6dp"
-                android:background="@drawable/focus_border" />
-
-            <Button
-                android:id="@+id/tab_channels"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="频道"
-                android:minWidth="0dp"
-                android:background="@drawable/focus_border"
-                android:layout_marginEnd="4dp" />
-
-            <Button
-                android:id="@+id/tab_epg"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="EPG"
-                android:minWidth="0dp"
-                android:background="@drawable/focus_border"
-                android:layout_marginEnd="6dp" />
-
-            <Button
-                android:id="@+id/btn_viewmode"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="海报"
-                android:minWidth="0dp"
-                android:background="@drawable/focus_border"
-                android:layout_marginEnd="6dp" />
-
-            <Button
-                android:id="@+id/btn_multiview"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="多画面"
-                android:minWidth="0dp"
-                android:background="@drawable/focus_border"
-                android:layout_marginEnd="6dp" />
-
-            <Button
-                android:id="@+id/btn_subtitle"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="字幕"
-                android:minWidth="0dp"
-                android:background="@drawable/focus_border"
-                android:layout_marginEnd="6dp" />
-
-            <Button
-                android:id="@+id/btn_settings"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="设置"
-                android:minWidth="0dp"
-                android:background="@drawable/focus_border"
-                android:layout_marginEnd="6dp" />
-
-            <Button
-                android:id="@+id/btn_push"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="推源"
-                android:minWidth="0dp"
-                android:background="@drawable/focus_border"
-                android:layout_marginEnd="6dp" />
-
-            <EditText
-                android:id="@+id/search_edit"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:hint="搜索频道…"
-                android:textColor="#E8EDF2"
-                android:textColorHint="#66717D"
-                android:textSize="18sp"
-                android:background="@drawable/focus_border"
-                android:inputType="text"
-                android:singleLine="true"
-                android:padding="8dp" />
-        </LinearLayout>
-
-        <!-- 内容区：左侧频道浮层 + EPG 浮层，右侧透出视频 -->
-        <LinearLayout
-            android:layout_width="match_parent"
+            android:id="@+id/drawer_container"
+            android:layout_width="1150dp"
             android:layout_height="0dp"
             android:layout_weight="1"
             android:orientation="horizontal">
 
-            <!-- 频道列表浮层（左，半透明） -->
+            <!-- 列1：分组/收藏竖列 -->
             <LinearLayout
                 android:id="@+id/channel_panel"
-                android:layout_width="720dp"
+                android:layout_width="0dp"
                 android:layout_height="match_parent"
+                android:layout_weight="1"
                 android:orientation="vertical"
                 android:background="@drawable/panel_side_bg">
-
-                <HorizontalScrollView
-                    android:id="@+id/group_scroll"
+                <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:background="@drawable/panel_top_bg">
-
-                    <LinearLayout
-                        android:id="@+id/group_row"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:orientation="horizontal"
-                        android:padding="8dp" />
-                </HorizontalScrollView>
-
-                <FrameLayout
+                    android:padding="12dp"
+                    android:text="分组"
+                    android:textColor="@color/tm_focus"
+                    android:textSize="16sp"
+                    android:fontFamily="sans-serif-medium"
+                    android:background="@drawable/panel_top_bg" />
+                <ScrollView
+                    android:id="@+id/group_scroll"
                     android:layout_width="match_parent"
                     android:layout_height="0dp"
                     android:layout_weight="1">
-
-                    <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
-                        android:id="@+id/swipe_refresh"
-                        android:layout_width="match_parent"
-                        android:layout_height="match_parent">
-
-                        <androidx.recyclerview.widget.RecyclerView
-                            android:id="@+id/channel_list"
-                            android:layout_width="match_parent"
-                            android:layout_height="match_parent"
-                            android:listSelector="@android:color/transparent"
-                            android:scrollbars="vertical" />
-                    </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
-
-                    <!-- tvOS 海报卡浏览器（默认隐藏，"海报"按钮切换） -->
-                    <androidx.recyclerview.widget.RecyclerView
-                        android:id="@+id/poster_grid"
-                        android:layout_width="match_parent"
-                        android:layout_height="match_parent"
-                        android:visibility="gone"
-                        android:clipToPadding="false"
-                        android:padding="8dp" />
-                </FrameLayout>
-            </LinearLayout>
-
-                <!-- EPG 容器：固定搜索栏 + 横向滚动的刻度/网格 -->
-                <LinearLayout
-                    android:id="@+id/epg_scroll"
-                    android:layout_width="1100dp"
-                    android:layout_height="match_parent"
-                    android:orientation="vertical"
-                    android:visibility="gone"
-                    android:background="@drawable/panel_side_bg">
-
-                    <!-- R1 EPG 节目搜索：输入节目名/频道名过滤 -->
                     <LinearLayout
+                        android:id="@+id/group_row"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:orientation="horizontal"
-                        android:padding="8dp"
-                        android:background="@drawable/panel_top_bg"
-                        android:gravity="center_vertical">
-
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="🔍"
-                            android:textSize="18sp"
-                            android:layout_marginEnd="8dp" />
-
-                        <EditText
-                            android:id="@+id/epg_search"
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:hint="搜索节目或频道…"
-                            android:textColor="#E8EDF2"
-                            android:textColorHint="#66717D"
-                            android:textSize="16sp"
-                            android:background="@drawable/focus_border"
-                            android:inputType="text"
-                            android:singleLine="true"
-                            android:padding="8dp" />
-
-                        <TextView
-                            android:id="@+id/epg_search_count"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_marginStart="10dp"
-                            android:textColor="@color/tm_text_3"
-                            android:textSize="13sp" />
-                    </LinearLayout>
-
-                    <HorizontalScrollView
-                        android:layout_width="match_parent"
-                        android:layout_height="0dp"
-                        android:layout_weight="1">
-
-                        <!-- 刻度与节目行同在一个横向滚动容器，保证始终对齐 -->
-                        <LinearLayout
-                            android:layout_width="wrap_content"
-                            android:layout_height="match_parent"
-                            android:orientation="vertical">
-
-                            <!-- 时间刻度轴（SLOT 160dp/30min，与节目块对齐） -->
-                            <LinearLayout
-                                android:layout_width="wrap_content"
-                                android:layout_height="36dp"
-                                android:orientation="horizontal"
-                                android:background="@drawable/panel_top_bg">
-
-                                <TextView
-                                    android:layout_width="140dp"
-                                    android:layout_height="match_parent"
-                                    android:gravity="center"
-                                    android:text="频道"
-                                    android:textColor="@color/tm_text_2"
-                                    android:textSize="13sp" />
-
-                                <LinearLayout
-                                    android:id="@+id/epg_ruler"
-                                    android:layout_width="wrap_content"
-                                    android:layout_height="match_parent"
-                                    android:orientation="horizontal" />
-                            </LinearLayout>
-
-                            <androidx.recyclerview.widget.RecyclerView
-                                android:id="@+id/epg_recycler"
-                                android:layout_width="wrap_content"
-                                android:layout_height="0dp"
-                                android:layout_weight="1"
-                                android:scrollbars="vertical" />
-                        </LinearLayout>
-                    </HorizontalScrollView>
+                        android:orientation="vertical"
+                        android:padding="6dp" />
+                </ScrollView>
+                <LinearLayout android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone">
+                    <Spinner android:id="@+id/source_spinner" android:layout_width="wrap_content" android:layout_height="wrap_content" />
+                    <Button android:id="@+id/tab_channels" android:layout_width="wrap_content" android:layout_height="wrap_content" />
+                    <Button android:id="@+id/tab_epg" android:layout_width="wrap_content" android:layout_height="wrap_content" />
+                    <Button android:id="@+id/btn_viewmode" android:layout_width="wrap_content" android:layout_height="wrap_content" />
+                    <Button android:id="@+id/btn_multiview" android:layout_width="wrap_content" android:layout_height="wrap_content" />
+                    <Button android:id="@+id/btn_subtitle" android:layout_width="wrap_content" android:layout_height="wrap_content" />
+                    <Button android:id="@+id/btn_settings" android:layout_width="wrap_content" android:layout_height="wrap_content" />
+                    <Button android:id="@+id/btn_push" android:layout_width="wrap_content" android:layout_height="wrap_content" />
+                    <EditText android:id="@+id/search_edit" android:layout_width="wrap_content" android:layout_height="wrap_content" />
                 </LinearLayout>
+            </LinearLayout>
+
+            <!-- 列2：频道竖列（台标 + 名字 + 正在播放） -->
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1.3"
+                android:orientation="vertical"
+                android:background="@drawable/panel_side_bg">
+                <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+                    android:id="@+id/swipe_refresh"
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_weight="1">
+                    <androidx.recyclerview.widget.RecyclerView
+                        android:id="@+id/channel_list"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:listSelector="@android:color/transparent"
+                        android:scrollbars="vertical" />
+                </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/poster_grid"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:visibility="gone"
+                    android:clipToPadding="false" />
+            </LinearLayout>
+
+            <!-- 列3：节目竖列（当前频道的节目时间表，tivimini Programs 列） -->
+            <LinearLayout
+                android:id="@+id/epg_scroll"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1.4"
+                android:orientation="vertical"
+                android:background="@drawable/panel_side_bg">
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:padding="12dp"
+                    android:text="节目单"
+                    android:textColor="@color/tm_focus"
+                    android:textSize="16sp"
+                    android:fontFamily="sans-serif-medium"
+                    android:background="@drawable/panel_top_bg" />
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/epg_recycler"
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_weight="1"
+                    android:scrollbars="vertical" />
+                <!-- 保留旧 EPG 横网格/搜索的 id（隐藏，代码 findViewById 需要） -->
+                <LinearLayout android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone">
+                    <EditText android:id="@+id/epg_search" android:layout_width="wrap_content" android:layout_height="wrap_content" />
+                    <TextView android:id="@+id/epg_search_count" android:layout_width="wrap_content" android:layout_height="wrap_content" />
+                    <LinearLayout android:id="@+id/epg_ruler" android:layout_width="wrap_content" android:layout_height="wrap_content" />
+                </LinearLayout>
+            </LinearLayout>
         </LinearLayout>
     </LinearLayout>
 
-    <!-- ④ 首次启动引导：提示遥控器操作，按任意键或点按后消失 -->
+    <!-- ④ 首次启动引导 -->
     <LinearLayout
         android:id="@+id/first_run_guide"
         android:layout_width="match_parent"
@@ -435,7 +314,6 @@
         android:visibility="gone"
         android:clickable="true"
         android:focusable="true">
-
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -443,23 +321,20 @@
             android:textColor="@color/tm_focus"
             android:textSize="40sp"
             android:fontFamily="sans-serif-black" />
-
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="18dp"
-            android:text="按 OK 打开频道列表"
+            android:text="按 OK 查看频道信息"
             android:textColor="@color/tm_text"
             android:textSize="22sp" />
-
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="10dp"
-            android:text="← → 切换频道列表 / 节目单    ·    ↑ ↓ 换台    ·    数字键跳转"
+            android:text="← 频道/节目单    → 设置    ↑ ↓ 换台    OK 信息    数字键跳台"
             android:textColor="@color/tm_text_2"
             android:textSize="16sp" />
-
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"

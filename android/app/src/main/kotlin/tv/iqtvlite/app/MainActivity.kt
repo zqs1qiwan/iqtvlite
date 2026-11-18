@@ -23,6 +23,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import coil.load
 import java.util.concurrent.TimeUnit
 
 /**
@@ -72,12 +73,16 @@ class MainActivity : AppCompatActivity() {
     private lateinit var searchEdit: EditText
     private lateinit var swipe: SwipeRefreshLayout
     private lateinit var groupRow: LinearLayout
-    private lateinit var groupScroll: HorizontalScrollView
+    private lateinit var groupScroll: View
     private lateinit var epgScroll: View
+    private lateinit var drawerContainer: View
     private lateinit var epgSearch: EditText
     private lateinit var epgSearchCount: TextView
     private lateinit var epgRecycler: RecyclerView
-    private lateinit var epgAdapter: EpgGridAdapter
+    private lateinit var epgAdapter: EpgGridAdapter      // 保留：EPG 数据解析结果与 catchup
+    private lateinit var programAdapter: ProgramListAdapter
+    private var currentEpgData: EpgGridData? = null
+    private var currentEpgRow: EpgRow? = null
     private lateinit var posterGrid: RecyclerView
     private lateinit var posterAdapter: PosterAdapter
     private var posterMode = false
@@ -90,6 +95,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var infoCard: View
     private lateinit var infoTitle: TextView
     private lateinit var infoChannel: TextView
+    private lateinit var infoLogo: android.widget.ImageView
+    private lateinit var infoNumber: TextView
     private lateinit var infoTime: TextView
     private lateinit var infoRemaining: TextView
     private lateinit var infoNext: TextView
@@ -103,6 +110,8 @@ class MainActivity : AppCompatActivity() {
     private var numberJumpBuffer = ""
     private var numberJumpRunnable: Runnable? = null
     private var infoCardHideRunnable: Runnable? = null
+    private var rightLongPressRunnable: Runnable? = null
+    private var rightLongPressFired = false
     /** tvgId -> (当前节目名, 进度%, 开始, 结束)，EPG 加载后填充，供信息卡 & 列表复用 */
     private var nowPlaying: Map<String, ProgramNow> = emptyMap()
     data class ProgramNow(val title: String, val pct: Int, val start: Long, val stop: Long, val nextTitle: String = "")
@@ -112,9 +121,11 @@ class MainActivity : AppCompatActivity() {
     private var currentGroup: String? = null
     private var currentSource = 0
     private var currentPos = -1
+    private var previousChannelId: Long = -1L  // 上一台（右键短按切换）
     private var epgUrls: List<String> = emptyList()
     private var epgCache: String? = null
     private var showingEpg = false
+    private var drawerState = 0   // 0=全屏 1=频道+节目单 2=分组+频道（真机层级式）
 
     /** 冷启动计时：进程启动 → UI 可交互 */
     private val coldStartTime = System.currentTimeMillis()
@@ -167,6 +178,8 @@ class MainActivity : AppCompatActivity() {
         infoCard = findViewById(R.id.info_card)
         infoTitle = findViewById(R.id.info_title)
         infoChannel = findViewById(R.id.info_channel)
+        infoLogo = findViewById(R.id.info_logo)
+        infoNumber = findViewById(R.id.info_number)
         infoTime = findViewById(R.id.info_time)
         infoRemaining = findViewById(R.id.info_remaining)
         infoNext = findViewById(R.id.info_next)
@@ -189,6 +202,7 @@ class MainActivity : AppCompatActivity() {
         groupRow = findViewById(R.id.group_row)
         groupScroll = findViewById(R.id.group_scroll)
         epgScroll = findViewById(R.id.epg_scroll)
+        drawerContainer = findViewById(R.id.drawer_container)
         epgSearch = findViewById(R.id.epg_search)
         epgSearchCount = findViewById(R.id.epg_search_count)
         // R1 EPG 节目搜索：输入即过滤网格
@@ -223,18 +237,19 @@ class MainActivity : AppCompatActivity() {
         }
         posterGrid = findViewById(R.id.poster_grid)
 
-        // ── EPG 网格 ────────────────────────────────────────────────
-        epgAdapter = EpgGridAdapter(
-            epgTimeFormat(),
-            onProgramme = { row, programme ->
-                // 点击节目 → 找到对应频道并播放
-                allChannels.find { normalizeTvg(it.tvgId) == normalizeTvg(row.tvgId) }?.let { play(it) }
-                status.text = "▶ ${programme.title} · ${row.name}"
-            },
-            onCatchup = { row, programme -> playCatchup(row, programme) },
-        )
+        // ── 竖列节目单（真机 TiviMate Level1 风格：当前频道的节目时间表）──
+        programAdapter = ProgramListAdapter { programme ->
+            // 点击节目：播放当前频道（过去节目走回看）
+            val now = System.currentTimeMillis() / 1000
+            val ch = allChannels.getOrNull(currentPos)
+            if (ch != null && programme.stop <= now) {
+                currentEpgRow?.let { row -> playCatchup(row, programme) }
+            } else {
+                ch?.let { play(it) }
+            }
+        }
         epgRecycler.layoutManager = LinearLayoutManager(this)
-        epgRecycler.adapter = epgAdapter
+        epgRecycler.adapter = programAdapter
 
         // 清除所有工具栏 Button 的默认 tint（避免焦点黄色，保持 tvOS 克制配色）
         for (id in intArrayOf(R.id.tab_channels, R.id.tab_epg, R.id.btn_viewmode,
@@ -478,47 +493,69 @@ class MainActivity : AppCompatActivity() {
     private fun normalizeTvg(id: String?): String =
         (id ?: "").trim().lowercase(java.util.Locale.ROOT).replace(' ', '_')
 
+    /** 竖列节目单：显示当前焦点频道的节目时间表（真机 TiviMate Level1 风格） */
+    private fun updateProgramColumn() {
+        val data = currentEpgData ?: return
+        val ch = allChannels.getOrNull(currentPos) ?: return
+        val row = data.rows.firstOrNull { normalizeTvg(it.tvgId) == normalizeTvg(ch.tvgId) }
+            ?: data.rows.firstOrNull { normalizeTvg(it.name) == normalizeTvg(ch.name) }
+        currentEpgRow = row
+        if (row != null) {
+            programAdapter.submit(row.programmes, data.now)
+        } else {
+            programAdapter.submit(emptyList(), data.now)
+        }
+    }
+
+    private fun setDrawerWidth(dp: Int) {
+        val px = (dp * resources.displayMetrics.density).toInt()
+        drawerContainer.layoutParams = (drawerContainer.layoutParams as android.view.ViewGroup.LayoutParams).apply { width = px }
+    }
+
+    /** 层级式抽屉：左键循环 0全屏→1频道+节目单→2分组+频道→0（真机 TiviMate 逻辑） */
+    private fun applyDrawerState(state: Int) {
+        drawerState = state
+        when (state) {
+            0 -> {
+                uiLayer.visibility = View.GONE
+                pipContainer.visibility = View.GONE
+                previewPlayer?.hide(pipPlayerView)
+            }
+            1 -> {  // 频道列 + 节目单列 + 视频
+                setDrawerWidth(1150)
+                uiLayer.visibility = View.VISIBLE
+                channelPanel.visibility = View.GONE      // 分组列收起
+                findViewById<View>(R.id.epg_scroll).visibility = View.VISIBLE
+                showProgramColumnOnly()
+                allChannels.getOrNull(currentPos)?.let {
+                    recycler.scrollToPosition(currentPos)
+                    recycler.post { recycler.findViewHolderForAdapterPosition(currentPos)?.itemView?.requestFocus() ?: recycler.requestFocus() }
+                }
+            }
+            2 -> {  // 分组列 + 频道列 + 视频（节目单收起）
+                setDrawerWidth(1100)
+                uiLayer.visibility = View.VISIBLE
+                channelPanel.visibility = View.VISIBLE
+                findViewById<View>(R.id.epg_scroll).visibility = View.GONE
+                recycler.post { groupRow.getChildAt(0)?.requestFocus() ?: recycler.requestFocus() }
+            }
+        }
+    }
+
+    /** Level1：隐藏分组栏内的搜索/源控件，只留频道+节目（布局层用 channel_panel 整体控制，此处占位） */
+    private fun showProgramColumnOnly() { updateProgramColumn() }
+
     private fun showTab(epg: Boolean) {
         showingEpg = epg
-        channelPanel.visibility = if (epg) View.GONE else View.VISIBLE
-        epgScroll.visibility = if (epg) View.VISIBLE else View.GONE
-        // EPG tab 不显示 PiP
-        if (epg) {
-            pipContainer.visibility = View.GONE
-            // R1：进入 EPG 时清空上次搜索并把焦点给搜索框
-            if (epgSearch.text.isNotEmpty()) {
-                epgSearch.setText("")
-                epgAdapter.filter("")
-                epgSearchCount.text = ""
-            }
-            epgSearch.requestFocus()
-        } else if (uiIsVisible() && TiviMatePrefs.pipEnabled(this)) pipContainer.visibility = View.VISIBLE
         if (epg) loadEpg()
     }
 
-    /** TiviMate 风格：显示/隐藏 UI 浮层；默认隐藏，满屏播放 */
+    /** 兼容旧调用：显示/隐藏抽屉 */
     private fun setUiVisible(show: Boolean) {
-        uiLayer.visibility = if (show) View.VISIBLE else View.GONE
-        if (show) {
-            // 金标准：打开面板时滚动到当前播放频道，焦点落在它附近（而非列表顶部）
-            if (currentPos in allChannels.indices) {
-                recycler.scrollToPosition(currentPos)
-                if (posterMode) posterGrid.scrollToPosition(currentPos)
-                recycler.post {
-                    recycler.findViewHolderForAdapterPosition(currentPos)?.itemView?.requestFocus()
-                        ?: recycler.requestFocus()
-                }
-            } else {
-                recycler.requestFocus()
-            }
-            if (!showingEpg && TiviMatePrefs.pipEnabled(this)) pipContainer.visibility = View.VISIBLE
-        } else {
-            // 关闭浮层 → 释放 PiP 解码器，避免占用资源
-            pipContainer.visibility = View.GONE
-            previewPlayer?.hide(pipPlayerView)
-        }
+        applyDrawerState(if (show) 1 else 0)
     }
-    private fun uiIsVisible() = uiLayer.visibility == View.VISIBLE
+
+    private fun uiIsVisible() = drawerState != 0
 
     /** 换台时右上浮出信息卡，几秒后自动隐藏（TiviMate 风格） */
     private fun showInfoCard(ch: Channel) {
@@ -573,6 +610,12 @@ class MainActivity : AppCompatActivity() {
 
     private fun refreshInfoCard(ch: Channel) {
         infoChannel.text = ch.name
+        infoNumber.text = String.format("%03d", currentPos + 1)
+        // 台标：透明PNG直接显示，无边框；加载失败清空
+        infoLogo.setImageResource(R.drawable.ic_tv)
+        if (!ch.logo.isNullOrBlank()) {
+            infoLogo.load(ch.logo) { crossfade(true) }
+        }
         val now = ch.tvgId?.let { nowPlaying[it] }
         if (now != null && now.title.isNotEmpty()) {
             infoTitle.text = now.title
@@ -659,8 +702,7 @@ class MainActivity : AppCompatActivity() {
             if (result != null) {
                 epgMatched = result.matched
                 epgRequested = result.requested
-                epgAdapter.nowSecs = result.now
-                epgAdapter.submit(result)
+                currentEpgData = result
                 // TiviMate 风格：把"当前节目 + 进度"注入频道列表行内显示 + 信息卡
                 val nowData = result.rows.associate { row ->
                     val cur = row.programmes.firstOrNull { p -> p.start <= result.now && p.stop > result.now }
@@ -675,7 +717,8 @@ class MainActivity : AppCompatActivity() {
                 posterAdapter.setNowPlaying(nowPairs)
                 // 刷新当前频道信息卡（若正在显示）
                 allChannels.getOrNull(currentPos)?.let { refreshInfoCard(it) }
-                if (showingEpg) status.text = "EPG: ${result.matched}/${result.requested} 频道匹配 · ${result.guideChannels} 个指南频道"
+                updateProgramColumn()   // 竖列节目单：显示当前频道的节目
+                if (showingEpg) status.text = "EPG: ${result.matched}/${result.requested} 频道匹配"
                 Log.i(TAG, "EPG_RESULT matched=${result.matched} requested=${result.requested} guide=${result.guideChannels} rows=${result.rows.size} programmes=${result.rows.sumOf { it.programmes.size }}")
             } else {
                 if (showingEpg) status.text = "节目单加载失败（可重试）"
@@ -905,11 +948,11 @@ class MainActivity : AppCompatActivity() {
                 backgroundTintList = null
                 minHeight = 0
                 minimumWidth = 0
-                setPadding(28, 18, 28, 18)
+                setPadding(20, 14, 20, 14)
                 layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                ).apply { setMargins(0, 0, 14, 0) }
+                ).apply { setMargins(0, 0, 0, 8) }
                 setOnClickListener {
                     currentGroup = key
                     adapter.setLists(FavoritesStore.favorites(this@MainActivity), FavoritesStore.recents(this@MainActivity), FavoritesStore.mostWatched(this@MainActivity))
@@ -921,8 +964,8 @@ class MainActivity : AppCompatActivity() {
                         val c = groupRow.getChildAt(i)
                         if (c is Button) {
                             val selected = c.text == label
-                            c.backgroundTintList = null
                             c.setBackgroundResource(if (selected) R.drawable.group_chip_active else R.drawable.group_chip)
+                            c.backgroundTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.TRANSPARENT)
                             c.setTextColor(android.graphics.Color.parseColor(if (selected) "#FFFFFF" else "#A1A1A6"))
                         }
                     }
@@ -998,6 +1041,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun playUnlocked(ch: Channel) {
+        // 记录上一台（切到不同频道时）
+        allChannels.getOrNull(currentPos)?.let { prev ->
+            if (prev.id != ch.id) previousChannelId = prev.id
+        }
         currentPos = allChannels.indexOfFirst { it.id == ch.id }.let { if (it >= 0) it else currentPos }
         urlIndex = 0
         adapter.setPlaying(ch.id)   // 进度条只显示在当前播放频道
@@ -1175,64 +1222,101 @@ class MainActivity : AppCompatActivity() {
 
     /** 播放器的控制条是否可见（用两种 listener 接口都兼容的方式） */
     private var controllerVisible = false
+    private var backExitArmed = false
+
+    /** 右键短按：切回上一个频道（TiviMate 核心操作） */
+    private fun switchToPrevious() {
+        if (previousChannelId < 0) {
+            Toast.makeText(this, "没有上一个频道", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val idx = allChannels.indexOfFirst { it.id == previousChannelId }
+        if (idx >= 0) {
+            zapTo(idx)
+            Toast.makeText(this, "返回上一个频道", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    override fun onKeyUp(keyCode: Int, event: KeyEvent?): Boolean {
+        if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT && !uiIsVisible()) {
+            rightLongPressRunnable?.let { uiHandler.removeCallbacks(it) }
+            if (!rightLongPressFired) switchToPrevious()
+            rightLongPressFired = false
+            return true
+        }
+        return super.onKeyUp(keyCode, event)
+    }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
-        // 首次引导：任意键关闭引导；OK 键额外打开频道列表
+        // 首次引导：任意键关闭引导；OK 键显示频道信息横幅
         if (firstRunGuide?.visibility == View.VISIBLE) {
             dismissGuide()
             if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER) {
-                setUiVisible(true)
-                showTab(false)
+                allChannels.getOrNull(currentPos)?.let { showInfoCard(it) }
             }
             return true
         }
         when (keyCode) {
-            // OK：智能分层——满屏时打开频道列表；浮层内焦点在列表时播放该频道；否则关闭浮层
+            // UX-1: OK = 仅显示/隐藏换台信息横幅（不打开大面板）
             KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
-                if (!uiIsVisible()) {
-                    setUiVisible(true)
-                    showTab(false)
-                } else {
+                if (uiIsVisible()) {
+                    // 抽屉打开时，OK 交给列表/EPG 处理（选台/选节目）
                     val focused = currentFocus
                     val inList = focused === recycler || focused === posterGrid ||
-                        (focused != null && focused.parent === recycler) ||
-                        (focused != null && focused.parent === posterGrid)
-                    if (inList && !showingEpg) {
+                        (focused != null && (focused.parent === recycler || focused.parent === posterGrid))
+                    if (!showingEpg && inList) {
                         allChannels.getOrNull(currentPos)?.let { play(it) }
-                    } else if (inList && showingEpg) {
-                        // EPG 网格内 OK 交给 adapter 的节目点击
-                        return super.onKeyDown(keyCode, event)
-                    } else {
-                        setUiVisible(false)
                     }
+                    return true
+                }
+                allChannels.getOrNull(currentPos)?.let {
+                    if (infoCard.visibility == View.VISIBLE) infoCard.visibility = View.GONE
+                    else showInfoCard(it)
                 }
                 return true
             }
-            // 返回：优先关闭浮层，回满屏播放
+            // 返回：关闭抽屉 → 关闭信息横幅 → (二次)退出
             KeyEvent.KEYCODE_BACK -> {
-                if (uiIsVisible()) { setUiVisible(false); return true }
-            }
-            // 左键：打开频道列表（若未开）
-            KeyEvent.KEYCODE_DPAD_LEFT -> {
-                if (!uiIsVisible()) { setUiVisible(true); showTab(false); return true }
-            }
-            // 右键：打开 EPG（若未开）
-            KeyEvent.KEYCODE_DPAD_RIGHT -> {
-                if (!uiIsVisible()) { setUiVisible(true); showTab(true); return true }
-            }
-            // 上/下：满屏时换台；浮层打开时交给列表焦点处理
-            KeyEvent.KEYCODE_CHANNEL_UP, KeyEvent.KEYCODE_DPAD_UP -> {
-                if (!uiIsVisible() && !controllerVisible) { zap(1); return true }
-            }
-            KeyEvent.KEYCODE_CHANNEL_DOWN, KeyEvent.KEYCODE_DPAD_DOWN -> {
-                if (!uiIsVisible() && !controllerVisible) { zap(-1); return true }
-            }
-            // 菜单键：打开当前频道操作菜单（TiviMate 标准）
-            KeyEvent.KEYCODE_MENU -> {
-                allChannels.getOrNull(currentPos)?.let { showChannelMenu(it) }
+                if (drawerState > 0) { applyDrawerState(drawerState - 1); return true }
+                if (infoCard.visibility == View.VISIBLE) { infoCard.visibility = View.GONE; return true }
+                if (backExitArmed) { finish(); return true }
+                backExitArmed = true
+                Toast.makeText(this, "再按一次退出", Toast.LENGTH_SHORT).show()
+                uiHandler.postDelayed({ backExitArmed = false }, 2000)
                 return true
             }
-            // 信息键：浮出/隐藏当前频道信息卡
+            // 左键层级递进：全屏→频道+节目单→分组+频道→全屏（真机 TiviMate 逻辑）
+            KeyEvent.KEYCODE_DPAD_LEFT -> {
+                applyDrawerState((drawerState + 1) % 3)
+                return true
+            }
+            // 右键短按 = 上一台（TiviMate 核心）；长按 = 信息卡
+            KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                if (!uiIsVisible()) {
+                    rightLongPressFired = false
+                    rightLongPressRunnable?.let { uiHandler.removeCallbacks(it) }
+                    val lp = Runnable {
+                        rightLongPressFired = true
+                        allChannels.getOrNull(currentPos)?.let { showInfoCard(it) }
+                    }
+                    rightLongPressRunnable = lp
+                    uiHandler.postDelayed(lp, 500)
+                    return true
+                }
+            }
+            // 上/下：换台
+            KeyEvent.KEYCODE_CHANNEL_UP, KeyEvent.KEYCODE_DPAD_UP -> {
+                if (!uiIsVisible()) { zap(1); return true }
+            }
+            KeyEvent.KEYCODE_CHANNEL_DOWN, KeyEvent.KEYCODE_DPAD_DOWN -> {
+                if (!uiIsVisible()) { zap(-1); return true }
+            }
+            // 菜单键：打开设置抽屉（同右键）
+            KeyEvent.KEYCODE_MENU -> {
+                startActivity(android.content.Intent(this, SettingsActivity::class.java))
+                return true
+            }
+            // 信息键：显示信息横幅（同 OK）
             KeyEvent.KEYCODE_INFO -> {
                 allChannels.getOrNull(currentPos)?.let {
                     if (infoCard.visibility == View.VISIBLE) infoCard.visibility = View.GONE
@@ -1268,6 +1352,7 @@ class MainActivity : AppCompatActivity() {
     private fun zapTo(index: Int) {
         currentPos = index
         syncSelection(index)
+        updateProgramColumn()
         recycler.scrollToPosition(index)
         if (posterMode) posterGrid.scrollToPosition(index)
         play(allChannels[index])
@@ -1275,7 +1360,7 @@ class MainActivity : AppCompatActivity() {
 
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
-        if (uiIsVisible()) { setUiVisible(false); return }
+        if (drawerState > 0) { applyDrawerState(drawerState - 1); return }
         super.onBackPressed()
     }
 
@@ -1284,6 +1369,7 @@ class MainActivity : AppCompatActivity() {
         val next = (currentPos + delta).coerceIn(0, allChannels.size - 1)
         currentPos = next
         syncSelection(next)
+        updateProgramColumn()
         recycler.scrollToPosition(next)
         if (posterMode) posterGrid.scrollToPosition(next)
         play(allChannels[next])
