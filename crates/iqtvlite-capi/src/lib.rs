@@ -13,8 +13,18 @@
 //! - Rust 侧可以写纯单测覆盖解析逻辑，不需要 Android 设备
 //! - 未来换 UI 栈（Slint）不影响这层
 
+mod guide;
 #[cfg(target_os = "android")]
 mod jni_bridge;
+
+/// Read an app-private XMLTV cache without copying XML across JNI.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn iqt_parse_xmltv_file(
+    path: *const std::os::raw::c_char,
+) -> *mut std::os::raw::c_char {
+    let value = guide::parse_file(unsafe { from_c(path) });
+    to_c(value.to_string())
+}
 
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int};
@@ -78,6 +88,10 @@ pub unsafe extern "C" fn iqt_parse_m3u(content: *const c_char, source_id: i64) -
                         "providerId": key,
                         "name": e.name,
                         "tvgId": e.tvg_id,
+                        "tvgName": e.tvg_name,
+                        "responseTime": e.extras.get("response-time"),
+                        "catchupMode": e.extras.get("catchup").cloned().or_else(|| e.catchup.as_ref().map(|c| format!("{:?}", c.catchup_type).to_lowercase())),
+                        "catchupSource": e.catchup.as_ref().and_then(|c| c.source.as_ref()),
                         "logo": e.tvg_logo,
                         "group": group,
                         "groups": e.groups,
@@ -568,6 +582,32 @@ mod tests {
         assert_eq!(v["ok"], true);
         assert_eq!(v["channels"][0]["tvgId"], "CCTV1");
         assert_eq!(v["channels"][0]["group"], "央视");
+    }
+
+    #[test]
+    fn m3u_adapter_fields_utf8_long_title_and_duplicate_urls() {
+        let title = "中文超长标题".repeat(4096);
+        let input = CString::new(format!("#EXTM3U\n#EXTINF:-1 tvg-id=\"id1\" tvg-name=\"央视综合\" group-title=\"\" http-user-agent=\"VLC\" http-referrer=\"https://ref.example\" catchup=\"append\" catchup-source=\"?utc={{utc}}\" response-time=\"120ms\",{title}\nhttp://example/live.ts\n#EXTINF:-1,另一频道\nhttp://example/live.ts\n")).unwrap();
+        let ptr = unsafe { iqt_parse_m3u(input.as_ptr(), 42) };
+        let value: serde_json::Value =
+            serde_json::from_str(unsafe { CStr::from_ptr(ptr).to_str().unwrap() }).unwrap();
+        unsafe { iqt_free_string(ptr) };
+        let rows = value["channels"].as_array().unwrap();
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0]["name"], title);
+        assert_eq!(rows[0]["tvgName"], "央视综合");
+        assert_eq!(rows[0]["group"], "");
+        assert_eq!(rows[0]["userAgent"], "VLC");
+        assert_eq!(rows[0]["referrer"], "https://ref.example");
+        assert_eq!(rows[0]["catchupMode"], "append");
+        assert_eq!(rows[0]["catchupSource"], "?utc={utc}");
+        assert_eq!(rows[0]["responseTime"], "120ms");
+        assert_eq!(rows[0]["url"], rows[1]["url"]);
+        let ptr2 = unsafe { iqt_parse_m3u(input.as_ptr(), 43) };
+        let other: serde_json::Value =
+            serde_json::from_str(unsafe { CStr::from_ptr(ptr2).to_str().unwrap() }).unwrap();
+        unsafe { iqt_free_string(ptr2) };
+        assert_ne!(rows[0]["id"], other["channels"][0]["id"]);
     }
 
     #[test]

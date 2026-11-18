@@ -44,6 +44,8 @@ pub struct XmltvChannel {
 pub struct XmltvProgramme {
     /// 节目开始时间（Unix 秒，UTC）
     pub start_ts: i64,
+    /// Explicit provider UTC offset, retained for catch-up wall-clock templates.
+    pub source_offset_seconds: Option<i32>,
     /// 节目结束时间（Unix 秒，UTC）
     pub stop_ts: i64,
     /// `<programme channel="">`
@@ -252,6 +254,15 @@ fn handle_start(
                 (Some(s), Some(st)) => {
                     *programme = Some(XmltvProgramme {
                         start_ts: s.unix,
+                        source_offset_seconds: start_raw
+                            .find(|c: char| !c.is_ascii_digit())
+                            .and_then(|idx| {
+                                if start_raw[idx..].trim().is_empty() || s.timezone_unknown {
+                                    return None;
+                                }
+                                parse_xmltv_time(&start_raw[..idx])
+                                    .and_then(|local| i32::try_from(local.unix - s.unix).ok())
+                            }),
                         stop_ts: st,
                         channel: ch,
                         clumpidx: clump,

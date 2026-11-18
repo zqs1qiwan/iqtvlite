@@ -37,23 +37,4 @@ jobs:
   # Android APK 构建在 apk.yml 工作流里（ ubuntu runner 自带 NDK）。
   # 本工作流只做纯 Rust 层的快速验证 + 许可审计。
 
-  # ── 每周探测 libmpv-android 上游新版本 ──────────────────────────────
-  libmpv-watch:
-    name: libmpv upstream watch
-    runs-on: ubuntu-latest
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    steps:
-      - uses: actions/checkout@v4
-      - name: check upstream
-        run: |
-          LATEST=$(curl -s https://api.github.com/repos/jarnedemeulemeester/libmpv-android/releases/latest \
-                    | grep -o '"tag_name": *"[^"]*"' | head -1 | cut -d'"' -f4)
-          PINNED=$(grep -oP 'libmpv-android/\releases/tag/\K[^"]+' android/app/build.gradle.kts 2>/dev/null || echo "")
-          echo "upstream=$LATEST pinned=$PINNED"
-          if [ -n "$LATEST" ] && [ "$LATEST" != "$PINNED" ]; then
-            echo "::notice::libmpv-android 有新版本 $LATEST（当前固定 $PINNED）"
-            git checkout -b chore/libmpv-$LATEST
-            sed -i "s|libmpv-android/releases/tag/$PINNED|libmpv-android/releases/tag/$LATEST|" android/app/build.gradle.kts
-            git commit -am "chore: bump libmpv-android to $LATEST"
-            git push origin HEAD
-          fi
+  # Current APK ships Media3 only. Manual CI must not create unrelated libmpv update branches.

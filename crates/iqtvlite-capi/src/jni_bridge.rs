@@ -68,6 +68,21 @@ pub extern "system" fn Java_tv_iqtvlite_app_RustBridge_parseM3u<'local>(
 }
 
 #[unsafe(no_mangle)]
+pub extern "system" fn Java_tv_iqtvlite_app_RustBridge_parseXmltvFile<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    path: JString<'local>,
+) -> jstring {
+    let outcome: jni::EnvOutcome<'local, jstring, JniError> = env.with_env(|env| {
+        let path: String = env.get_string(&path)?.into();
+        let c = CString::new(path).map_err(|_| JniError::NullPtr("NUL in path"))?;
+        let result = unsafe { c_to_string(crate::iqt_parse_xmltv_file(c.as_ptr())) };
+        Ok(env.new_string(result)?.into_raw())
+    });
+    unwrap_outcome(outcome)
+}
+
+#[unsafe(no_mangle)]
 pub extern "system" fn Java_tv_iqtvlite_app_RustBridge_parseEpgGrid<'local>(
     mut env: JNIEnv<'local>,
     _class: JClass<'local>,

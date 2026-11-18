@@ -17,3 +17,6 @@
 *.otf binary
 *.png binary
 *.jpg binary
+
+# Fixed upstream evidence keeps its original trailing whitespace for traceability.
+docs/evidence/tivimini-upstream-8c93e1b/*.kt -whitespace

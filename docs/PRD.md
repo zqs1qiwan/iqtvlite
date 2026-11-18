@@ -1,6 +1,8 @@
 # PRD — iqtvlite Android TV IPTV 播放器
 
-> 唯一真相源（source of truth）。所有开发以此为据，代码与 PRD 冲突时改代码。
+> 本整合分支补充（2026-11-19）：本轮优先完整复刻 tivimini `8c93e1b`，交互以 [TIV规格](TIVIMINI_INTERACTION_SPEC.md) 为准，技术实现和签名边界见 [迁移记录](MIGRATION_BASELINE.md)。下文版本状态、Views技术栈及旧金标准表是90ae4cd之前的历史资料，不能视为本候选的通过证明；候选验收见 [验证记录](IMPLEMENTATION_VALIDATION.md)。
+>
+> 历史 PRD：所有旧版本开发以其当时版本为据；与本轮已明确原版复刻目标冲突时，按上述规格执行。
 > 版本：v2.0 | 更新：2026-11-18 | 状态：APPROVED（用户已全权批准，循环测试至最终交付）
 
 ## 1. Objective

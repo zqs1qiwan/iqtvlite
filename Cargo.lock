@@ -594,7 +594,6 @@ version = "0.1.0"
 dependencies = [
  "flate2",
  "iqtvlite-core",
- "iqtvlite-dvr",
  "iqtvlite-epg",
  "iqtvlite-store",
  "jni 0.22.4",
@@ -616,17 +615,6 @@ dependencies = [
  "tracing",
  "url",
  "xxhash-rust",
-]
-
-[[package]]
-name = "iqtvlite-dvr"
-version = "0.1.0"
-dependencies = [
- "iqtvlite-core",
- "serde",
- "serde_json",
- "thiserror 2.0.21",
- "tracing",
 ]
 
 [[package]]

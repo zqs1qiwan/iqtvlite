@@ -15,6 +15,7 @@ iqtvlite-store = { workspace = true }
 iqtvlite-epg = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }
+flate2 = "1"
 
 [target.'cfg(target_os = "android")'.dependencies]
 # 只需要 JNI 桥 —— 不需要 android-activity（那是 Slint 才用的，且需要 feature flag 才能编过）

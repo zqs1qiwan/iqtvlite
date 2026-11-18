@@ -1,86 +1,53 @@
 # iqtvlite
 
-> 一款 **功能对齐 TiviMate**、**更丝滑 · 更轻量 · 更稳定** 的 Android TV / Google TV IPTV 播放器。
-> 全 Rust 实现（Slint 原生 UI + Rust core），播放层 Media3 优先 / mpv 兜底。
-> **零遥测 · 无内置片源 · BYO playlist。**
+Android TV IPTV 播放器：Kotlin Compose for TV 负责界面、遥控焦点和生命周期，Media3 1.11.1 负责原生 Surface/硬件解码，Rust 经 JNI 负责播放列表、XMLTV 与稳定 ID。当前整合分支优先复刻 tivimini `8c93e1b` 的原始界面和遥控逻辑。
 
----
+## 当前整合状态
 
-## 目标
+基线是 `zqs1qiwan/iqtvlite` 的 `90ae4cd`，原始工作区与旧副本均保留。复刻源码位于 `android/app/src/tivimini`；旧 Views/Service 实现保留在仓库，但不参加当前应用编译。没有引入 Slint、mpv、FFmpeg 或录像功能。
 
-| 维度 | TiviMate | iqtvlite 目标 |
-|---|---|---|
-| 冷启动 | 3–5 s（同步拉 EPG） | **< 900 ms** |
-| APK | 数十 MB | **≤ 15 MB**（lite 变体） |
-| 空闲内存 | 数百 MB | **≤ 60 MB PSS** |
-| 直播起播 P50 | ~2 s | **< 1.2 s** |
-| 换台 | ~2–3 s | **< 800 ms** |
-| 遥测 | 有 | **零** |
-| 源码 | 闭源 | **GPL-3.0-or-later** |
+原版633dp频道/节目并列抽屉、分组/日期展开、Back一次关抽屉、频道OK保留抽屉、独立右设置和居中源选择均沿用上游逻辑。数字输入、测试源预填和全局编号修复另行标记为移植增量。扫码/局域网推源继续保留，测试地址可以替换。
 
----
+- [迁移基线与真实模块边界](docs/MIGRATION_BASELINE.md)
+- [本次验证结果和待验项](docs/IMPLEMENTATION_VALIDATION.md)
+- [本轮原版交互规格](docs/TIVIMINI_INTERACTION_SPEC.md)
 
-## 状态
+当前候选需经新的 GitHub CI 与同一 APK 的目标机验收；旧版 Release/旧文档中的真机通过记录不能代替本候选结果。性能改进必须来自同机同源 B/C 测量，不能由 Rust 占比或编译成功推断。
 
-✅ **已交付** —— Kotlin 原生 UI + Rust core，真机 TR100-G9 端到端验证通过。最新 Release v1.8.0。
+## 构建
 
-| 模块 | 状态 |
-|---|---|
-| 协议层 `iqtvlite-core`（M3U/XMLTV/Xtream/Catch-up） | ✅ 71 测试 |
-| 存储层 `iqtvlite-store`（SQLite + FTS5） | ✅ 3 测试 |
-| EPG 层 `iqtvlite-epg`（匹配算法） | ✅ 10 测试 |
-| 网络层 `iqtvlite-net`（UA / 连接池） | ✅ 4 测试 |
-| 播放层 `iqtvlite-player`（回退状态机） | ✅ 13 测试 |
-| 焦点层 `iqtvlite-tvfocus`（空间导航） | ✅ 7 测试 |
-| 集成测试（真实形态 fixture） | ✅ 19 测试 |
-| Android TV UI（满屏播放 + 浮层 + 海报墙） | ✅ 真机验证 |
-| EPG 时间轴网格 + 时间刻度 | ✅ |
-| 手机扫码推源 / 首次引导 / PiP / 多画面 | ✅ |
-| DVR 录制 | ❌ 明确不做（已全链路删除） |
+需要 Rust stable、JDK17、Android SDK36、cargo-ndk。CI 使用 NDKr27；本地主机 r27 下载损坏，已用现有r30完成本地交叉编译，版本差异在迁移文档中记录。Kotlin2.2.10、AGP8.10.1、Gradle8.11.1，minSdk24 / target35 / compile36。
 
-**CI 全绿：cargo fmt / clippy -D warnings / cargo test / APK 构建全部通过。**
-
-> 开发准入与功能清单见 [docs/PRD.md](docs/PRD.md)（唯一真相源）。
-
-### 本地构建
-
-```powershell
-. .\scripts\dev-env.ps1     # 设置 PATH（cargo + MinGW-w64）
-cargo test --workspace
+```sh
+cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace --locked
+cargo deny check licenses
+cargo ndk -t arm64-v8a -t armeabi-v7a -P 24 -o android/app/src/main/jniLibs build --release --locked -p iqtvlite-capi
+cd android
+./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleDebugAndroidTest -PISOLATED_TEST_PACKAGE=true
 ```
 
-> 本机没有 Visual Studio（缺 `link.exe`），因此使用 MinGW-w64 + `x86_64-pc-windows-gnu` 工具链。
-> Android 交叉编译还需安装 JDK 17 + Android SDK + **NDK r30+**（Skia 0.157 的硬要求，见 `docs/06-android-tv.md`）。
+Windows 使用 `gradlew.bat`。本机缺少 MSVC link.exe，可按命令选择既有 `cargo +stable-x86_64-pc-windows-gnu`，不修改全局默认工具链。
 
----
+当前 debug 是可调试、启用R8代码收缩及资源收缩的测试变体。APK 同时包含 armeabi-v7a 与 arm64-v8a Rust 库；`scripts/verify_apk.py` 检查 ELF 类型和必需 JNI 符号。调试构建的 R8 不执行发布级优化/混淆，不把它冒充 release。
 
-## 文档
+## 包与签名
 
-| 文档 | 内容 |
-|---|---|
-| [00-overview.md](docs/00-overview.md) | 项目总览、目标、指标、三个决定成败的技术事实 |
-| [01-competitive-landscape.md](docs/01-competitive-landscape.md) | Rust/商业 IPTV 播放器生态调研 |
-| [02-architecture.md](docs/02-architecture.md) | 总体架构、模块边界、线程模型 |
-| [03-tech-selection.md](docs/03-tech-selection.md) | 逐项技术选型与被否决方案 + ADR 索引 |
-| [04-data-model.md](docs/04-data-model.md) | SQLite schema 与数据模型 |
-| [05-playback.md](docs/05-playback.md) | 双引擎与故障自愈 |
-| [06-android-tv.md](docs/06-android-tv.md) | **Surface 合成方案（最大风险）** + 平台适配 |
-| [07-roadmap.md](docs/07-roadmap.md) | 里程碑与验收标准 |
-| [08-build-release.md](docs/08-build-release.md) | 构建、签名、体积预算、许可合规 |
-| [09-protocols.md](docs/09-protocols.md) | 协议层实现指南（M3U / Xtream / XMLTV / Catch-up） |
-| [research/](docs/research/) | 调研原始记录（含完整引用与置信度标注） |
+正式身份保留 `tv.iqtvlite.app`。`-PISOLATED_TEST_PACKAGE=true` 生成独立的 `tv.iqtvlite.app.validation`，显示“iqtvlite 验证版”和独立版本后缀，使用单独 LAN 端口范围，可与旧包并存。JNI 类始终保持 `tv.iqtvlite.app.RustBridge`。
 
----
+CI 版本由 run number/commit 派生，也支持 `APP_VERSION_CODE`、`APP_VERSION_NAME` Gradle属性。现有旧包和新本地debug证书不同，不能覆盖升级。不得默认卸载或清数据；先比较证书并采用隔离包验收。
+
+工作流提供可选的稳定签名环境配置。需要维护者安全配置 `ANDROID_SIGNING_KEYSTORE_BASE64`、`ANDROID_SIGNING_STORE_PASSWORD`、`ANDROID_SIGNING_KEY_ALIAS`、`ANDROID_SIGNING_KEY_PASSWORD` 四个 GitHub secrets。没有配置时仍是临时 debug 签名，不能承诺跨CI可升级。仓库不包含任何私钥或签名密码。
+
+## 验收
+
+提供独立 instrumentation APK，覆盖真实 JNI、M3U字段、两种gzip HTTP响应、时区、取消等待、LAN端口共存和实际 Media3 UA/Referer 请求。只有在明确安装测试候选后运行，编译成功不代表这些设备测试已执行。
+
+debug日志默认关闭；设置 `adb shell setprop log.tag.IQTV-METRICS DEBUG` 可收集 prepare→真正渲染首帧的会话日志及decoder/format/drop/rebuffer事件；设WARN关闭。日志不包含完整流地址，READY不当作首帧。
+
+Rust workspace 的 net/player/tvfocus 模块继续存在并有单测，但当前 JNI 不接管 Android 网络、播放器状态或遥控焦点。完整边界、体积对比、证书与剩余风险见迁移和验证文档。
 
 ## 许可
 
-**GPL-3.0-or-later**。随包分发的 libmpv / FFmpeg 为 GPL-3.0-or-later，需附源码（见 [08](docs/08-build-release.md) §7）。
-Slint 采用 Royalty-free 许可，归属标注见应用内「开源许可」页。
-
----
-
-## 免责声明
-
-iqtvlite **是播放器，不是片源**。不提供、不托管、不分发任何频道、订阅或流媒体内容。
-用户自行提供播放列表，并自行确保符合当地法律与供应商条款。
+Rust workspace 声明 GPL-3.0-or-later。保留 tivimini 源码来源和固定提交；历史研究文档中的 Slint/mpv/FFmpeg 说明属于旧路线，不代表当前 APK 包含这些组件。第三方依赖许可仍通过 CI 的 cargo-deny 审计。
