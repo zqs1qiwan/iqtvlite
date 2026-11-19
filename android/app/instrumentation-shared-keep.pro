@@ -135,6 +135,7 @@
     <init>(int,java.lang.Object,java.lang.Class,java.lang.String,java.lang.String,int);
     <init>(int,kotlin.coroutines.Continuation);
     java.lang.Object invoke();
+    java.lang.Object invoke(java.lang.Object);
     java.lang.Object invoke(java.lang.Object,java.lang.Object,java.lang.Object,java.lang.Object);
     java.lang.Object receiver;
 }
@@ -379,6 +380,9 @@
     java.lang.Object invoke();
 }
 -keep class kotlin.jvm.functions.Function1
+-keepclassmembers class kotlin.jvm.functions.Function1 {
+    java.lang.Object invoke(java.lang.Object);
+}
 -keep class kotlin.jvm.functions.Function2
 -keep class kotlin.jvm.functions.Function4
 -keepclassmembers class kotlin.jvm.functions.Function4 {

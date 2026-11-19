@@ -76,6 +76,9 @@ class AudioDiagnosticTest {
         MockWebServer().use { server ->
             server.start()
             server.enqueue(MockResponse().setHeader("Content-Type", "audio/wav").setBody(Buffer().write(silentWave())))
+            // Resolve the URL before entering the main looper: MockWebServer.url() does a reverse-DNS lookup
+            // that StrictMode rejects as NetworkOnMainThreadException when called inside runOnMainSync.
+            val silenceUrl = server.url("/silence.wav").toString()
             instrumentation.runOnMainSync {
                 player = ExoPlayer.Builder(context).build()
                 player.setAudioAttributes(androidx.media3.common.AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build(), true)
@@ -93,7 +96,7 @@ class AudioDiagnosticTest {
                         sinkError.set(audioSinkError.javaClass.simpleName)
                     }
                 })
-                StreamPlayback.prepare(player, context, Channel("PCM diagnostic", server.url("/silence.wav").toString(), id = 703))
+                StreamPlayback.prepare(player, context, Channel("PCM diagnostic", silenceUrl, id = 703))
             }
             try {
                 assertTrue("PCM must create AudioTrack", initialized.await(10, TimeUnit.SECONDS))

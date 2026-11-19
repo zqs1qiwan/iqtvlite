@@ -29,6 +29,28 @@ class NativeBoundaryTest {
         GZIPOutputStream(this).use { it.write(body.toByteArray(Charsets.UTF_8)) }
     }.toByteArray()
 
+    /**
+     * Wait for the first request whose path equals [path], draining and ignoring any other in-flight
+     * requests (e.g. a stale retry of a previous channel) so ordering/timing cannot pollute assertions.
+     * Ignored requests are handed to [onIgnored] for optional strengthening assertions.
+     */
+    private fun takeRequestForPath(
+        server: MockWebServer,
+        path: String,
+        timeoutSeconds: Long = 15,
+        onIgnored: ((okhttp3.mockwebserver.RecordedRequest) -> Unit)? = null
+    ): okhttp3.mockwebserver.RecordedRequest {
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(timeoutSeconds)
+        var ignored = 0
+        while (System.nanoTime() < deadline) {
+            val observed = server.takeRequest(1, TimeUnit.SECONDS) ?: continue
+            if (observed.path != path) { ignored++; onIgnored?.invoke(observed); continue }
+            return observed
+        }
+        fail("No request for $path (ignored $ignored non-matching requests)")
+        throw AssertionError("unreachable")
+    }
+
     @Test fun productionM3uAdapterRetainsNativeFieldsAndIdentity() {
         val title = "超长中文频道".repeat(2048)
         val m3u = "#EXTM3U\n#EXTINF:-1 tvg-id=\"c1\" tvg-name=\"中文台\" group-title=\"\" http-user-agent=\"VLC\" http-referrer=\"http://ref.example/\" catchup=\"append\" catchup-source=\"?utc={utc}\",$title\nhttp://example.test/live.ts\n#EXTINF:-1,重复URL\nhttp://example.test/live.ts\n"
@@ -205,17 +227,24 @@ class NativeBoundaryTest {
                 StreamPlayback.prepare(player, context, channel)
             }
             try {
-                val request = server.takeRequest(10, TimeUnit.SECONDS)
-                assertNotNull(request)
-                assertEquals("Channel-UA/1", request!!.getHeader("User-Agent"))
+                // First channel: the /live.ts request must carry the channel UA/Referer.
+                val request = takeRequestForPath(server, "/live.ts")
+                assertEquals("Channel-UA/1", request.getHeader("User-Agent"))
                 assertEquals("https://ref.example/", request.getHeader("Referer"))
-                server.enqueue(MockResponse().setResponseCode(503))
+                // Keep responses available so a 503-driven /live.ts retry cannot stall the new /default.ts request.
+                repeat(6) { server.enqueue(MockResponse().setResponseCode(503)) }
                 InstrumentationRegistry.getInstrumentation().runOnMainSync {
                     StreamPlayback.prepare(player, context, Channel("默认UA", server.url("/default.ts").toString(), id=124))
                 }
-                val next = server.takeRequest(10, TimeUnit.SECONDS)
-                assertNotNull(next)
-                assertEquals("/default.ts", next!!.path)
+                // Filter by path: a still-pending /live.ts retry must not be mistaken for the new channel request.
+                val next = takeRequestForPath(server, "/default.ts") { stale ->
+                    if (stale.path == "/live.ts") {
+                        // Strengthening: a retry of the first channel keeps its channel UA/Referer.
+                        assertEquals("Channel-UA/1", stale.getHeader("User-Agent"))
+                        assertEquals("https://ref.example/", stale.getHeader("Referer"))
+                    }
+                }
+                assertEquals("/default.ts", next.path)
                 assertEquals("VLC/3.0.20 LibVLC/3.0.20", next.getHeader("User-Agent"))
                 assertNull(next.getHeader("Referer"))
             } finally {
