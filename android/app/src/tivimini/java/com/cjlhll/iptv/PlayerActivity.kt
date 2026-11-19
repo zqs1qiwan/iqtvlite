@@ -964,7 +964,11 @@ fun VideoPlayerScreen(
                 AndroidView(
                     modifier = Modifier.fillMaxSize(),
                     factory = {
-                        PlayerView(it).apply {
+                        // TextureView host (see res/layout/player_texture_view.xml): a SurfaceView
+                        // inside Compose renders in a separate layer behind the window and stays
+                        // hidden (grey) until exit, so use surface_type=texture_view.
+                        (android.view.LayoutInflater.from(it)
+                            .inflate(tv.iqtvlite.app.R.layout.player_texture_view, null) as PlayerView).apply {
                             this.player = player
                             useController = false
                             setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
