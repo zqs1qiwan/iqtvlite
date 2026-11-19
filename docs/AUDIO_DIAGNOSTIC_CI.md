@@ -66,3 +66,5 @@ Cloud receipt appended after the diagnostic source commit. Documentation-only up
 | arm64-v8a,ELF64 AArch64 |1,199,856| `56b922d468337d6b8689ee5ea7a9b877c855b6d601b68dc98518574ac3ff2051` |
 
 Not verified by this receipt: any device installation, API28 execution of the9 methods, MIME candidate enumeration output, PCM AudioTrack observation, MPEG-L2 decode support, audible output, or TV volume/route state. These remain acceptance's explicit on-device work. No main push, tag, or public Release.
+
+For the CI10074 device follow-up that repairs the two diagnostic test fixtures (TV-AUDIO-01/TV-UA-01) and re-delivers, see [TV_AUDIO_TEST_REPAIR.md](TV_AUDIO_TEST_REPAIR.md).
