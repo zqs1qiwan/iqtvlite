@@ -282,7 +282,7 @@ class PlayerActivity : ComponentActivity() {
                     }
                 }
 
-                KeyEvent.KEYCODE_DPAD_UP -> {
+                KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_CHANNEL_UP, KeyEvent.KEYCODE_PAGE_UP -> {
                     if (!isDrawerOpen && !isSettingsDrawerOpen && !isQualityDialogOpen) {
                         if (isCatchupPlayback) {
                             setInfoBannerOpen?.invoke(true)
@@ -292,7 +292,7 @@ class PlayerActivity : ComponentActivity() {
                     }
                 }
 
-                KeyEvent.KEYCODE_DPAD_DOWN -> {
+                KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_CHANNEL_DOWN, KeyEvent.KEYCODE_PAGE_DOWN -> {
                     if (!isDrawerOpen && !isSettingsDrawerOpen && !isQualityDialogOpen) {
                         if (isCatchupPlayback) {
                             setInfoBannerOpen?.invoke(true)
@@ -411,9 +411,12 @@ fun VideoPlayerScreen(
 
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
-                1_500,
+                // Faster cold-start/zap: start playback after ~0.8s buffered (was 1.5s) and at a
+                // lower playback threshold (0.3s, was 0.5s). Keep a generous 6s max buffer and 1.0s
+                // after-rebuffer so long-play/live stays stable on the weak v7a box.
+                800,
                 6_000,
-                500,
+                300,
                 1_000
             )
             .setBackBuffer(0, false)
@@ -422,7 +425,9 @@ fun VideoPlayerScreen(
 
         val renderersFactory = DefaultRenderersFactory(context)
             .setEnableDecoderFallback(true)
-            .experimentalSetEnableMediaCodecVideoRendererPrewarming(true)
+            // Removed experimental MediaCodec video pre-warming: it eagerly creates and warms a video
+            // decoder at startup, which on this weak v7a box costs seconds of cold start and a CPU
+            // spike. The normal first-frame path is faster overall here.
 
         val newPlayer = ExoPlayer.Builder(context)
             .setLoadControl(loadControl)

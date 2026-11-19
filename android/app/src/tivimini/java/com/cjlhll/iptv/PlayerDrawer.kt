@@ -3,16 +3,9 @@ package com.cjlhll.iptv
 import android.util.Log
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.expandHorizontally
-import androidx.compose.animation.shrinkHorizontally
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
@@ -596,19 +589,11 @@ fun PlayerDrawer(
         val programsSection = 300.dp + 32.dp + (if (datesVisible) (110.dp + 10.dp) else 0.dp)
         groupsSection + channelsSection + divider + programsSection
     }
-    val drawerWidth by animateDpAsState(
-        targetValue = targetDrawerWidth,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioNoBouncy,
-            stiffness = Spring.StiffnessHigh
-        ),
-        label = "drawerWidth"
-    )
-    val drawerOffsetX by animateDpAsState(
-        targetValue = if (visible) 0.dp else -drawerWidth,
-        animationSpec = tween(if (visible) 160 else 140),
-        label = "drawerOffsetX"
-    )
+    // No per-frame drawer animation: animating the whole panel width/offset recomposed + re-laid-out
+    // the entire sidebar every frame, which both janked and made the video stutter while opening or
+    // browsing the sidebar. Instant layout keeps the sidebar cheap; the content still fades in/out.
+    val drawerWidth = targetDrawerWidth
+    val drawerOffsetX = if (visible) 0.dp else -drawerWidth
 
     val channelCount = channels.size
     val focusedIndex = remember(channelIndexByUrl, focusedChannelUrl) {
@@ -689,8 +674,8 @@ fun PlayerDrawer(
                 Row(modifier = Modifier.fillMaxHeight()) {
                     AnimatedVisibility(
                         visible = showGroups,
-                        enter = slideInHorizontally(animationSpec = tween(140), initialOffsetX = { -it }) + expandHorizontally(expandFrom = Alignment.Start) + fadeIn(tween(120)),
-                        exit = slideOutHorizontally(animationSpec = tween(120), targetOffsetX = { -it }) + shrinkHorizontally(shrinkTowards = Alignment.Start) + fadeOut(tween(100)),
+                        enter = fadeIn(tween(120)),
+                        exit = fadeOut(tween(100)),
                     ) {
                         Row(modifier = Modifier.fillMaxHeight()) {
                             DrawerColumnPanel(
@@ -874,8 +859,8 @@ fun PlayerDrawer(
 
                             AnimatedVisibility(
                                 visible = showDates && dates.isNotEmpty(),
-                                enter = slideInHorizontally(animationSpec = tween(140), initialOffsetX = { it }) + expandHorizontally(expandFrom = Alignment.Start) + fadeIn(tween(120)),
-                                exit = slideOutHorizontally(animationSpec = tween(120), targetOffsetX = { it }) + shrinkHorizontally(shrinkTowards = Alignment.Start) + fadeOut(tween(100)),
+                                enter = fadeIn(tween(120)),
+                                exit = fadeOut(tween(100)),
                             ) {
                                 Row(modifier = Modifier.fillMaxHeight()) {
                                     Spacer(modifier = Modifier.width(10.dp))
