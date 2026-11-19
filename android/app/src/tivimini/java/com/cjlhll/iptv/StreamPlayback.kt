@@ -84,6 +84,69 @@ object StreamPlayback {
             return event.windowIndex in 0 until event.timeline.windowCount && event.timeline.getWindow(event.windowIndex, window).mediaItem.mediaId == session
         }
         private fun emit(event: String, fields: String) { if (enabled) Log.d(TAG, "$event session=$session $fields") }
+        // Return before any group traversal/format rendering when diagnostics are disabled.
+        private fun observe(eventTime: AnalyticsListener.EventTime): Boolean = enabled && matches(eventTime)
+        private fun audioFormat(format: androidx.media3.common.Format): String =
+            "mime=${AudioDiagnosticFields.mime(format.sampleMimeType)} codecs=${AudioDiagnosticFields.codecs(format.codecs)} " +
+                "rate=${format.sampleRate} channels=${format.channelCount} language=${AudioDiagnosticFields.language(format.language)} bitrate=${format.bitrate}"
+        private fun audioContext() = "volume=${player.volume} suppression=${player.playbackSuppressionReason} playWhenReady=${player.playWhenReady} audioSessionId=${player.audioSessionId}"
+        private fun audioTrack(config: androidx.media3.exoplayer.audio.AudioSink.AudioTrackConfig) =
+            "encoding=${config.encoding} rate=${config.sampleRate} channelConfig=${config.channelConfig} bufferBytes=${config.bufferSize} tunneling=${config.tunneling} offload=${config.offload}"
+
+        override fun onTracksChanged(eventTime: AnalyticsListener.EventTime, tracks: androidx.media3.common.Tracks) {
+            if (!observe(eventTime)) return
+            var audioGroups = 0
+            for ((groupIndex, group) in tracks.groups.withIndex()) {
+                if (group.type != androidx.media3.common.C.TRACK_TYPE_AUDIO) continue
+                audioGroups++
+                for (trackIndex in 0 until group.length) {
+                    emit("audio_track", "group=$groupIndex track=$trackIndex supported=${group.isTrackSupported(trackIndex)} selected=${group.isTrackSelected(trackIndex)} renderer_format_support=${group.getTrackSupport(trackIndex)} ${audioFormat(group.getTrackFormat(trackIndex))}")
+                }
+            }
+            emit("audio_tracks", "groups=$audioGroups ${audioContext()}")
+        }
+        override fun onAudioEnabled(eventTime: AnalyticsListener.EventTime, decoderCounters: androidx.media3.exoplayer.DecoderCounters) {
+            if (observe(eventTime)) emit("audio_enabled", audioContext())
+        }
+        override fun onAudioDisabled(eventTime: AnalyticsListener.EventTime, decoderCounters: androidx.media3.exoplayer.DecoderCounters) {
+            if (observe(eventTime)) emit("audio_disabled", "rendered=${decoderCounters.renderedOutputBufferCount} skipped=${decoderCounters.skippedOutputBufferCount}")
+        }
+        override fun onAudioDecoderInitialized(eventTime: AnalyticsListener.EventTime, decoderName: String, initializedTimestampMs: Long, initializationDurationMs: Long) {
+            if (observe(eventTime)) emit("audio_decoder", "name=${AudioDiagnosticFields.name(decoderName)} init_ms=$initializationDurationMs")
+        }
+        override fun onAudioDecoderReleased(eventTime: AnalyticsListener.EventTime, decoderName: String) {
+            if (observe(eventTime)) emit("audio_decoder_released", "name=${AudioDiagnosticFields.name(decoderName)}")
+        }
+        override fun onAudioInputFormatChanged(eventTime: AnalyticsListener.EventTime, format: androidx.media3.common.Format, decoderReuseEvaluation: androidx.media3.exoplayer.DecoderReuseEvaluation?) {
+            if (observe(eventTime)) emit("audio_format", audioFormat(format))
+        }
+        override fun onAudioPositionAdvancing(eventTime: AnalyticsListener.EventTime, playoutStartSystemTimeMs: Long) {
+            if (observe(eventTime)) emit("audio_advancing", "playout_start_ms=$playoutStartSystemTimeMs since_prepare_ms=${SystemClock.elapsedRealtime()-preparedAt}")
+        }
+        override fun onAudioSessionIdChanged(eventTime: AnalyticsListener.EventTime, audioSessionId: Int) {
+            if (observe(eventTime)) emit("audio_session", "id=$audioSessionId")
+        }
+        override fun onAudioSinkError(eventTime: AnalyticsListener.EventTime, audioSinkError: Exception) {
+            if (observe(eventTime)) emit("audio_sink_error", "type=${AudioDiagnosticFields.name(audioSinkError.javaClass.simpleName)}")
+        }
+        override fun onAudioCodecError(eventTime: AnalyticsListener.EventTime, audioCodecError: Exception) {
+            if (observe(eventTime)) emit("audio_codec_error", "type=${AudioDiagnosticFields.name(audioCodecError.javaClass.simpleName)}")
+        }
+        override fun onAudioTrackInitialized(eventTime: AnalyticsListener.EventTime, audioTrackConfig: androidx.media3.exoplayer.audio.AudioSink.AudioTrackConfig) {
+            if (observe(eventTime)) emit("audio_track_initialized", audioTrack(audioTrackConfig))
+        }
+        override fun onAudioTrackReleased(eventTime: AnalyticsListener.EventTime, audioTrackConfig: androidx.media3.exoplayer.audio.AudioSink.AudioTrackConfig) {
+            if (observe(eventTime)) emit("audio_track_released", audioTrack(audioTrackConfig))
+        }
+        override fun onVolumeChanged(eventTime: AnalyticsListener.EventTime, volume: Float) {
+            if (observe(eventTime)) emit("audio_volume", "value=$volume")
+        }
+        override fun onPlaybackSuppressionReasonChanged(eventTime: AnalyticsListener.EventTime, playbackSuppressionReason: Int) {
+            if (observe(eventTime)) emit("audio_suppression", "reason=$playbackSuppressionReason ${audioContext()}")
+        }
+        override fun onPlayWhenReadyChanged(eventTime: AnalyticsListener.EventTime, playWhenReady: Boolean, reason: Int) {
+            if (observe(eventTime)) emit("audio_play_intent", "value=$playWhenReady reason=$reason ${audioContext()}")
+        }
         override fun onPlayerError(eventTime: AnalyticsListener.EventTime, error: androidx.media3.common.PlaybackException) {
             // The Analytics event timeline identifies the media that failed, not the later consumer's current row.
             if (!matches(eventTime)) return

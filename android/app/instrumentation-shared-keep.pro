@@ -50,19 +50,45 @@
     androidx.lifecycle.Lifecycle$State STARTED;
     androidx.lifecycle.Lifecycle$State[] values();
 }
+-keep class androidx.media3.common.AudioAttributes$Builder
+-keepclassmembers class androidx.media3.common.AudioAttributes$Builder {
+    <init>();
+    androidx.media3.common.AudioAttributes build();
+    androidx.media3.common.AudioAttributes$Builder setContentType(int);
+    androidx.media3.common.AudioAttributes$Builder setUsage(int);
+}
+-keep class androidx.media3.common.AudioAttributes
+-keep class androidx.media3.common.Format
+-keepclassmembers class androidx.media3.common.Format {
+    java.lang.String sampleMimeType;
+}
 -keep class androidx.media3.common.Player
+-keepclassmembers class androidx.media3.common.Player {
+    void addAnalyticsListener(androidx.media3.exoplayer.analytics.AnalyticsListener);
+    void setAudioAttributes(androidx.media3.common.AudioAttributes,boolean);
+}
+-keep class androidx.media3.common.util.UnstableApi
+-keep class androidx.media3.exoplayer.DecoderReuseEvaluation
 -keep class androidx.media3.exoplayer.ExoPlayer$Builder
 -keepclassmembers class androidx.media3.exoplayer.ExoPlayer$Builder {
     <init>(android.content.Context);
     androidx.media3.exoplayer.ExoPlayer build();
 }
 -keep class androidx.media3.exoplayer.ExoPlayer
+-keepclassmembers class androidx.media3.exoplayer.ExoPlayer {
+    void addAnalyticsListener(androidx.media3.exoplayer.analytics.AnalyticsListener);
+    void setAudioAttributes(androidx.media3.common.AudioAttributes,boolean);
+}
+-keep class androidx.media3.exoplayer.analytics.AnalyticsListener$EventTime
+-keep class androidx.media3.exoplayer.analytics.AnalyticsListener
+-keep class androidx.media3.exoplayer.audio.AudioSink$AudioTrackConfig
 -keep class androidx.tracing.Trace
 -keepclassmembers class androidx.tracing.Trace {
     void beginSection(java.lang.String);
     void endSection();
     void forceEnableAppTracing();
 }
+-keep class com.cjlhll.iptv.AudioDiagnosticFields { *; }
 -keep class com.cjlhll.iptv.CatchupPlayRequest { *; }
 -keep class com.cjlhll.iptv.Channel { *; }
 -keep class com.cjlhll.iptv.ChannelGrouper { *; }
@@ -120,6 +146,14 @@
 -keepclassmembers class kotlin.LazyKt** {
     kotlin.Lazy lazy(kotlin.jvm.functions.Function0);
 }
+-keep class kotlin.LazyKt__LazyJVMKt
+-keepclassmembers class kotlin.LazyKt__LazyJVMKt** {
+    kotlin.Lazy lazy(kotlin.jvm.functions.Function0);
+}
+-keep class kotlin.LazyKt__LazyKt
+-keepclassmembers class kotlin.LazyKt__LazyKt** {
+    kotlin.Lazy lazy(kotlin.jvm.functions.Function0);
+}
 -keep class kotlin.Pair
 -keepclassmembers class kotlin.Pair {
     java.lang.Object component1();
@@ -144,6 +178,106 @@
 }
 -keep class kotlin.collections.CollectionsKt
 -keepclassmembers class kotlin.collections.CollectionsKt** {
+    java.lang.Object firstOrNull(java.util.List);
+    java.lang.Object single(java.util.List);
+    java.util.List emptyList();
+    java.util.List listOf(java.lang.Object);
+    java.util.List listOf(java.lang.Object[]);
+    java.util.List plus(java.util.Collection,java.lang.Object);
+    java.util.List toMutableList(java.util.Collection);
+}
+-keep class kotlin.collections.CollectionsKt__CollectionsJVMKt
+-keepclassmembers class kotlin.collections.CollectionsKt__CollectionsJVMKt** {
+    java.lang.Object firstOrNull(java.util.List);
+    java.lang.Object single(java.util.List);
+    java.util.List emptyList();
+    java.util.List listOf(java.lang.Object);
+    java.util.List listOf(java.lang.Object[]);
+    java.util.List plus(java.util.Collection,java.lang.Object);
+    java.util.List toMutableList(java.util.Collection);
+}
+-keep class kotlin.collections.CollectionsKt__CollectionsKt
+-keepclassmembers class kotlin.collections.CollectionsKt__CollectionsKt** {
+    java.lang.Object firstOrNull(java.util.List);
+    java.lang.Object single(java.util.List);
+    java.util.List emptyList();
+    java.util.List listOf(java.lang.Object);
+    java.util.List listOf(java.lang.Object[]);
+    java.util.List plus(java.util.Collection,java.lang.Object);
+    java.util.List toMutableList(java.util.Collection);
+}
+-keep class kotlin.collections.CollectionsKt__IterablesKt
+-keepclassmembers class kotlin.collections.CollectionsKt__IterablesKt** {
+    java.lang.Object firstOrNull(java.util.List);
+    java.lang.Object single(java.util.List);
+    java.util.List emptyList();
+    java.util.List listOf(java.lang.Object);
+    java.util.List listOf(java.lang.Object[]);
+    java.util.List plus(java.util.Collection,java.lang.Object);
+    java.util.List toMutableList(java.util.Collection);
+}
+-keep class kotlin.collections.CollectionsKt__IteratorsJVMKt
+-keepclassmembers class kotlin.collections.CollectionsKt__IteratorsJVMKt** {
+    java.lang.Object firstOrNull(java.util.List);
+    java.lang.Object single(java.util.List);
+    java.util.List emptyList();
+    java.util.List listOf(java.lang.Object);
+    java.util.List listOf(java.lang.Object[]);
+    java.util.List plus(java.util.Collection,java.lang.Object);
+    java.util.List toMutableList(java.util.Collection);
+}
+-keep class kotlin.collections.CollectionsKt__IteratorsKt
+-keepclassmembers class kotlin.collections.CollectionsKt__IteratorsKt** {
+    java.lang.Object firstOrNull(java.util.List);
+    java.lang.Object single(java.util.List);
+    java.util.List emptyList();
+    java.util.List listOf(java.lang.Object);
+    java.util.List listOf(java.lang.Object[]);
+    java.util.List plus(java.util.Collection,java.lang.Object);
+    java.util.List toMutableList(java.util.Collection);
+}
+-keep class kotlin.collections.CollectionsKt__MutableCollectionsJVMKt
+-keepclassmembers class kotlin.collections.CollectionsKt__MutableCollectionsJVMKt** {
+    java.lang.Object firstOrNull(java.util.List);
+    java.lang.Object single(java.util.List);
+    java.util.List emptyList();
+    java.util.List listOf(java.lang.Object);
+    java.util.List listOf(java.lang.Object[]);
+    java.util.List plus(java.util.Collection,java.lang.Object);
+    java.util.List toMutableList(java.util.Collection);
+}
+-keep class kotlin.collections.CollectionsKt__MutableCollectionsKt
+-keepclassmembers class kotlin.collections.CollectionsKt__MutableCollectionsKt** {
+    java.lang.Object firstOrNull(java.util.List);
+    java.lang.Object single(java.util.List);
+    java.util.List emptyList();
+    java.util.List listOf(java.lang.Object);
+    java.util.List listOf(java.lang.Object[]);
+    java.util.List plus(java.util.Collection,java.lang.Object);
+    java.util.List toMutableList(java.util.Collection);
+}
+-keep class kotlin.collections.CollectionsKt__ReversedViewsKt
+-keepclassmembers class kotlin.collections.CollectionsKt__ReversedViewsKt** {
+    java.lang.Object firstOrNull(java.util.List);
+    java.lang.Object single(java.util.List);
+    java.util.List emptyList();
+    java.util.List listOf(java.lang.Object);
+    java.util.List listOf(java.lang.Object[]);
+    java.util.List plus(java.util.Collection,java.lang.Object);
+    java.util.List toMutableList(java.util.Collection);
+}
+-keep class kotlin.collections.CollectionsKt___CollectionsJvmKt
+-keepclassmembers class kotlin.collections.CollectionsKt___CollectionsJvmKt** {
+    java.lang.Object firstOrNull(java.util.List);
+    java.lang.Object single(java.util.List);
+    java.util.List emptyList();
+    java.util.List listOf(java.lang.Object);
+    java.util.List listOf(java.lang.Object[]);
+    java.util.List plus(java.util.Collection,java.lang.Object);
+    java.util.List toMutableList(java.util.Collection);
+}
+-keep class kotlin.collections.CollectionsKt___CollectionsKt
+-keepclassmembers class kotlin.collections.CollectionsKt___CollectionsKt** {
     java.lang.Object firstOrNull(java.util.List);
     java.lang.Object single(java.util.List);
     java.util.List emptyList();
@@ -187,6 +321,16 @@
     java.lang.Object getCOROUTINE_SUSPENDED();
     kotlin.coroutines.Continuation intercepted(kotlin.coroutines.Continuation);
 }
+-keep class kotlin.coroutines.intrinsics.IntrinsicsKt__IntrinsicsJvmKt
+-keepclassmembers class kotlin.coroutines.intrinsics.IntrinsicsKt__IntrinsicsJvmKt** {
+    java.lang.Object getCOROUTINE_SUSPENDED();
+    kotlin.coroutines.Continuation intercepted(kotlin.coroutines.Continuation);
+}
+-keep class kotlin.coroutines.intrinsics.IntrinsicsKt__IntrinsicsKt
+-keepclassmembers class kotlin.coroutines.intrinsics.IntrinsicsKt__IntrinsicsKt** {
+    java.lang.Object getCOROUTINE_SUSPENDED();
+    kotlin.coroutines.Continuation intercepted(kotlin.coroutines.Continuation);
+}
 -keep class kotlin.coroutines.jvm.internal.BaseContinuationImpl
 -keepclassmembers class kotlin.coroutines.jvm.internal.BaseContinuationImpl {
     <init>(int,kotlin.coroutines.Continuation);
@@ -219,6 +363,9 @@
     java.lang.Object nullOutSpilledVariable(java.lang.Object);
 }
 -keep class kotlin.coroutines.jvm.internal.SuspendFunction
+-keepclassmembers class kotlin.coroutines.jvm.internal.SuspendFunction {
+    <init>(int,kotlin.coroutines.Continuation);
+}
 -keep class kotlin.coroutines.jvm.internal.SuspendLambda
 -keepclassmembers class kotlin.coroutines.jvm.internal.SuspendLambda {
     <init>(int,kotlin.coroutines.Continuation);
@@ -305,12 +452,177 @@
 -keepclassmembers class kotlin.text.CharsKt** {
     int checkRadix(int);
 }
+-keep class kotlin.text.CharsKt__CharJVMKt
+-keepclassmembers class kotlin.text.CharsKt__CharJVMKt** {
+    int checkRadix(int);
+}
+-keep class kotlin.text.CharsKt__CharKt
+-keepclassmembers class kotlin.text.CharsKt__CharKt** {
+    int checkRadix(int);
+}
 -keep class kotlin.text.Charsets
 -keepclassmembers class kotlin.text.Charsets {
+    java.nio.charset.Charset US_ASCII;
     java.nio.charset.Charset UTF_8;
 }
 -keep class kotlin.text.StringsKt
 -keepclassmembers class kotlin.text.StringsKt** {
+    boolean contains$default(java.lang.CharSequence,char,boolean,int,java.lang.Object);
+    boolean endsWith$default(java.lang.String,java.lang.String,boolean,int,java.lang.Object);
+    boolean equals(java.lang.String,java.lang.String,boolean);
+    boolean startsWith$default(java.lang.String,java.lang.String,boolean,int,java.lang.Object);
+    int indexOf$default(java.lang.CharSequence,char,int,boolean,int,java.lang.Object);
+    java.lang.CharSequence trim(java.lang.CharSequence);
+    java.lang.String repeat(java.lang.CharSequence,int);
+    java.lang.String replace$default(java.lang.String,java.lang.String,java.lang.String,boolean,int,java.lang.Object);
+    java.lang.String substringBefore$default(java.lang.String,char,java.lang.String,int,java.lang.Object);
+    java.util.List split$default(java.lang.CharSequence,char[],boolean,int,int,java.lang.Object);
+}
+-keep class kotlin.text.StringsKt__AppendableKt
+-keepclassmembers class kotlin.text.StringsKt__AppendableKt** {
+    boolean contains$default(java.lang.CharSequence,char,boolean,int,java.lang.Object);
+    boolean endsWith$default(java.lang.String,java.lang.String,boolean,int,java.lang.Object);
+    boolean equals(java.lang.String,java.lang.String,boolean);
+    boolean startsWith$default(java.lang.String,java.lang.String,boolean,int,java.lang.Object);
+    int indexOf$default(java.lang.CharSequence,char,int,boolean,int,java.lang.Object);
+    java.lang.CharSequence trim(java.lang.CharSequence);
+    java.lang.String repeat(java.lang.CharSequence,int);
+    java.lang.String replace$default(java.lang.String,java.lang.String,java.lang.String,boolean,int,java.lang.Object);
+    java.lang.String substringBefore$default(java.lang.String,char,java.lang.String,int,java.lang.Object);
+    java.util.List split$default(java.lang.CharSequence,char[],boolean,int,int,java.lang.Object);
+}
+-keep class kotlin.text.StringsKt__IndentKt
+-keepclassmembers class kotlin.text.StringsKt__IndentKt** {
+    boolean contains$default(java.lang.CharSequence,char,boolean,int,java.lang.Object);
+    boolean endsWith$default(java.lang.String,java.lang.String,boolean,int,java.lang.Object);
+    boolean equals(java.lang.String,java.lang.String,boolean);
+    boolean startsWith$default(java.lang.String,java.lang.String,boolean,int,java.lang.Object);
+    int indexOf$default(java.lang.CharSequence,char,int,boolean,int,java.lang.Object);
+    java.lang.CharSequence trim(java.lang.CharSequence);
+    java.lang.String repeat(java.lang.CharSequence,int);
+    java.lang.String replace$default(java.lang.String,java.lang.String,java.lang.String,boolean,int,java.lang.Object);
+    java.lang.String substringBefore$default(java.lang.String,char,java.lang.String,int,java.lang.Object);
+    java.util.List split$default(java.lang.CharSequence,char[],boolean,int,int,java.lang.Object);
+}
+-keep class kotlin.text.StringsKt__RegexExtensionsJVMKt
+-keepclassmembers class kotlin.text.StringsKt__RegexExtensionsJVMKt** {
+    boolean contains$default(java.lang.CharSequence,char,boolean,int,java.lang.Object);
+    boolean endsWith$default(java.lang.String,java.lang.String,boolean,int,java.lang.Object);
+    boolean equals(java.lang.String,java.lang.String,boolean);
+    boolean startsWith$default(java.lang.String,java.lang.String,boolean,int,java.lang.Object);
+    int indexOf$default(java.lang.CharSequence,char,int,boolean,int,java.lang.Object);
+    java.lang.CharSequence trim(java.lang.CharSequence);
+    java.lang.String repeat(java.lang.CharSequence,int);
+    java.lang.String replace$default(java.lang.String,java.lang.String,java.lang.String,boolean,int,java.lang.Object);
+    java.lang.String substringBefore$default(java.lang.String,char,java.lang.String,int,java.lang.Object);
+    java.util.List split$default(java.lang.CharSequence,char[],boolean,int,int,java.lang.Object);
+}
+-keep class kotlin.text.StringsKt__RegexExtensionsKt
+-keepclassmembers class kotlin.text.StringsKt__RegexExtensionsKt** {
+    boolean contains$default(java.lang.CharSequence,char,boolean,int,java.lang.Object);
+    boolean endsWith$default(java.lang.String,java.lang.String,boolean,int,java.lang.Object);
+    boolean equals(java.lang.String,java.lang.String,boolean);
+    boolean startsWith$default(java.lang.String,java.lang.String,boolean,int,java.lang.Object);
+    int indexOf$default(java.lang.CharSequence,char,int,boolean,int,java.lang.Object);
+    java.lang.CharSequence trim(java.lang.CharSequence);
+    java.lang.String repeat(java.lang.CharSequence,int);
+    java.lang.String replace$default(java.lang.String,java.lang.String,java.lang.String,boolean,int,java.lang.Object);
+    java.lang.String substringBefore$default(java.lang.String,char,java.lang.String,int,java.lang.Object);
+    java.util.List split$default(java.lang.CharSequence,char[],boolean,int,int,java.lang.Object);
+}
+-keep class kotlin.text.StringsKt__StringBuilderJVMKt
+-keepclassmembers class kotlin.text.StringsKt__StringBuilderJVMKt** {
+    boolean contains$default(java.lang.CharSequence,char,boolean,int,java.lang.Object);
+    boolean endsWith$default(java.lang.String,java.lang.String,boolean,int,java.lang.Object);
+    boolean equals(java.lang.String,java.lang.String,boolean);
+    boolean startsWith$default(java.lang.String,java.lang.String,boolean,int,java.lang.Object);
+    int indexOf$default(java.lang.CharSequence,char,int,boolean,int,java.lang.Object);
+    java.lang.CharSequence trim(java.lang.CharSequence);
+    java.lang.String repeat(java.lang.CharSequence,int);
+    java.lang.String replace$default(java.lang.String,java.lang.String,java.lang.String,boolean,int,java.lang.Object);
+    java.lang.String substringBefore$default(java.lang.String,char,java.lang.String,int,java.lang.Object);
+    java.util.List split$default(java.lang.CharSequence,char[],boolean,int,int,java.lang.Object);
+}
+-keep class kotlin.text.StringsKt__StringBuilderKt
+-keepclassmembers class kotlin.text.StringsKt__StringBuilderKt** {
+    boolean contains$default(java.lang.CharSequence,char,boolean,int,java.lang.Object);
+    boolean endsWith$default(java.lang.String,java.lang.String,boolean,int,java.lang.Object);
+    boolean equals(java.lang.String,java.lang.String,boolean);
+    boolean startsWith$default(java.lang.String,java.lang.String,boolean,int,java.lang.Object);
+    int indexOf$default(java.lang.CharSequence,char,int,boolean,int,java.lang.Object);
+    java.lang.CharSequence trim(java.lang.CharSequence);
+    java.lang.String repeat(java.lang.CharSequence,int);
+    java.lang.String replace$default(java.lang.String,java.lang.String,java.lang.String,boolean,int,java.lang.Object);
+    java.lang.String substringBefore$default(java.lang.String,char,java.lang.String,int,java.lang.Object);
+    java.util.List split$default(java.lang.CharSequence,char[],boolean,int,int,java.lang.Object);
+}
+-keep class kotlin.text.StringsKt__StringNumberConversionsJVMKt
+-keepclassmembers class kotlin.text.StringsKt__StringNumberConversionsJVMKt** {
+    boolean contains$default(java.lang.CharSequence,char,boolean,int,java.lang.Object);
+    boolean endsWith$default(java.lang.String,java.lang.String,boolean,int,java.lang.Object);
+    boolean equals(java.lang.String,java.lang.String,boolean);
+    boolean startsWith$default(java.lang.String,java.lang.String,boolean,int,java.lang.Object);
+    int indexOf$default(java.lang.CharSequence,char,int,boolean,int,java.lang.Object);
+    java.lang.CharSequence trim(java.lang.CharSequence);
+    java.lang.String repeat(java.lang.CharSequence,int);
+    java.lang.String replace$default(java.lang.String,java.lang.String,java.lang.String,boolean,int,java.lang.Object);
+    java.lang.String substringBefore$default(java.lang.String,char,java.lang.String,int,java.lang.Object);
+    java.util.List split$default(java.lang.CharSequence,char[],boolean,int,int,java.lang.Object);
+}
+-keep class kotlin.text.StringsKt__StringNumberConversionsKt
+-keepclassmembers class kotlin.text.StringsKt__StringNumberConversionsKt** {
+    boolean contains$default(java.lang.CharSequence,char,boolean,int,java.lang.Object);
+    boolean endsWith$default(java.lang.String,java.lang.String,boolean,int,java.lang.Object);
+    boolean equals(java.lang.String,java.lang.String,boolean);
+    boolean startsWith$default(java.lang.String,java.lang.String,boolean,int,java.lang.Object);
+    int indexOf$default(java.lang.CharSequence,char,int,boolean,int,java.lang.Object);
+    java.lang.CharSequence trim(java.lang.CharSequence);
+    java.lang.String repeat(java.lang.CharSequence,int);
+    java.lang.String replace$default(java.lang.String,java.lang.String,java.lang.String,boolean,int,java.lang.Object);
+    java.lang.String substringBefore$default(java.lang.String,char,java.lang.String,int,java.lang.Object);
+    java.util.List split$default(java.lang.CharSequence,char[],boolean,int,int,java.lang.Object);
+}
+-keep class kotlin.text.StringsKt__StringsJVMKt
+-keepclassmembers class kotlin.text.StringsKt__StringsJVMKt** {
+    boolean contains$default(java.lang.CharSequence,char,boolean,int,java.lang.Object);
+    boolean endsWith$default(java.lang.String,java.lang.String,boolean,int,java.lang.Object);
+    boolean equals(java.lang.String,java.lang.String,boolean);
+    boolean startsWith$default(java.lang.String,java.lang.String,boolean,int,java.lang.Object);
+    int indexOf$default(java.lang.CharSequence,char,int,boolean,int,java.lang.Object);
+    java.lang.CharSequence trim(java.lang.CharSequence);
+    java.lang.String repeat(java.lang.CharSequence,int);
+    java.lang.String replace$default(java.lang.String,java.lang.String,java.lang.String,boolean,int,java.lang.Object);
+    java.lang.String substringBefore$default(java.lang.String,char,java.lang.String,int,java.lang.Object);
+    java.util.List split$default(java.lang.CharSequence,char[],boolean,int,int,java.lang.Object);
+}
+-keep class kotlin.text.StringsKt__StringsKt
+-keepclassmembers class kotlin.text.StringsKt__StringsKt** {
+    boolean contains$default(java.lang.CharSequence,char,boolean,int,java.lang.Object);
+    boolean endsWith$default(java.lang.String,java.lang.String,boolean,int,java.lang.Object);
+    boolean equals(java.lang.String,java.lang.String,boolean);
+    boolean startsWith$default(java.lang.String,java.lang.String,boolean,int,java.lang.Object);
+    int indexOf$default(java.lang.CharSequence,char,int,boolean,int,java.lang.Object);
+    java.lang.CharSequence trim(java.lang.CharSequence);
+    java.lang.String repeat(java.lang.CharSequence,int);
+    java.lang.String replace$default(java.lang.String,java.lang.String,java.lang.String,boolean,int,java.lang.Object);
+    java.lang.String substringBefore$default(java.lang.String,char,java.lang.String,int,java.lang.Object);
+    java.util.List split$default(java.lang.CharSequence,char[],boolean,int,int,java.lang.Object);
+}
+-keep class kotlin.text.StringsKt___StringsJvmKt
+-keepclassmembers class kotlin.text.StringsKt___StringsJvmKt** {
+    boolean contains$default(java.lang.CharSequence,char,boolean,int,java.lang.Object);
+    boolean endsWith$default(java.lang.String,java.lang.String,boolean,int,java.lang.Object);
+    boolean equals(java.lang.String,java.lang.String,boolean);
+    boolean startsWith$default(java.lang.String,java.lang.String,boolean,int,java.lang.Object);
+    int indexOf$default(java.lang.CharSequence,char,int,boolean,int,java.lang.Object);
+    java.lang.CharSequence trim(java.lang.CharSequence);
+    java.lang.String repeat(java.lang.CharSequence,int);
+    java.lang.String replace$default(java.lang.String,java.lang.String,java.lang.String,boolean,int,java.lang.Object);
+    java.lang.String substringBefore$default(java.lang.String,char,java.lang.String,int,java.lang.Object);
+    java.util.List split$default(java.lang.CharSequence,char[],boolean,int,int,java.lang.Object);
+}
+-keep class kotlin.text.StringsKt___StringsKt
+-keepclassmembers class kotlin.text.StringsKt___StringsKt** {
     boolean contains$default(java.lang.CharSequence,char,boolean,int,java.lang.Object);
     boolean endsWith$default(java.lang.String,java.lang.String,boolean,int,java.lang.Object);
     boolean equals(java.lang.String,java.lang.String,boolean);
@@ -497,6 +809,12 @@
 -keep class okhttp3.Response
 -keep class okhttp3.TlsVersion
 -keep class okhttp3.WebSocket
+-keepclassmembers class okhttp3.WebSocket {
+    <init>(okhttp3.internal.concurrent.TaskRunner,okhttp3.Request,okhttp3.WebSocketListener,java.util.Random,long,okhttp3.internal.ws.WebSocketExtensions,long);
+    void failWebSocket(java.lang.Exception,okhttp3.Response);
+    void initReaderAndWriter(java.lang.String,okhttp3.internal.ws.RealWebSocket$Streams);
+    void loopReader();
+}
 -keep class okhttp3.WebSocketListener
 -keepclassmembers class okhttp3.WebSocketListener {
     void onOpen(okhttp3.WebSocket,okhttp3.Response);
@@ -632,6 +950,13 @@
 -keepclassmembers class okhttp3.internal.ws.WebSocketProtocol {
     java.lang.String acceptHeader(java.lang.String);
     okhttp3.internal.ws.WebSocketProtocol INSTANCE;
+}
+-keep class okhttp3.internal.ws.WebSocketReader$FrameCallback
+-keepclassmembers class okhttp3.internal.ws.WebSocketReader$FrameCallback {
+    <init>(okhttp3.internal.concurrent.TaskRunner,okhttp3.Request,okhttp3.WebSocketListener,java.util.Random,long,okhttp3.internal.ws.WebSocketExtensions,long);
+    void failWebSocket(java.lang.Exception,okhttp3.Response);
+    void initReaderAndWriter(java.lang.String,okhttp3.internal.ws.RealWebSocket$Streams);
+    void loopReader();
 }
 -keep class okio.Buffer
 -keepclassmembers class okio.Buffer {
