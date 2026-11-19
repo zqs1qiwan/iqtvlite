@@ -1,5 +1,7 @@
 # GitHub CI candidate delivery
 
+Historical CI10071 receipt: device runner initialization failed under TV-01 before any test executed. It is superseded for acceptance by [CI10073](CI_10073_DELIVERY.md); preserve these identities as failure/rollback evidence, not a device-pass claim.
+
 Task t6,2026-11-19 (Asia/Hong_Kong). This report binds a fresh cloud build to its source commit. [Independent SR-03 review](TIVIMINI_SR03_REVIEW.md) released the source gate; this report does not authorize Release publication or TV installation and does not claim device acceptance.
 
 ## Source and runs

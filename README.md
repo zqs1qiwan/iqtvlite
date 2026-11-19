@@ -11,7 +11,9 @@ Android TV IPTV 播放器：Kotlin Compose for TV 负责界面、遥控焦点和
 - [迁移基线与真实模块边界](docs/MIGRATION_BASELINE.md)
 - [本次验证结果和待验项](docs/IMPLEMENTATION_VALIDATION.md)
 - [本轮原版交互规格](docs/TIVIMINI_INTERACTION_SPEC.md)
-- [云端 CI 候选、下载身份与验收边界](docs/CI_DELIVERY.md)
+- [最新 CI10073：TV-01 修复候选与验收边界](docs/CI_10073_DELIVERY.md)
+- [TV-01 根因、共享运行时修复与回退方案](docs/TV01_RUNTIME_REPAIR.md)
+- [历史 CI10071 收据：设备 runner 失败，已被替代](docs/CI_DELIVERY.md)
 
 当前候选已通过新的 GitHub CI，r27/API24双ARM产物与配套测试APK身份见云端交付记录；同一 APK 的目标机验收仍待执行。旧版 Release/旧文档中的真机通过记录不能代替本候选结果。性能改进必须来自同机同源 B/C 测量，不能由 Rust 占比或编译成功推断。
 
