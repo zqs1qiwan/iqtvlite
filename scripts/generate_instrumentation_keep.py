@@ -4,7 +4,7 @@ Run explicitly after changing test/dependency APIs; CI independently checks the 
 import argparse
 from pathlib import Path
 from collections import defaultdict
-from dex_contract import Apk, shared
+from dex_contract import Apk, shared, main_member_targets
 
 def java_type(value):
     dimensions=len(value)-len(value.lstrip('[')); value=value.lstrip('[')
@@ -25,11 +25,14 @@ def generate(apk, app):
     roots={t.lstrip('[') for t in apk.types if shared(t) and t.lstrip('[') not in apk.classes}
     methods=defaultdict(set); fields=defaultdict(set)
     for owner,name,proto in apk.methods:
-        if owner not in roots: continue
         result,args=signature(proto)
-        methods[owner].add(f'{name}({args});' if name=='<init>' else f'{result} {name}({args});')
+        for target in main_member_targets(app,apk,owner,(name,proto),'methods'):
+            roots.add(target)
+            methods[target].add(f'{name}({args});' if name=='<init>' else f'{result} {name}({args});')
     for owner,name,kind in apk.fields:
-        if owner in roots: fields[owner].add(f'{java_type(kind)} {name};')
+        for target in main_member_targets(app,apk,owner,(name,kind),'fields'):
+            roots.add(target)
+            fields[target].add(f'{java_type(kind)} {name};')
     # Main-owned inherited APIs (for example ResolvableFuture.set/get) must keep their
     # actual ancestor declarations too; a child-only member rule does not cover them.
     def parents(owner, seen=None):

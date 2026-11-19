@@ -105,6 +105,9 @@
 }
 -keep class kotlin.Function
 -keepclassmembers class kotlin.Function {
+    <init>(int);
+    <init>(int,java.lang.Object,java.lang.Class,java.lang.String,java.lang.String,int);
+    <init>(int,kotlin.coroutines.Continuation);
     java.lang.Object invoke();
     java.lang.Object invoke(java.lang.Object,java.lang.Object,java.lang.Object,java.lang.Object);
     java.lang.Object receiver;
@@ -152,6 +155,9 @@
 -keep class kotlin.coroutines.AbstractCoroutineContextElement
 -keep class kotlin.coroutines.Continuation
 -keepclassmembers class kotlin.coroutines.Continuation {
+    <init>(int,kotlin.coroutines.Continuation);
+    <init>(kotlin.coroutines.Continuation);
+    <init>(kotlin.coroutines.Continuation,int);
     java.lang.Object getResult();
     void initCancellability();
     void invokeOnCancellation(kotlin.jvm.functions.Function1);
@@ -182,16 +188,24 @@
     kotlin.coroutines.Continuation intercepted(kotlin.coroutines.Continuation);
 }
 -keep class kotlin.coroutines.jvm.internal.BaseContinuationImpl
+-keepclassmembers class kotlin.coroutines.jvm.internal.BaseContinuationImpl {
+    <init>(int,kotlin.coroutines.Continuation);
+    <init>(kotlin.coroutines.Continuation);
+}
 -keep class kotlin.coroutines.jvm.internal.Boxing
 -keepclassmembers class kotlin.coroutines.jvm.internal.Boxing {
     java.lang.Integer boxInt(int);
 }
 -keep class kotlin.coroutines.jvm.internal.ContinuationImpl
 -keepclassmembers class kotlin.coroutines.jvm.internal.ContinuationImpl {
+    <init>(int,kotlin.coroutines.Continuation);
     <init>(kotlin.coroutines.Continuation);
 }
 -keep class kotlin.coroutines.jvm.internal.CoroutineStackFrame
 -keepclassmembers class kotlin.coroutines.jvm.internal.CoroutineStackFrame {
+    <init>(int,kotlin.coroutines.Continuation);
+    <init>(kotlin.coroutines.Continuation);
+    <init>(kotlin.coroutines.Continuation,int);
     java.lang.Object getResult();
     void initCancellability();
 }
@@ -225,15 +239,20 @@
 }
 -keep class kotlin.jvm.internal.CallableReference
 -keepclassmembers class kotlin.jvm.internal.CallableReference {
+    <init>(int,java.lang.Object,java.lang.Class,java.lang.String,java.lang.String,int);
     java.lang.Object receiver;
 }
 -keep class kotlin.jvm.internal.DefaultConstructorMarker
 -keep class kotlin.jvm.internal.FunctionBase
 -keepclassmembers class kotlin.jvm.internal.FunctionBase {
+    <init>(int);
+    <init>(int,java.lang.Object,java.lang.Class,java.lang.String,java.lang.String,int);
+    <init>(int,kotlin.coroutines.Continuation);
     java.lang.Object receiver;
 }
 -keep class kotlin.jvm.internal.FunctionReference
 -keepclassmembers class kotlin.jvm.internal.FunctionReference {
+    <init>(int,java.lang.Object,java.lang.Class,java.lang.String,java.lang.String,int);
     java.lang.Object receiver;
 }
 -keep class kotlin.jvm.internal.FunctionReferenceImpl
@@ -274,10 +293,12 @@
 }
 -keep class kotlin.reflect.KCallable
 -keepclassmembers class kotlin.reflect.KCallable {
+    <init>(int,java.lang.Object,java.lang.Class,java.lang.String,java.lang.String,int);
     java.lang.Object receiver;
 }
 -keep class kotlin.reflect.KFunction
 -keepclassmembers class kotlin.reflect.KFunction {
+    <init>(int,java.lang.Object,java.lang.Class,java.lang.String,java.lang.String,int);
     java.lang.Object receiver;
 }
 -keep class kotlin.text.CharsKt
@@ -327,6 +348,7 @@
 }
 -keep class kotlinx.coroutines.CancellableContinuation
 -keepclassmembers class kotlinx.coroutines.CancellableContinuation {
+    <init>(kotlin.coroutines.Continuation,int);
     java.lang.Object getResult();
     void initCancellability();
     void invokeOnCancellation(kotlin.jvm.functions.Function1);
@@ -356,6 +378,7 @@
 }
 -keep class kotlinx.coroutines.DispatchedTask
 -keepclassmembers class kotlinx.coroutines.DispatchedTask {
+    <init>(kotlin.coroutines.Continuation,int);
     java.lang.Object getResult();
     void initCancellability();
 }
@@ -383,11 +406,13 @@
 }
 -keep class kotlinx.coroutines.Waiter
 -keepclassmembers class kotlinx.coroutines.Waiter {
+    <init>(kotlin.coroutines.Continuation,int);
     java.lang.Object getResult();
     void initCancellability();
 }
 -keep class kotlinx.coroutines.scheduling.Task
 -keepclassmembers class kotlinx.coroutines.scheduling.Task {
+    <init>(kotlin.coroutines.Continuation,int);
     java.lang.Object getResult();
     void initCancellability();
 }
@@ -501,6 +526,7 @@
 }
 -keep class okhttp3.internal.concurrent.TaskRunner$Backend
 -keepclassmembers class okhttp3.internal.concurrent.TaskRunner$Backend {
+    <init>(java.util.concurrent.ThreadFactory);
     void shutdown();
 }
 -keep class okhttp3.internal.concurrent.TaskRunner$RealBackend
@@ -623,6 +649,7 @@
 }
 -keep class okio.BufferedSink
 -keepclassmembers class okio.BufferedSink {
+    <init>();
     boolean exhausted();
     java.lang.String readUtf8();
     long read(okio.Buffer,long);
@@ -639,6 +666,7 @@
 }
 -keep class okio.BufferedSource
 -keepclassmembers class okio.BufferedSource {
+    <init>();
     boolean exhausted();
     java.lang.String readUtf8();
     java.lang.String readUtf8(long);
@@ -669,6 +697,7 @@
 }
 -keep class okio.Sink
 -keepclassmembers class okio.Sink {
+    <init>();
     boolean exhausted();
     java.lang.String readUtf8();
     long read(okio.Buffer,long);
@@ -685,6 +714,7 @@
 }
 -keep class okio.Source
 -keepclassmembers class okio.Source {
+    <init>();
     boolean exhausted();
     java.lang.String readUtf8();
     java.lang.String readUtf8(long);
@@ -705,4 +735,76 @@
 -keep class okio.Utf8
 -keepclassmembers class okio.Utf8 {
     long size$default(java.lang.String,int,int,int,java.lang.Object);
+}
+-keep class androidx.test.orchestrator.listeners.OrchestrationListenerManager$TestEvent[]
+-keepclassmembers class androidx.test.orchestrator.listeners.OrchestrationListenerManager$TestEvent[] {
+    java.lang.Object clone();
+}
+-keep class androidx.test.orchestrator.listeners.result.TestResult$TestStatus[]
+-keepclassmembers class androidx.test.orchestrator.listeners.result.TestResult$TestStatus[] {
+    java.lang.Object clone();
+}
+-keep class androidx.test.platform.concurrent.DirectExecutor[]
+-keepclassmembers class androidx.test.platform.concurrent.DirectExecutor[] {
+    java.lang.Object clone();
+}
+-keep class androidx.test.platform.device.DeviceController$ScreenOrientation[]
+-keepclassmembers class androidx.test.platform.device.DeviceController$ScreenOrientation[] {
+    java.lang.Object clone();
+}
+-keep class androidx.test.runner.lifecycle.ApplicationStage[]
+-keepclassmembers class androidx.test.runner.lifecycle.ApplicationStage[] {
+    java.lang.Object clone();
+}
+-keep class androidx.test.runner.lifecycle.Stage[]
+-keepclassmembers class androidx.test.runner.lifecycle.Stage[] {
+    java.lang.Object clone();
+}
+-keep class androidx.test.runner.permission.RequestPermissionCallable$Result[]
+-keepclassmembers class androidx.test.runner.permission.RequestPermissionCallable$Result[] {
+    java.lang.Object clone();
+}
+-keep class androidx.test.runner.permission.UiAutomationShellCommand$PmCommand[]
+-keepclassmembers class androidx.test.runner.permission.UiAutomationShellCommand$PmCommand[] {
+    java.lang.Object clone();
+}
+-keep class androidx.test.services.events.TestStatus$Status[]
+-keepclassmembers class androidx.test.services.events.TestStatus$Status[] {
+    java.lang.Object clone();
+}
+-keep class androidx.test.services.events.discovery.TestDiscoveryEvent$EventType[]
+-keepclassmembers class androidx.test.services.events.discovery.TestDiscoveryEvent$EventType[] {
+    java.lang.Object clone();
+}
+-keep class androidx.test.services.events.internal.Throwables$State[]
+-keepclassmembers class androidx.test.services.events.internal.Throwables$State[] {
+    java.lang.Object clone();
+}
+-keep class androidx.test.services.events.platform.TestPlatformEvent$EventType[]
+-keepclassmembers class androidx.test.services.events.platform.TestPlatformEvent$EventType[] {
+    java.lang.Object clone();
+}
+-keep class androidx.test.services.events.run.TestRunEvent$EventType[]
+-keepclassmembers class androidx.test.services.events.run.TestRunEvent$EventType[] {
+    java.lang.Object clone();
+}
+-keep class androidx.test.services.storage.file.HostedFile$FileHost[]
+-keepclassmembers class androidx.test.services.storage.file.HostedFile$FileHost[] {
+    java.lang.Object clone();
+}
+-keep class androidx.test.services.storage.file.HostedFile$FileType[]
+-keepclassmembers class androidx.test.services.storage.file.HostedFile$FileType[] {
+    java.lang.Object clone();
+}
+-keep class androidx.test.services.storage.file.HostedFile$HostedFileColumn[]
+-keepclassmembers class androidx.test.services.storage.file.HostedFile$HostedFileColumn[] {
+    java.lang.Object clone();
+}
+-keep class androidx.test.services.storage.file.PropertyFile$Authority[]
+-keepclassmembers class androidx.test.services.storage.file.PropertyFile$Authority[] {
+    java.lang.Object clone();
+}
+-keep class androidx.test.services.storage.file.PropertyFile$Column[]
+-keepclassmembers class androidx.test.services.storage.file.PropertyFile$Column[] {
+    java.lang.Object clone();
 }

@@ -7,7 +7,7 @@ import json
 import os
 from pathlib import Path
 from classfile_contract import Platform
-from dex_contract import Apk,unresolved,shared
+from dex_contract import Apk,unresolved,shared,consumes_main
 
 parser=argparse.ArgumentParser()
 parser.add_argument('app_apk'); parser.add_argument('test_apk')
@@ -22,8 +22,8 @@ report={
     'app_class_definitions':len(app.classes),'test_class_definitions':len(test.classes),
     'shared_type_references':sum(shared(t) for t in test.types),
     'shared_external_type_references':sum(shared(t) and t.lstrip('[') not in test.classes for t in test.types),
-    'shared_method_references':sum(shared(m[0]) and m[0] not in test.classes for m in test.methods),
-    'shared_field_references':sum(shared(f[0]) and f[0] not in test.classes for f in test.fields),
+    'shared_method_references':sum(consumes_main(app,test,m[0]) for m in test.methods),
+    'shared_field_references':sum(consumes_main(app,test,f[0]) for f in test.fields),
     'kotlin_stdlib_definitions_main':sum(c.startswith('Lkotlin/') for c in app.classes),
     'kotlin_stdlib_definitions_test':sum(c.startswith('Lkotlin/') for c in test.classes),
     'metadata_only_annotations':'excluded explicitly; platform inheritance resolved against selected SDK stub',

@@ -69,6 +69,44 @@ def shared(name):
     name=name.lstrip('[')
     return name.startswith(SHARED) and not name.startswith(METADATA)
 
+def platform_type(owner):
+    return owner.startswith(('Landroid/','Ljava/','Ldalvik/','Lorg/xml/','Lorg/w3c/','Lorg/json/',
+                             'Ljavax/crypto/','Ljavax/net/','Ljavax/security/','Ljavax/xml/','Ljavax/sql/','Ljavax/microedition/'))
+
+def main_ancestors(app,test,owner):
+    """Include main declarations reached through test-owned subclasses/interfaces."""
+    definitions=app.classes|test.classes
+    result=set(); seen=set(); pending=[owner.lstrip('[')]
+    while pending:
+        current=pending.pop()
+        if current in seen: continue
+        seen.add(current)
+        if platform_type(current): continue
+        if current in app.classes: result.add(current)
+        row=definitions.get(current)
+        if row: pending.extend(p for p in [row['super'],*row['interfaces']] if p)
+    return result
+
+def main_member_targets(app,test,owner,signature,kind):
+    """Keep the main side of calls made symbolically through a test subclass."""
+    seen=set()
+    def walk(current):
+        if current in seen or platform_type(current): return set()
+        seen.add(current)
+        row=test.classes.get(current)
+        if row is not None:
+            if signature in row[kind] or signature[0]=='<init>': return set()
+            return set().union(*(walk(p) for p in [row['super'],*row['interfaces']] if p))
+        if current in app.classes: return main_ancestors(app,test,current)
+        return {current} if shared(current) else set()
+    return walk(owner)
+
+def consumes_main(app,test,owner):
+    if platform_type(owner.lstrip('[')): return False
+    if owner.lstrip('[') in test.classes:
+        return bool(main_ancestors(app,test,owner))
+    return shared(owner) or owner in app.classes
+
 def unresolved(app,test,platform=None):
     definitions=app.classes|test.classes
     def find(owner,signature,kind,seen=None):
@@ -77,14 +115,14 @@ def unresolved(app,test,platform=None):
             return kind=='methods' and (signature==('clone','()Ljava/lang/Object;') or find('Ljava/lang/Object;',signature,kind,seen))
         if owner in seen: return False
         seen.add(owner)
-        row=definitions.get(owner)
-        if row is None and platform is not None and owner.startswith(('Ljava/','Landroid/','Ljavax/','Lorg/xml/','Lorg/w3c/')):
-            row=platform.get(owner)
+        # Android's boot classpath wins over generated compatibility stubs in an APK.
+        row=platform.get(owner) if platform is not None and platform_type(owner) else None
+        if row is None: row=definitions.get(owner)
         if row is None: return False
         if signature in row[kind]: return True
         if signature[0]=='<init>': return False
         return any(find(parent,signature,kind,seen) for parent in [row['super'],*row['interfaces']] if parent)
     missing_types=sorted(t for t in test.types if shared(t) and t.lstrip('[') not in definitions)
-    missing_methods=sorted(m for m in test.methods if shared(m[0]) and m[0] not in test.classes and not find(m[0],m[1:],'methods'))
-    missing_fields=sorted(f for f in test.fields if shared(f[0]) and f[0] not in test.classes and not find(f[0],f[1:],'fields'))
+    missing_methods=sorted(m for m in test.methods if consumes_main(app,test,m[0]) and not find(m[0],m[1:],'methods'))
+    missing_fields=sorted(f for f in test.fields if consumes_main(app,test,f[0]) and not find(f[0],f[1:],'fields'))
     return {'missing_types':missing_types,'missing_methods':missing_methods,'missing_fields':missing_fields}
