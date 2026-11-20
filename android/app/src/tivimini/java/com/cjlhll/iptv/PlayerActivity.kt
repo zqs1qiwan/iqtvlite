@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -98,6 +99,7 @@ class PlayerActivity : ComponentActivity() {
     private var onChannelStep: ((Int) -> Boolean)? = null
     private var setDrawerOpen: ((Boolean) -> Unit)? = null
     private var isDrawerOpen: Boolean = false
+    private val sidebarController = SidebarController()
     private var drawerActiveColumn: DrawerColumn? = null
     private var focusToDrawerChannels: (() -> Unit)? = null
     private var setSettingsDrawerOpen: ((Boolean) -> Unit)? = null
@@ -170,6 +172,7 @@ class PlayerActivity : ComponentActivity() {
                         url = videoUrl,
                         title = videoTitle,
                         playlistFileName = playlistFileName,
+                        sidebarController = sidebarController,
                         setOnChannelStep = { onChannelStep = it },
                         setOnNumberJump = { onNumberJump = it },
                         setDrawerOpenController = { setDrawerOpen = it },
@@ -341,6 +344,7 @@ fun VideoPlayerScreen(
     url: String,
     title: String,
     playlistFileName: String?,
+    sidebarController: SidebarController,
     setOnChannelStep: (((Int) -> Boolean)?) -> Unit,
     setOnNumberJump: (((Int) -> Boolean)?) -> Unit,
     setDrawerOpenController: (((Boolean) -> Unit)?) -> Unit,
@@ -364,8 +368,9 @@ fun VideoPlayerScreen(
 
     var player by remember { mutableStateOf<ExoPlayer?>(null) }
 
-    var drawerOpen by remember { mutableStateOf(false) }
-    var drawerActiveColumn by remember { mutableStateOf<DrawerColumn?>(null) }
+    val sidebarState by sidebarController.state.collectAsState()
+    val drawerOpen = sidebarState.drawerOpen
+    val drawerActiveColumn = sidebarState.activeColumn
     var settingsDrawerOpen by remember { mutableStateOf(false) }
     var qualityDialogOpen by remember { mutableStateOf(false) }
     var qualityDialogGroupIndex by remember { mutableIntStateOf(-1) }
@@ -384,7 +389,14 @@ fun VideoPlayerScreen(
     var channelGroups by remember { mutableStateOf<List<ChannelGroup>>(emptyList()) }
     var currentGroupIndex by remember { mutableIntStateOf(0) }
     var currentVariantIndex by remember { mutableIntStateOf(0) }
-    var selectedGroup by remember { mutableStateOf("全部") }
+    val selectedGroup = sidebarState.selectedGroup
+    // M1: mirror the live channel list/selection into the Activity-level controller so the M2 native
+    // sidebar renders from a single source of truth. The existing Compose drawer still reads the
+    // local Compose state during M1 (no behaviour change); M2 deletes those locals.
+    LaunchedEffect(channelGroups) { sidebarController.setChannelGroups(channelGroups) }
+    LaunchedEffect(currentGroupIndex, currentVariantIndex) {
+        sidebarController.setSelection(currentGroupIndex, currentVariantIndex)
+    }
     var epgData by remember { mutableStateOf<EpgData?>(null) }
     var nowMillis by remember { mutableStateOf(System.currentTimeMillis()) }
     var nowProgramByUrl by remember { mutableStateOf<Map<String, NowProgramUi>>(emptyMap()) }
@@ -543,13 +555,13 @@ fun VideoPlayerScreen(
     }
 
     val focusToChannels = {
-        drawerActiveColumn = DrawerColumn.Channels
+        sidebarController.setActiveColumn(DrawerColumn.Channels)
     }
 
     BindChannelSwitchLoading(channelSwitch, player)
 
     DisposableEffect(Unit) {
-        setDrawerOpenController { drawerOpen = it }
+        setDrawerOpenController { open -> sidebarController.setDrawerOpen(open) }
         setFocusToDrawerChannelsController(focusToChannels)
         setSettingsDrawerOpenController { settingsDrawerOpen = it }
         setQualityDialogOpenController { qualityDialogOpen = it }
@@ -1023,7 +1035,7 @@ fun VideoPlayerScreen(
             nowProgramByChannelUrl = nowProgramByUrl,
             epgData = epgData,
             nowMillis = nowMillis,
-            onSelectGroup = { selectedGroup = it },
+            onSelectGroup = { sidebarController.selectGroup(it) },
             onSelectChannel = { channel ->
                 playChannel(channel)
             },
@@ -1035,11 +1047,11 @@ fun VideoPlayerScreen(
                     playbackIntent.beginSelection()
                     catchupRequest = req
                     startPlayback(bound)
-                    drawerOpen = false
+                    sidebarController.closeDrawer()
                 }
             },
-            onClose = { drawerOpen = false },
-            onActiveColumnChanged = { drawerActiveColumn = it },
+            onClose = { sidebarController.closeDrawer() },
+            onActiveColumnChanged = { sidebarController.setActiveColumn(it) },
             requestedActiveColumn = drawerActiveColumn
         )
 
