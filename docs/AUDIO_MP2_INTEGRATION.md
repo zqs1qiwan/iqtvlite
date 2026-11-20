@@ -38,8 +38,8 @@ val renderersFactory = DefaultRenderersFactory(context)
 
 ## 5. Size
 
-- Local APK: **15,996,266 B (~15.3 MiB)** — baseline CI10093 was 10,404,860 B; the two `libffmpegJNI.so` add ~2.5 MB (APK stores native libs uncompressed) plus the Rust libs already present. **≪ 30 MB.**
-- Confirmed inside the APK: `lib/arm64-v8a/libffmpegJNI.so` (1,341,096 B), `lib/armeabi-v7a/libffmpegJNI.so` (1,155,156 B), `assets/NOTICE_FFMPEG_LGPL.txt`.
+- CI pair APK: **12,928,915 B (~12.3 MiB)** — baseline CI10093 was 10,404,860 B; the two `libffmpegJNI.so` add ≈2.5 MB. **≪ 30 MB.** (Local debug build measured 15,996,266 B; the CI release pair is the delivery truth.)
+- Confirmed inside the CI APK: `lib/arm64-v8a/libffmpegJNI.so` (1,341,096 B), `lib/armeabi-v7a/libffmpegJNI.so` (1,155,156 B), `assets/NOTICE_FFMPEG_LGPL.txt`.
 
 ## 6. Not changed
 
@@ -48,7 +48,15 @@ Look/interaction (flat UI, no blue focus), channel keys 166/167, LoadControl `10
 ## 7. Verification
 
 - Local `--no-daemon` `:app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleDebugAndroidTest`: **BUILD SUCCESSFUL**; JVM **37 tests 0 failures**; lint **0 errors**/66 warnings; pair gate missing 0; keep 210 identical; dex contract 7 OK. APK 15,996,266 B.
-- Clo**ud pair receipt: _(filled after CI run completes)_.
+- Cloud pair receipt (run 44773892066, source `ae531f7f`): **success** (NDK r27, dual ABI/API24, pair gate passed). Cloud JVM 37 tests 0 failures; lint 0 errors / 64 warnings.
+
+| Deliverable | Actual bytes | SHA256 |
+|---|---:|---|
+| app-debug.apk |12,928,915| `1e518f49ba9bff16dea3fd190e08e3d0ef8670830d4c7a6752f724ad7b32dad6` |
+| app-debug-androidTest.apk |502,955| `0ff2f7eec80a30e2709bb16c9ea3f90f5559be41b12fa81b55bd177636cc0641` |
+
+- Artifacts: pair `14648976701` (`sha256:82638e7a224dfe078b89ceaeef4fdc6464e4b73ac8f6df07107212eb0bb64f0d`, zip 10,203,155 B); reports `14649146164` (`sha256:f52886bcea13077f626cdc17a3c7e4b74a64af175774c2294646966226e9f7f9`). Signer `773bf65a17980271ea450608d741080677a897423157edb58ea7a0ae0ab7c7a1`.
+- Version: `tv.iqtvlite.app.validation / 10096 / 2.2.0-tivimini-ae531f7f-validation`; label "IQTV Lite 验证版"; min24/target35/compile36; dual ABI; contract missing types/methods/fields empty; keep 210 identical.
 
 ## 8. Device audio verification (acceptance, not claimed here)
 
