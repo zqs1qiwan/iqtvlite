@@ -30,6 +30,8 @@ fun ChannelInfoBanner(
     channelNumber: Int = -1,
     programProgress: Float? = null,
     videoFormat: Format?,
+    // t175: current audio track (language · codec · channels); omitted entirely when null.
+    audioLabel: String? = null,
     catchupConfiguration: CatchupConfiguration? = null,
     animate: Boolean = true,
     modifier: Modifier = Modifier
@@ -131,6 +133,8 @@ fun ChannelInfoBanner(
                             }
                             if (audioText.isNotEmpty()) TechSpecText(audioText)
                         }
+                        // t175: current audio track line; omitted entirely when unknown (no placeholder).
+                        if (!audioLabel.isNullOrBlank()) TechSpecText("音轨 " + audioLabel)
                     }
                 }
             }

@@ -57,6 +57,10 @@ fun SettingsDrawer(
     onToggleLogoPrefetch: (Boolean) -> Unit = {},
     onToggleLogoLoad: (Boolean) -> Unit = {},
     // t172 (F3): automatic playlist/EPG updates
+    // t175 (F4): audio & subtitle group
+    audioSummary: String? = null,
+    audioEntryLabel: String = "音轨选择",
+    onAudioTrackClick: () -> Unit = {},
     autoUpdatePlaylistLabel: String = "启动时",
     autoUpdateEpgLabel: String = "启动时",
     lastUpdateSummary: String = "",
@@ -82,6 +86,7 @@ fun SettingsDrawer(
     val logoLoadRequester = remember { FocusRequester() }
     val playlistIntervalRequester = remember { FocusRequester() }
     val epgIntervalRequester = remember { FocusRequester() }
+    val audioTrackRequester = remember { FocusRequester() }
 
     LaunchedEffect(visible) {
         if (visible) {
@@ -160,6 +165,24 @@ fun SettingsDrawer(
                         onClick = onCheckUpdateClick
                     )
 
+                    Spacer(modifier = Modifier.padding(8.dp))
+
+                    // t175: 音频与字幕 group (audio track picker; summary line when known).
+                    SettingsGroupHeader(text = "音频与字幕")
+                    SettingsItem(
+                        text = audioEntryLabel,
+                        focusRequester = audioTrackRequester,
+                        tag = "settings_audio_track",
+                        onClick = onAudioTrackClick
+                    )
+                    if (!audioSummary.isNullOrBlank()) {
+                        Text(
+                            text = "当前：$audioSummary",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(start = 16.dp, top = 2.dp, bottom = 6.dp)
+                        )
+                    }
                     Spacer(modifier = Modifier.padding(8.dp))
 
                     // t172: 数据与更新 group (auto playlist/EPG refresh + manual refresh).

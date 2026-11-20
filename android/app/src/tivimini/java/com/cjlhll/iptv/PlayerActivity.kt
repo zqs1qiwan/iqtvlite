@@ -431,6 +431,11 @@ fun VideoPlayerScreen(
     // t154: perf-isolation switches (persisted; default on).
     var logoPrefetchEnabled by remember { mutableStateOf(Prefs.isLogoPrefetchEnabled(context)) }
     var logoLoadEnabled by remember { mutableStateOf(Prefs.isLogoLoadEnabled(context)) }
+    // t175 (F4): audio tracks of the current item + manual override (-1 = 自动).
+    var audioTracks by remember { mutableStateOf<List<AudioTrackUi.Raw>>(emptyList()) }
+    var audioOverrideGroup by remember { mutableIntStateOf(-1) }
+    var audioOverrideTrack by remember { mutableIntStateOf(-1) }
+    var audioDialogOpen by remember { mutableStateOf(false) }
     // t172 (F3): automatic playlist/EPG update policy (persisted; default 启动时).
     var autoUpdatePlaylist by remember { mutableStateOf(Prefs.getAutoUpdatePlaylist(context)) }
     var autoUpdateEpg by remember { mutableStateOf(Prefs.getAutoUpdateEpg(context)) }
@@ -609,6 +614,28 @@ fun VideoPlayerScreen(
 
                 override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
                     videoFormat = p.videoFormat
+                    // t175: flatten the audio groups for the info banner + the picker. Media3
+                    // delivers this on the application looper, so no extra thread hop is needed.
+                    val flattened = ArrayList<AudioTrackUi.Raw>()
+                    tracks.groups.forEachIndexed { groupIndex, group ->
+                        if (group.type != androidx.media3.common.C.TRACK_TYPE_AUDIO) return@forEachIndexed
+                        for (trackIndex in 0 until group.length) {
+                            val format = group.getTrackFormat(trackIndex)
+                            flattened += AudioTrackUi.Raw(
+                                groupIndex = groupIndex,
+                                trackIndex = trackIndex,
+                                language = format.language,
+                                label = format.label,
+                                mime = format.sampleMimeType,
+                                codecs = format.codecs,
+                                channels = format.channelCount,
+                            )
+                        }
+                    }
+                    audioTracks = flattened
+                    // a new item invalidates the manual override
+                    audioOverrideGroup = -1
+                    audioOverrideTrack = -1
                 }
 
 
@@ -946,6 +973,31 @@ fun VideoPlayerScreen(
      */
     fun flushRecentChannels(gen: Int? = null) {
         if (recentCache.flush(gen)) recentTick++
+    }
+
+    /**
+     * t175: apply a track override straight on the playback parameters — the player is never rebuilt,
+     * so decoding (AAC on MediaCodec / MP2 on the FFmpeg extension) is untouched.
+     */
+    fun applyAudioOverride(groupIndex: Int, trackIndex: Int) {
+        val p = player ?: return
+        val builder = p.trackSelectionParameters.buildUpon()
+        if (groupIndex < 0) {
+            builder.clearOverridesOfType(androidx.media3.common.C.TRACK_TYPE_AUDIO)
+            audioOverrideGroup = -1
+            audioOverrideTrack = -1
+        } else {
+            val tracks = p.currentTracks
+            val group = tracks.groups.getOrNull(groupIndex) ?: return
+            if (group.type != androidx.media3.common.C.TRACK_TYPE_AUDIO) return
+            if (trackIndex !in 0 until group.length) return
+            builder.setOverrideForType(
+                androidx.media3.common.TrackSelectionOverride(group.mediaTrackGroup, trackIndex)
+            )
+            audioOverrideGroup = groupIndex
+            audioOverrideTrack = trackIndex
+        }
+        p.trackSelectionParameters = builder.build()
     }
 
     fun recordRecentChannel(group: ChannelGroup, number: Int, variantIndex: Int) {
@@ -1317,6 +1369,9 @@ fun VideoPlayerScreen(
             logoCacheSummary = logoCacheSummary,
             logoPrefetchEnabled = logoPrefetchEnabled,
             logoLoadEnabled = logoLoadEnabled,
+            audioSummary = AudioTrackUi.summary(audioTracks, audioOverrideGroup, audioOverrideTrack),
+            audioEntryLabel = AudioTrackUi.entryLabel(audioTracks),
+            onAudioTrackClick = { audioDialogOpen = true },
             autoUpdatePlaylistLabel = autoUpdatePlaylist.label,
             autoUpdateEpgLabel = autoUpdateEpg.label,
             lastUpdateSummary = run {
@@ -1370,6 +1425,17 @@ fun VideoPlayerScreen(
                 ).show()
             },
             onClose = { settingsDrawerOpen = false }
+        )
+
+        AudioTrackDialog(
+            visible = audioDialogOpen,
+            items = AudioTrackUi.buildItems(audioTracks, audioOverrideGroup, audioOverrideTrack),
+            onSelect = { item ->
+                applyAudioOverride(item.groupIndex, item.trackIndex)
+                audioDialogOpen = false
+                infoBannerOpen = true
+            },
+            onClose = { audioDialogOpen = false }
         )
 
         RecentChannelsDialog(
@@ -1485,6 +1551,7 @@ fun VideoPlayerScreen(
                     programProgress = displayProgress,
                     channelNumber = displayNumber,
                     videoFormat = videoFormat,
+                    audioLabel = AudioTrackUi.summary(audioTracks, audioOverrideGroup, audioOverrideTrack),
                     catchupConfiguration = catchupConfig,
                     animate = true,
                     modifier = Modifier.fillMaxWidth()
