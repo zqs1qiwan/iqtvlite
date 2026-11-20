@@ -44,6 +44,8 @@ fun SettingsDrawer(
     qualityMenuEnabled: Boolean = false,
     onQualityMenuClick: () -> Unit = {},
     onCheckUpdateClick: () -> Unit,
+    onOpenRecent: () -> Unit = {},
+    recentCount: Int = 0,
     onRefreshLogos: () -> Unit = {},
     onClearLogoCache: () -> Unit = {},
     logoCacheSummary: String = "",
@@ -58,6 +60,7 @@ fun SettingsDrawer(
     val epgSettingsRequester = remember { FocusRequester() }
     val qualityMenuRequester = remember { FocusRequester() }
     val checkUpdateRequester = remember { FocusRequester() }
+    val recentRequester = remember { FocusRequester() }
     val logoRefreshRequester = remember { FocusRequester() }
     val logoClearRequester = remember { FocusRequester() }
 
@@ -134,6 +137,15 @@ fun SettingsDrawer(
                         text = "检查更新",
                         focusRequester = checkUpdateRequester,
                         onClick = onCheckUpdateClick
+                    )
+
+                    Spacer(modifier = Modifier.padding(8.dp))
+
+                    // t133: 最近观看 entry (list + clear live in RecentChannelsDialog).
+                    SettingsItem(
+                        text = if (recentCount > 0) "最近观看（$recentCount）" else "最近观看",
+                        focusRequester = recentRequester,
+                        onClick = onOpenRecent
                     )
 
                     Spacer(modifier = Modifier.padding(8.dp))

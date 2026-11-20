@@ -12,6 +12,7 @@ object Prefs {
     private const val KEY_PLAYLIST_FILE_NAME = "playlist_file_name"
     private const val KEY_LAST_EPG_UPDATE_TIME = "last_epg_update_time"
     private const val KEY_SOURCE_VERSION = "source_version"
+    private const val KEY_RECENT_CHANNELS = "recent_channels_v1"
 
     private fun getPrefs(context: Context): SharedPreferences {
         return context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
@@ -76,5 +77,17 @@ object Prefs {
 
     fun setSourceVersion(context: Context, version: Long) {
         getPrefs(context).edit().putLong(KEY_SOURCE_VERSION, version).apply()
+    }
+
+    // t133: recent channels — one compact string (see RecentChannels.encode), ≤10 entries.
+    fun getRecentChannels(context: Context): String? =
+        getPrefs(context).getString(KEY_RECENT_CHANNELS, null)
+
+    fun setRecentChannels(context: Context, encoded: String) {
+        getPrefs(context).edit().putString(KEY_RECENT_CHANNELS, encoded).apply()
+    }
+
+    fun clearRecentChannels(context: Context) {
+        getPrefs(context).edit().remove(KEY_RECENT_CHANNELS).apply()
     }
 }

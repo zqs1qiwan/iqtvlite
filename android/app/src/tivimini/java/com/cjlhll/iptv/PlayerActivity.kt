@@ -22,6 +22,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -83,6 +84,7 @@ private enum class PlaylistUpdateMode {
 
 class PlayerActivity : ComponentActivity() {
     private var onNumberJump: ((Int) -> Boolean)? = null
+    private var setPlayLastChannel: (() -> Boolean)? = null
     private var digits by mutableStateOf("")
     private var numberJob: Job? = null
     private fun submitNumber() {
@@ -173,6 +175,7 @@ class PlayerActivity : ComponentActivity() {
                         sidebarController = sidebarController,
                         setOnChannelStep = { onChannelStep = it },
                         setOnNumberJump = { onNumberJump = it },
+                        setOnPlayLastChannel = { setPlayLastChannel = it },
                         onDrawerOpenChanged = { isDrawerOpen = it },
                         onDrawerActiveColumnChanged = { drawerActiveColumn = it },
                         setSettingsDrawerOpenController = { setSettingsDrawerOpen = it },
@@ -242,6 +245,11 @@ class PlayerActivity : ComponentActivity() {
                 numberJob?.cancel(); digits = ""
             }
             when (event.keyCode) {
+                // t133: last channel — only while no overlay is open; repeats are debounced inside.
+                KeyEvent.KEYCODE_LAST_CHANNEL, KeyEvent.KEYCODE_MEDIA_PREVIOUS -> {
+                    if (event.repeatCount == 0 && setPlayLastChannel?.invoke() == true) return true
+                }
+
                 KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
                     if (!isDrawerOpen && !isSettingsDrawerOpen && !isQualityDialogOpen) {
                         setInfoBannerOpen?.invoke(true)
@@ -357,6 +365,7 @@ fun VideoPlayerScreen(
     sidebarController: SidebarController,
     setOnChannelStep: (((Int) -> Boolean)?) -> Unit,
     setOnNumberJump: (((Int) -> Boolean)?) -> Unit,
+    setOnPlayLastChannel: ((() -> Boolean)?) -> Unit,
     onDrawerOpenChanged: (Boolean) -> Unit,
     onDrawerActiveColumnChanged: (DrawerColumn?) -> Unit,
     setSettingsDrawerOpenController: (((Boolean) -> Unit)?) -> Unit,
@@ -381,6 +390,10 @@ fun VideoPlayerScreen(
     val drawerActiveColumn = sidebarState.activeColumn
     var settingsDrawerOpen by remember { mutableStateOf(false) }
     var qualityDialogOpen by remember { mutableStateOf(false) }
+    // t133: recent-channels list + last-channel debounce bookkeeping.
+    var recentChannelsOpen by remember { mutableStateOf(false) }
+    var recentTick by remember { mutableIntStateOf(0) }
+    var lastChannelSwitchAt by remember { mutableLongStateOf(0L) }
     var qualityDialogGroupIndex by remember { mutableIntStateOf(-1) }
     var infoBannerOpen by remember { mutableStateOf(false) }
     val channelSwitch = rememberChannelSwitchController()
@@ -858,6 +871,14 @@ fun VideoPlayerScreen(
         if (p != null) prepareRequest(p, request) else playbackIntent.retain(request)
     }
 
+    // ---- t133: recent channels / last channel ----
+    fun recordRecentChannel(channel: Channel, number: Int) {
+        val encoded = Prefs.getRecentChannels(context)
+        val updated = RecentChannels.push(RecentChannels.decode(encoded), channel, number)
+        Prefs.setRecentChannels(context, RecentChannels.encode(updated))
+        recentTick++
+    }
+
     fun playGroupVariant(groupIndex: Int, variantIndex: Int, selectionTicket: Long? = null) {
         if (selectionTicket != null && !playbackIntent.matches(selectionTicket)) return
         val group = channelGroups.getOrNull(groupIndex) ?: return
@@ -872,6 +893,8 @@ fun VideoPlayerScreen(
         currentGroupIndex = groupIndex
         currentVariantIndex = variantIndex
         Prefs.setLastChannel(context, channel.url, channel.title)
+        // t133: remember for "上一台" + 最近观看 (stable-id de-dup, newest first).
+        recordRecentChannel(channel, groupIndex + 1)
     }
 
     fun mergeMeasuredLatencies(results: Map<String, Int?>) {
@@ -960,6 +983,23 @@ fun VideoPlayerScreen(
         }
     }
 
+    /** Switch back to the most recent channel that is not the one currently playing. */
+    fun playLastChannel(): Boolean {
+        if (drawerOpen || settingsDrawerOpen || qualityDialogOpen || recentChannelsOpen) return false
+        val now = System.currentTimeMillis()
+        if (now - lastChannelSwitchAt < 800) return false
+        val entries = RecentChannels.decode(Prefs.getRecentChannels(context))
+        val current = channelGroups.getOrNull(currentGroupIndex)?.defaultChannel
+        val previous = RecentChannels.previous(entries, current?.let { RecentChannels.stableKey(it) })
+            ?: return false
+        val channel = RecentChannels.resolve(listOf(previous), ChannelGrouper.allChannels(channelGroups))
+            .firstOrNull()?.second ?: return false
+        lastChannelSwitchAt = now
+        playChannel(channel)
+        infoBannerOpen = true
+        return true
+    }
+
     DisposableEffect(player, channelGroups, currentGroupIndex, currentVariantIndex, catchupRequest) {
         setOnCatchupSeek { deltaMs ->
             val p = player ?: return@setOnCatchupSeek false
@@ -999,6 +1039,7 @@ fun VideoPlayerScreen(
     val playGroupAutoState = rememberUpdatedState<(Int) -> Unit> { index -> playGroupAuto(index) }
 
     DisposableEffect(player) {
+        setOnPlayLastChannel { playLastChannel() }
         setOnNumberJump { number ->
             val groups = channelGroupsState.value
             if (number !in 1..groups.size) false else {
@@ -1024,6 +1065,7 @@ fun VideoPlayerScreen(
         onDispose {
             setOnChannelStep(null)
             setOnNumberJump(null)
+            setOnPlayLastChannel(null)
         }
     }
 
@@ -1099,6 +1141,24 @@ fun VideoPlayerScreen(
         }
 
         var logoCacheTick by remember { mutableIntStateOf(0) }
+        // t133: recent channels resolved against the current playlist (missing ids are skipped).
+        val recentResolved = remember(recentTick, channelGroups, currentGroupIndex) {
+            val entries = RecentChannels.decode(Prefs.getRecentChannels(context))
+            val numbers = buildMap {
+                channelGroups.forEachIndexed { i, g -> g.variants.forEach { put(it.channel.url, i + 1) } }
+            }
+            val currentUrl = channelGroups.getOrNull(currentGroupIndex)?.defaultChannel?.url
+            RecentChannels.resolve(entries, ChannelGrouper.allChannels(channelGroups)).map { (e, ch) ->
+                RecentChannelUi(
+                    title = ch.title,
+                    number = numbers[ch.url] ?: e.number,
+                    logoUrl = ch.logoUrl,
+                    selected = ch.url == currentUrl,
+                ) to ch
+            }
+        }
+        val recentItems = recentResolved.map { it.first }
+        val recentCount = recentItems.size
         // CACHE-01: stats does disk IO on Dispatchers.IO inside LogoLoader; only compute when settings shown.
         val logoCacheSummary by produceState(initialValue = "", settingsDrawerOpen, logoCacheTick) {
             value = if (settingsDrawerOpen) {
@@ -1148,6 +1208,11 @@ fun VideoPlayerScreen(
                     android.widget.Toast.makeText(context, "已刷新当前组台标", android.widget.Toast.LENGTH_SHORT).show()
                 }
             },
+            onOpenRecent = {
+                settingsDrawerOpen = false
+                recentChannelsOpen = true
+            },
+            recentCount = recentCount,
             onClearLogoCache = {
                 android.widget.Toast.makeText(context, "正在清理台标缓存…", android.widget.Toast.LENGTH_SHORT).show()
                 scope.launch {
@@ -1158,6 +1223,24 @@ fun VideoPlayerScreen(
             },
             logoCacheSummary = logoCacheSummary,
             onClose = { settingsDrawerOpen = false }
+        )
+
+        RecentChannelsDialog(
+            visible = recentChannelsOpen,
+            items = recentItems,
+            onSelect = { index ->
+                recentResolved.getOrNull(index)?.let { (_, ch) ->
+                    recentChannelsOpen = false
+                    sidebarController.closeDrawer()
+                    playChannel(ch)
+                }
+            },
+            onClear = {
+                Prefs.clearRecentChannels(context)
+                recentTick++
+                android.widget.Toast.makeText(context, "已清空最近观看", android.widget.Toast.LENGTH_SHORT).show()
+            },
+            onClose = { recentChannelsOpen = false }
         )
 
         QualitySelectorDialog(
