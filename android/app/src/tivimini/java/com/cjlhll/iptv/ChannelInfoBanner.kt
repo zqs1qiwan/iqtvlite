@@ -38,7 +38,7 @@ fun ChannelInfoBanner(
     // 抽屉是 surface alpha 0.92f
     val containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f)
     // 底部浮窗，上面两个角圆角
-    val shape = RoundedCornerShape(topStart = 0.dp, topEnd = 0.dp)
+    val shape = RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp)
 
     val content: @Composable () -> Unit = {
         Box(

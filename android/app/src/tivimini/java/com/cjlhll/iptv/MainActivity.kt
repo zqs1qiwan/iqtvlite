@@ -311,7 +311,7 @@ fun MainScreen() {
                                 modifier = Modifier
                                     .fillMaxWidth(0.85f)
                                     .aspectRatio(1f)
-                                    .background(Color.White, RoundedCornerShape(2.dp))
+                                    .background(Color.White, RoundedCornerShape(12.dp))
                                     .padding(12.dp)
                             ) {
                                 Image(

@@ -100,9 +100,6 @@ class PlayerActivity : ComponentActivity() {
     private var setDrawerOpen: ((Boolean) -> Unit)? = null
     private var isDrawerOpen: Boolean = false
     private val sidebarController = SidebarController()
-    private var onSidebarPlay: ((Int, Int) -> Unit)? = null
-    private var onSidebarCatchup: ((CatchupPlayRequest) -> Unit)? = null
-    private var nativeSidebar: NativeSidebarView? = null
     private var drawerActiveColumn: DrawerColumn? = null
     private var focusToDrawerChannels: (() -> Unit)? = null
     private var setSettingsDrawerOpen: ((Boolean) -> Unit)? = null
@@ -144,48 +141,25 @@ class PlayerActivity : ComponentActivity() {
         }
         rootLayout.addView(videoView, android.widget.FrameLayout.LayoutParams(
             android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.MATCH_PARENT))
-        // t62: native View sidebar layer, between the zero-copy SurfaceView and the transparent
-        // Compose overlay. Renders from SidebarController (single source of truth).
-        val sidebarView = NativeSidebarView(this, sidebarController, { groupIndex, variantIndex ->
-            onSidebarPlay?.invoke(groupIndex, variantIndex)
-        }, { request -> onSidebarCatchup?.invoke(request) }).apply { visibility = android.view.View.GONE }
-        nativeSidebar = sidebarView
-        rootLayout.addView(sidebarView, android.widget.FrameLayout.LayoutParams(
-            android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.MATCH_PARENT))
         val composeOverlay = androidx.compose.ui.platform.ComposeView(this).apply {
             setBackgroundColor(android.graphics.Color.TRANSPARENT)
         }
         rootLayout.addView(composeOverlay, android.widget.FrameLayout.LayoutParams(
             android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.MATCH_PARENT))
         setContentView(rootLayout)
-        lifecycleScope.launch {
-            sidebarController.state.collect { st ->
-                isDrawerOpen = st.drawerOpen
-                val sidebar = nativeSidebar ?: return@collect
-                if (st.drawerOpen) {
-                    val wasHidden = sidebar.visibility != android.view.View.VISIBLE
-                    sidebar.visibility = android.view.View.VISIBLE
-                    sidebar.render(st)
-                    if (wasHidden) sidebar.requestInitialFocus()
-                } else {
-                    sidebar.visibility = android.view.View.GONE
-                }
-            }
-        }
 
         composeOverlay.setContent {
             val colorScheme = darkColorScheme(
-                // IQTV Lite brand palette (docs/BRAND_GUIDELINES.md).
-                primary = ComposeColor(0xFF4EA8FF),
+                primary = ComposeColor(0xFFBDBDBD),
                 onPrimary = ComposeColor.Black,
-                secondary = ComposeColor(0xFFA9B4C7),
+                secondary = ComposeColor(0xFF757575),
                 onSecondary = ComposeColor.Black,
-                tertiary = ComposeColor(0xFFF5A524),
-                onTertiary = ComposeColor.Black,
-                background = ComposeColor(0xFF0E1116),
-                onBackground = ComposeColor(0xFFF2F5FA),
-                surface = ComposeColor(0xFF161B22),
-                onSurface = ComposeColor(0xFFF2F5FA)
+                tertiary = ComposeColor(0xFF616161),
+                onTertiary = ComposeColor.White,
+                background = ComposeColor(0xFF121212),
+                onBackground = ComposeColor.White,
+                surface = ComposeColor(0xFF1E1E1E),
+                onSurface = ComposeColor.White
             )
 
             MaterialTheme(colorScheme = colorScheme) {
@@ -200,8 +174,6 @@ class PlayerActivity : ComponentActivity() {
                         sidebarController = sidebarController,
                         setOnChannelStep = { onChannelStep = it },
                         setOnNumberJump = { onNumberJump = it },
-                        setOnSidebarPlay = { onSidebarPlay = it },
-                        setOnSidebarCatchup = { onSidebarCatchup = it },
                         setDrawerOpenController = { setDrawerOpen = it },
                         onDrawerOpenChanged = { isDrawerOpen = it },
                         onDrawerActiveColumnChanged = { drawerActiveColumn = it },
@@ -250,26 +222,6 @@ class PlayerActivity : ComponentActivity() {
                 if (event.keyCode == KeyEvent.KEYCODE_BACK) { numberJob?.cancel(); digits = ""; return true }
                 if (event.keyCode in listOf(KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER)) { submitNumber(); return true }
                 numberJob?.cancel(); digits = ""
-            }
-            // t66: layered columns (channel+program main view; groups/date are overlay columns).
-            if (sidebarController.value.drawerOpen) {
-                when (event.keyCode) {
-                    KeyEvent.KEYCODE_DPAD_LEFT -> when (sidebarController.value.activeColumn) {
-                        DrawerColumn.Channels -> { sidebarController.setShowGroups(true); nativeSidebar?.clearPosition(DrawerColumn.Groups); nativeSidebar?.focusGroups(); return true }
-                        DrawerColumn.Groups -> { sidebarController.setShowGroups(false); nativeSidebar?.clearPosition(DrawerColumn.Groups); nativeSidebar?.focusChannels(); return true }
-                        DrawerColumn.Programs -> { nativeSidebar?.focusChannels(); return true }
-                        DrawerColumn.Dates -> { sidebarController.setShowDates(false); nativeSidebar?.clearPosition(DrawerColumn.Dates); nativeSidebar?.focusPrograms(); return true }
-                        else -> {}
-                    }
-                    KeyEvent.KEYCODE_DPAD_RIGHT -> when (sidebarController.value.activeColumn) {
-                        // SIDEBAR3-01: hide the groups overlay BEFORE focusing channels, otherwise the
-                        // 0..151dp overlay keeps covering the focused channel row.
-                        DrawerColumn.Groups -> { sidebarController.setShowGroups(false); nativeSidebar?.clearPosition(DrawerColumn.Groups); nativeSidebar?.focusChannels(); return true }
-                        DrawerColumn.Channels -> { nativeSidebar?.focusPrograms(); return true }
-                        DrawerColumn.Programs -> { sidebarController.setShowDates(true); nativeSidebar?.clearPosition(DrawerColumn.Dates); nativeSidebar?.focusDates(); return true }
-                        else -> {}
-                    }
-                }
             }
             when (event.keyCode) {
                 KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
@@ -387,8 +339,6 @@ fun VideoPlayerScreen(
     sidebarController: SidebarController,
     setOnChannelStep: (((Int) -> Boolean)?) -> Unit,
     setOnNumberJump: (((Int) -> Boolean)?) -> Unit,
-    setOnSidebarPlay: (((Int, Int) -> Unit)?) -> Unit,
-    setOnSidebarCatchup: (((CatchupPlayRequest) -> Unit)?) -> Unit,
     setDrawerOpenController: (((Boolean) -> Unit)?) -> Unit,
     onDrawerOpenChanged: (Boolean) -> Unit,
     onDrawerActiveColumnChanged: (DrawerColumn?) -> Unit,
@@ -1048,26 +998,9 @@ fun VideoPlayerScreen(
             true
         }
 
-        setOnSidebarPlay { groupIndex, variantIndex -> playGroupVariant(groupIndex, variantIndex) }
-        setOnSidebarCatchup { req ->
-            val bound = PlaybackIntent.catchup(ChannelGrouper.allChannels(channelGroups), req, playbackIntent.request)
-            if (bound != null) {
-                sourceSelectGeneration += 1
-                sourceSelectJob?.cancel()
-                playbackIntent.beginSelection()
-                catchupRequest = req
-                startPlayback(bound)
-                sidebarController.closeDrawer()
-            } else {
-                // GAP-08: never fail silently.
-                android.widget.Toast.makeText(context, "该节目暂不可回看", android.widget.Toast.LENGTH_SHORT).show()
-            }
-        }
         onDispose {
             setOnChannelStep(null)
             setOnNumberJump(null)
-            setOnSidebarPlay(null)
-            setOnSidebarCatchup(null)
         }
     }
 
@@ -1082,7 +1015,39 @@ fun VideoPlayerScreen(
                 .padding(24.dp)
         )
 
-        // t62: Compose PlayerDrawer removed — the native NativeSidebarView owns the sidebar.
+        PlayerDrawer(
+            visible = drawerOpen,
+            groups = groups,
+            selectedGroup = selectedGroup,
+            channels = filteredChannels,
+            channelNumbers = remember(channelGroups) {
+                buildMap { channelGroups.forEachIndexed { index, group ->
+                    group.variants.forEach { put(it.channel.url, index+1) }
+                } }
+            },
+            selectedChannelUrl = if (currentLive.retainedOutsideList) null else channelGroups.getOrNull(currentGroupIndex)?.defaultChannel?.url,
+            nowProgramByChannelUrl = nowProgramByUrl,
+            epgData = epgData,
+            nowMillis = nowMillis,
+            onSelectGroup = { sidebarController.selectGroup(it) },
+            onSelectChannel = { channel ->
+                playChannel(channel)
+            },
+            onPlayProgram = { req ->
+                val bound = PlaybackIntent.catchup(ChannelGrouper.allChannels(channelGroups), req, playbackIntent.request)
+                if (bound != null) {
+                    sourceSelectGeneration += 1
+                    sourceSelectJob?.cancel()
+                    playbackIntent.beginSelection()
+                    catchupRequest = req
+                    startPlayback(bound)
+                    sidebarController.closeDrawer()
+                }
+            },
+            onClose = { sidebarController.closeDrawer() },
+            onActiveColumnChanged = { sidebarController.setActiveColumn(it) },
+            requestedActiveColumn = drawerActiveColumn
+        )
 
         val qualityDialogGroup = channelGroups.getOrNull(
             if (qualityDialogGroupIndex >= 0) qualityDialogGroupIndex else playingGroupIndex
@@ -1281,7 +1246,7 @@ private fun CatchupProgressBar(
     val endText = catchupTimeFormatter.format(Instant.ofEpochMilli(endMillis).atZone(zone))
 
     val containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f)
-    val shape = RoundedCornerShape(topStart = 0.dp, topEnd = 0.dp)
+    val shape = RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp)
     val bottomPadding = if (isBottomPaddingNeeded) 20.dp else 4.dp
 
     Box(

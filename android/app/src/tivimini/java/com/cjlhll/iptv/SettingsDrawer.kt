@@ -49,7 +49,7 @@ fun SettingsDrawer(
 ) {
     val container = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)
     val scrim = Color.Transparent
-    val shape = RoundedCornerShape(topStart = 0.dp, bottomStart = 0.dp)
+    val shape = RoundedCornerShape(topStart = 18.dp, bottomStart = 18.dp)
 
     val sourceConfigRequester = remember { FocusRequester() }
     val epgSettingsRequester = remember { FocusRequester() }

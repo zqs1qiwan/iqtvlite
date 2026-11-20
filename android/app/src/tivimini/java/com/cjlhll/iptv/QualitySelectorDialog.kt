@@ -57,7 +57,7 @@ fun QualitySelectorDialog(
     modifier: Modifier = Modifier,
 ) {
     val container = MaterialTheme.colorScheme.surface.copy(alpha = 0.98f)
-    val shape = RoundedCornerShape(4.dp)
+    val shape = RoundedCornerShape(18.dp)
     val scrollState = rememberScrollState()
     val itemRequesters = remember(variants.size) {
         List(variants.size) { FocusRequester() }
@@ -159,7 +159,7 @@ private fun SourceOptionItem(
         modifier = Modifier
             .fillMaxWidth()
             .let { m -> if (focusRequester != null) m.focusRequester(focusRequester) else m }
-            .background(bg, RoundedCornerShape(2.dp))
+            .background(bg, RoundedCornerShape(12.dp))
             .onFocusChanged { focused = it.isFocused }
             .focusable()
             .clickable {

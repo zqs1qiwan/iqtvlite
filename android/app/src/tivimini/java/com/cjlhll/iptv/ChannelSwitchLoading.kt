@@ -110,7 +110,7 @@ fun ChannelSwitchOverlay(
             modifier = Modifier
                 .background(
                     MaterialTheme.colorScheme.surface.copy(alpha = 0.88f),
-                    RoundedCornerShape(2.dp)
+                    RoundedCornerShape(12.dp)
                 )
                 .padding(horizontal = 16.dp, vertical = 12.dp)
         ) {

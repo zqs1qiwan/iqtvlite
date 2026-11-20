@@ -353,7 +353,7 @@ fun ChannelLogo(
         if (loaded != null) fallbackJob.cancel()
     }
 
-    val shape = RoundedCornerShape(2.dp)
+    val shape = RoundedCornerShape(10.dp)
     val bg = MaterialTheme.colorScheme.surfaceVariant
 
     if (loaded != null) {
