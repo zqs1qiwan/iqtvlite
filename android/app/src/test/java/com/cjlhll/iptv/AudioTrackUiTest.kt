@@ -152,4 +152,35 @@ class AudioTrackUiTest {
         val zh6 = raw(track = 2, language = "zh", channels = 6)
         assertEquals(3, AudioTrackUi.dedupe(listOf(zh, en, zh6)).size)
     }
+
+    @Test
+    fun dedupeNeverMergesTwoTracksOfTheSameGroup() {
+        // t187 (AUDIO-DEDUPE-01): the identity key alone was too coarse — two tracks of one group
+        // with the same language/codec/channels are genuinely different and must both be listed.
+        val a = raw(group = 0, track = 0, language = "zh", channels = 2)
+        val b = raw(group = 0, track = 1, language = "zh", channels = 2)
+        assertEquals(2, AudioTrackUi.dedupe(listOf(a, b)).size)
+    }
+
+    @Test
+    fun dedupeCollapsesOnlyCrossRendererCopies() {
+        // same stream, two groups (renderer copies) → one row
+        val codec = raw(group = 0, track = 0, language = "zh", channels = 2)
+        val extension = raw(group = 1, track = 0, language = "zh", channels = 2)
+        val deduped = AudioTrackUi.dedupe(listOf(codec, extension))
+        assertEquals(1, deduped.size)
+
+        // a genuinely different stream in the other group survives
+        val other = raw(group = 1, track = 0, language = "en", channels = 6)
+        assertEquals(2, AudioTrackUi.dedupe(listOf(codec, other)).size)
+    }
+
+    @Test
+    fun aSingleTrackChannelIsNotSelectableAndSaysSo() {
+        // t187 (AUDIO-SINGLE-02): the settings row is inert for one track — label + canSelect agree.
+        val one = listOf(raw())
+        assertEquals(false, AudioTrackUi.canSelect(one))
+        assertTrue(AudioTrackUi.entryLabel(one).contains("仅 1 条"))
+        assertTrue(AudioTrackUi.canSelect(listOf(raw(), raw(track = 1, language = "en"))))
+    }
 }

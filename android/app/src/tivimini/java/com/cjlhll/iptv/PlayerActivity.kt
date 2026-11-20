@@ -25,6 +25,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
@@ -491,7 +492,9 @@ fun VideoPlayerScreen(
     var audioOverrideTrack by remember { mutableIntStateOf(-1) }
     var audioDialogOpen by remember { mutableStateOf(false) }
     // t179 (AUDIO-BACK-01): mirror the audio dialog state so the Activity can guard every key.
-    LaunchedEffect(audioDialogOpen) { onAudioDialogOpenChanged(audioDialogOpen) }
+    // t187 (BACK-03): SideEffect pushes the state on every recomposition instead of relying on a
+    // LaunchedEffect keyed only by the value (which could be skipped while settling).
+    SideEffect { onAudioDialogOpenChanged(audioDialogOpen) }
     // t172 (F3): automatic playlist/EPG update policy (persisted; default 启动时).
     var autoUpdatePlaylist by remember { mutableStateOf(Prefs.getAutoUpdatePlaylist(context)) }
     // t186 (F1): remote habits (persisted; the Activity re-reads them on resume).
@@ -679,9 +682,12 @@ fun VideoPlayerScreen(
                 }
 
                 override fun onMediaItemTransition(mediaItem: androidx.media3.common.MediaItem?, reason: Int) {
-                    // t179: a new channel is the only thing that invalidates a manual selection.
+                    // t187 (AUDIO-OVERRIDE-02): Media3 delivers this on the application looper, so we
+                    // may touch the player here. Clear the actual override — resetting only the UI
+                    // state left the old TrackSelectionOverride applied on the next channel.
                     audioOverrideGroup = -1
                     audioOverrideTrack = -1
+                    clearAudioOverride(p)
                 }
 
 
@@ -1419,11 +1425,22 @@ fun VideoPlayerScreen(
             },
             audioSummary = AudioTrackUi.summary(audioTracks, audioOverrideGroup, audioOverrideTrack),
             audioEntryLabel = AudioTrackUi.entryLabel(audioTracks),
+            audioSelectable = AudioTrackUi.canSelect(audioTracks),
             onAudioTrackClick = {
-                // t179 (AUDIO-BACK-01): one overlay at a time — otherwise BACK closes settings first
-                // and the audio dialog would be left on top with the player unguarded.
-                settingsDrawerOpen = false
-                audioDialogOpen = true
+                // t187 (AUDIO-SINGLE-02): a single-track channel has nothing to pick, so the row is
+                // inert (the label already says 仅 1 条) and no empty dialog is opened.
+                if (!AudioTrackUi.canSelect(audioTracks)) {
+                    android.widget.Toast.makeText(
+                        context,
+                        if (audioTracks.isEmpty()) "当前频道没有音轨" else "当前频道只有 1 条音轨",
+                        android.widget.Toast.LENGTH_SHORT
+                    ).show()
+                } else {
+                    // t179 (AUDIO-BACK-01): one overlay at a time — otherwise BACK closes settings
+                    // first and the audio dialog would be left on top with the player unguarded.
+                    settingsDrawerOpen = false
+                    audioDialogOpen = true
+                }
             },
             autoUpdatePlaylistLabel = autoUpdatePlaylist.label,
             autoUpdateEpgLabel = autoUpdateEpg.label,
@@ -1728,4 +1745,18 @@ private fun CatchupProgressBar(
             )
         }
     }
+}
+
+/**
+ * t187 (AUDIO-OVERRIDE-02): drop every audio TrackSelectionOverride and write the parameters back.
+ * Must run on the application looper (the player's thread) — the only call site is
+ * `onMediaItemTransition`, which Media3 delivers there.
+ */
+private fun clearAudioOverride(player: androidx.media3.common.Player) {
+    val params = player.trackSelectionParameters
+    // No override at all → nothing to write back (avoids a pointless parameter assignment).
+    if (params.overrides.isEmpty()) return
+    player.trackSelectionParameters = params.buildUpon()
+        .clearOverridesOfType(androidx.media3.common.C.TRACK_TYPE_AUDIO)
+        .build()
 }

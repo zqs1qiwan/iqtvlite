@@ -146,22 +146,35 @@ object AudioTrackUi {
     fun canSelect(raws: List<Raw>): Boolean = raws.size > 1
 
     /**
-     * t179 (AUDIO-RENDERER-01): keep one row per (language, codec, channels) identity, preferring
-     * the track the player selected. This collapses the MediaCodec/FFmpeg duplicates Media3 reports
-     * for the same stream, so the user can never pick the extension renderer for an AAC track.
+     * t187 (AUDIO-DEDUPE-01): collapse only **cross-renderer copies of the same stream**.
+     *
+     * Media3 reports one group per candidate renderer, so the same stream can appear twice with an
+     * identical format. Two tracks inside the SAME group are always genuinely different (that is how
+     * a multi-audio channel is modelled), so the group index is part of the identity and they are
+     * never merged. Selected tracks are visited first, so the surviving copy is the one in use.
      */
     fun dedupe(tracks: List<Raw>): List<Raw> {
         val result = ArrayList<Raw>(tracks.size)
         val seen = HashSet<String>()
-        // selected tracks first, so a duplicate group does not hide the real one
         tracks.sortedByDescending { it.selected }.forEach { raw ->
-            val key = listOf(
+            val identity = listOf(
                 formatLanguage(raw.language) ?: "",
                 formatCodec(raw.mime, raw.codecs) ?: "",
                 raw.channels.toString(),
             ).joinToString("|")
-            if (seen.add(key)) result += raw
+            // same group → distinct tracks; different groups + same identity → renderer duplicate
+            val key = "${raw.groupIndex}#${raw.trackIndex}#$identity"
+            val alreadyKeptForAnotherGroup = result.any { kept ->
+                kept.groupIndex != raw.groupIndex && identityOf(kept) == identity
+            }
+            if (seen.add(key) && !alreadyKeptForAnotherGroup) result += raw
         }
         return result
     }
+
+    private fun identityOf(raw: Raw): String = listOf(
+        formatLanguage(raw.language) ?: "",
+        formatCodec(raw.mime, raw.codecs) ?: "",
+        raw.channels.toString(),
+    ).joinToString("|")
 }

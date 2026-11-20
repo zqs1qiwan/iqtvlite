@@ -60,6 +60,8 @@ fun SettingsDrawer(
     // t175 (F4): audio & subtitle group
     audioSummary: String? = null,
     audioEntryLabel: String = "音轨选择",
+    /** t187 (AUDIO-SINGLE-02): false for single-track / no-audio channels → the row is inert. */
+    audioSelectable: Boolean = true,
     onAudioTrackClick: () -> Unit = {},
     // t186 (F1): remote habits
     remoteUpDownLabel: String = "换台",
@@ -241,7 +243,8 @@ fun SettingsDrawer(
                     // t175: 音频与字幕 group (audio track picker; summary line when known).
                     SettingsGroupHeader(text = "音频与字幕")
                     SettingsItem(
-                        text = audioEntryLabel,
+                        // t187: the label already says 仅 1 条 / 无音轨 when the picker cannot help.
+                        text = if (audioSelectable) audioEntryLabel else "$audioEntryLabel（不可选）",
                         focusRequester = audioTrackRequester,
                         tag = "settings_audio_track",
                         onClick = onAudioTrackClick
