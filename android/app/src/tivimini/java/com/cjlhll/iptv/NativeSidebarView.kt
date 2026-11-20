@@ -24,7 +24,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -59,6 +62,7 @@ private data class SidebarRow(
     val selected: Boolean = false,
     val now: Boolean = false,
     val url: String? = null,
+    val logoUrl: String? = null,
     val groupIndex: Int = -1,
     val date: LocalDate? = null,
     val groupName: String? = null,
@@ -78,6 +82,12 @@ private class RowAdapter(
 
     private var rows: List<SidebarRow> = emptyList()
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+    // LOGO-09: bound concurrent logo loads so opening the drawer cannot burst 20-30 decodes at once.
+    private val logoGate = Semaphore(3)
+
+    fun dispose() {
+        scope.cancel()
+    }
 
     fun submit(newRows: List<SidebarRow>) {
         val old = rows
@@ -121,7 +131,7 @@ private class RowAdapter(
         if (style == RowStyle.CHANNEL || style == RowStyle.PROGRAM) {
             val logoSz = if (style == RowStyle.CHANNEL) 40 else 20
             val logo = ImageView(ctx).apply {
-                scaleType = ImageView.ScaleType.CENTER_CROP
+                scaleType = ImageView.ScaleType.CENTER_INSIDE
                 background = logoPlaceholder(ctx)
                 layoutParams = FrameLayout.LayoutParams(dp(ctx, logoSz), dp(ctx, logoSz), Gravity.START or Gravity.CENTER_VERTICAL).apply { marginStart = dp(ctx, 8) }
             }
@@ -135,9 +145,10 @@ private class RowAdapter(
                 isDuplicateParentStateEnabled = true
             } else null
             if (time != null) {
-                val timeWidth = dp(ctx, 78)
+                val timeWidth = dp(ctx, 42)
                 root.addView(time, FrameLayout.LayoutParams(timeWidth, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.START or Gravity.CENTER_VERTICAL).apply { marginStart = startX })
-                startX += timeWidth + dp(ctx, 4)
+                // LOGO-04: v3 time column 42dp, title starts at 86dp.
+                startX += timeWidth + dp(ctx, 8)
             }
             val primary = FocusWeightTextView(ctx).apply {
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, if (style == RowStyle.CHANNEL) 16f else 15f)
@@ -208,7 +219,7 @@ private class RowAdapter(
 
     private fun bindLogo(holder: H, row: SidebarRow) {
         val logo = holder.logo ?: return
-        val url = row.url ?: ""
+        val url = row.logoUrl ?: ""
         holder.logoJob?.cancel()
         if (url.isBlank()) {
             logo.setImageDrawable(logoPlaceholder(holder.root.context))
@@ -217,7 +228,8 @@ private class RowAdapter(
         }
         val ctx = holder.root.context
         val w = dp(ctx, if (style == RowStyle.CHANNEL) 80 else 40)
-        val h = dp(ctx, if (style == RowStyle.CHANNEL) 40 else 20)
+        // LOGO-02: square decode + CENTER_INSIDE so wide logos are not cropped.
+        val h = dp(ctx, if (style == RowStyle.CHANNEL) 80 else 40)
         val cached = LogoLoader.getInMemory(url, w, h)
         if (cached != null) {
             logo.setImageBitmap(cached.asAndroidBitmap())
@@ -228,7 +240,7 @@ private class RowAdapter(
         holder.boundUrl = url
         val appCtx = ctx.applicationContext
         holder.logoJob = scope.launch {
-            val bmp = LogoLoader.load(appCtx, url, w, h)
+            val bmp = logoGate.withPermit { LogoLoader.load(appCtx, url, w, h) }
             if (holder.boundUrl == url && bmp != null) logo.setImageBitmap(bmp.asAndroidBitmap())
         }
     }
@@ -255,7 +267,7 @@ private class RowAdapter(
     private fun logoPlaceholder(ctx: Context): android.graphics.drawable.GradientDrawable =
         android.graphics.drawable.GradientDrawable().apply {
             cornerRadius = (2 * ctx.resources.displayMetrics.density)
-            setColor(0x22FFFFFF)
+            setColor(0xFF1E242E.toInt())
         }
 
     private fun dp(ctx: Context, value: Int): Int =
@@ -282,7 +294,7 @@ class NativeSidebarView(
     private val programsRv = RecyclerView(context).apply { layoutManager = LinearLayoutManager(context) }
     private val datesRv = RecyclerView(context).apply { layoutManager = LinearLayoutManager(context) }
 
-    private val groupsAdapter = RowAdapter(RowStyle.GROUP, dp(40), { row, pos -> onRowFocused(DrawerColumn.Groups, row, pos) }, { onRowClicked(DrawerColumn.Groups, it) })
+    private val groupsAdapter = RowAdapter(RowStyle.GROUP, dp(48), { row, pos -> onRowFocused(DrawerColumn.Groups, row, pos) }, { onRowClicked(DrawerColumn.Groups, it) })
     private val channelsAdapter = RowAdapter(RowStyle.CHANNEL, dp(64), { row, pos -> onRowFocused(DrawerColumn.Channels, row, pos) }, { onRowClicked(DrawerColumn.Channels, it) })
     private val programsAdapter = RowAdapter(RowStyle.PROGRAM, dp(52), { row, pos -> onRowFocused(DrawerColumn.Programs, row, pos) }, { onRowClicked(DrawerColumn.Programs, it) })
     private val datesAdapter = RowAdapter(RowStyle.DATE, dp(44), { row, pos -> onRowFocused(DrawerColumn.Dates, row, pos) }, { onRowClicked(DrawerColumn.Dates, it) })
@@ -315,6 +327,10 @@ class NativeSidebarView(
         super.onDetachedFromWindow()
         handler.removeCallbacks(nowTick)
         handler.removeCallbacks(programRefresh)
+        groupsAdapter.dispose()
+        channelsAdapter.dispose()
+        programsAdapter.dispose()
+        datesAdapter.dispose()
     }
 
     /** SIDEBAR3-07: overlay toggles must not reuse a stale position for that column. */
@@ -331,13 +347,13 @@ class NativeSidebarView(
         addView(panel, LayoutParams(dp(633), ViewGroup.LayoutParams.MATCH_PARENT, Gravity.START))
         val base = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
-            setBackgroundColor(0xE6161B22.toInt())
+            background = panelBg(context)
         }
         panel.addView(base, LayoutParams(dp(633), ViewGroup.LayoutParams.MATCH_PARENT))
         base.addView(channelsColumn, LinearLayout.LayoutParams(dp(300), ViewGroup.LayoutParams.MATCH_PARENT))
         base.addView(programsColumn, LinearLayout.LayoutParams(dp(300), ViewGroup.LayoutParams.MATCH_PARENT))
-        groupsColumn.setBackgroundColor(0xE6161B22.toInt())
-        datesColumn.setBackgroundColor(0xE6161B22.toInt())
+        groupsColumn.background = panelBg(context)
+        datesColumn.background = panelBg(context)
         groupsColumn.layoutParams = LayoutParams(dp(151), ViewGroup.LayoutParams.MATCH_PARENT, Gravity.START)
         datesColumn.layoutParams = LayoutParams(dp(120), ViewGroup.LayoutParams.MATCH_PARENT, Gravity.START).apply {
             leftMargin = dp(513)
@@ -411,6 +427,7 @@ class NativeSidebarView(
                 secondary = nowTitle(state, channel),
                 selected = channel.url == state.selectedChannelUrl,
                 url = channel.url,
+                logoUrl = channel.logoUrl,
                 groupIndex = index,
             )
         }
@@ -554,6 +571,7 @@ class NativeSidebarView(
                     text = p.title,
                     secondary = "${Instant.ofEpochMilli(p.startMillis).atZone(zone).format(timeFormat)}-${Instant.ofEpochMilli(p.endMillis).atZone(zone).format(timeFormat)}",
                     now = p.startMillis <= now && now < p.endMillis,
+                    logoUrl = channel.logoUrl,
                     startMillis = p.startMillis,
                     endMillis = p.endMillis,
                     programTitle = p.title,
@@ -582,6 +600,13 @@ class NativeSidebarView(
     }
 
     private fun today(): LocalDate = Instant.now().atZone(ZoneId.systemDefault()).toLocalDate()
+
+    private fun panelBg(ctx: Context): android.graphics.drawable.GradientDrawable =
+        android.graphics.drawable.GradientDrawable().apply {
+            // LOGO-03: panel container has a real 4dp rounded background.
+            cornerRadius = (4 * ctx.resources.displayMetrics.density)
+            setColor(0xE6161B22.toInt())
+        }
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 }
