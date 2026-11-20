@@ -340,7 +340,7 @@ object LogoLoader {
         fun stale() = gen != cacheGeneration.get() || uGen != urlGenOf(url)
 
         val memoryKey = memoryKey(url, targetWidthPx, targetHeightPx)
-        getCached(memoryKey)?.let { return it }
+        getCached(memoryKey)?.let { LogoPerfCounters.onCacheHit(); return it }
 
         val diskKey = withContext(Dispatchers.Default) { diskKey(url, targetWidthPx, targetHeightPx) }
 
@@ -365,7 +365,10 @@ object LogoLoader {
             // CACHE-02a + ATOMIC-01: publish only if still fresh, atomically.
             if (bitmap != null) {
                 val imageBitmap = bitmap.asImageBitmap()
-                if (putCachedIfFresh(memoryKey, imageBitmap, gen, uGen, url)) return imageBitmap
+                if (putCachedIfFresh(memoryKey, imageBitmap, gen, uGen, url)) {
+                    LogoPerfCounters.onCacheHit()
+                    return imageBitmap
+                }
                 // stale: remove only if the file is still the one we decoded (identity match)
                 deleteIfIdentity(diskFile, identity)
             }
@@ -425,6 +428,7 @@ object LogoLoader {
                         null
                     }
                 } ?: return@withPermit null
+                LogoPerfCounters.onDecode()
 
                 // CACHE-02a: if a clear/invalidate happened while downloading, drop this result.
                 if (stale()) return@withPermit null
@@ -449,6 +453,13 @@ object LogoLoader {
                 null
             }
         }
+    }
+
+    /** t154: one log line per drawer session so a delta can be attributed to prefetch/decode/hits. */
+    fun logPerfCounters(drawerOpen: Boolean) {
+        val sample = LogoPerfCounters.sampleAndReset()
+        if (drawerOpen) return // only log when the browsing session ended
+        android.util.Log.i("IQTV-LOGO", LogoPerfCounters.format(sample))
     }
 
     suspend fun load(context: Context, url: String): ImageBitmap? {
@@ -492,10 +503,13 @@ object LogoLoader {
         batchSize: Int = concurrency,
         batchGapMs: Long = 0L,
     ) {
+        // t154: the single guard for every prefetch entry point (drawer urgent + filler + startup).
+        if (!Prefs.isLogoPrefetchEnabled(context)) return
         if (targetWidthPx <= 0 || targetHeightPx <= 0) return
         if (urls.isEmpty()) return
         val unique = urls.asSequence().map { it.trim() }.filter { it.isNotBlank() }.distinct().take(limit).toList()
         if (unique.isEmpty()) return
+        LogoPerfCounters.onPrefetchRequest(unique.size)
 
         coroutineScope {
             unique.chunked(batchSize).forEach { chunk ->
@@ -557,7 +571,10 @@ fun ChannelLogo(
     var sizePx by remember { mutableStateOf(targetSizePx) }
 
     val url = logoUrl?.trim().orEmpty()
-    val memoryCacheHit = remember(url, sizePx) {
+    // t154: when logo loading is disabled, only the placeholder is drawn — isolates decode/draw cost.
+    val loadEnabled = remember { Prefs.isLogoLoadEnabled(context) }
+    val memoryCacheHit = remember(url, sizePx, loadEnabled) {
+        if (!loadEnabled) return@remember null
         if (url.isNotBlank() && sizePx.width > 0 && sizePx.height > 0) {
             LogoLoader.getInMemory(url, sizePx.width, sizePx.height)
         } else {
@@ -569,7 +586,12 @@ fun ChannelLogo(
 
     var showFallbackText by remember(url) { mutableStateOf(url.isBlank()) }
 
-    LaunchedEffect(url, sizePx) {
+    LaunchedEffect(url, sizePx, loadEnabled) {
+        if (!loadEnabled) {
+            loaded = null
+            showFallbackText = true
+            return@LaunchedEffect
+        }
         if (url.isBlank()) {
             loaded = null
             showFallbackText = true

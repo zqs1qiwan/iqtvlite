@@ -198,8 +198,12 @@ fun PlayerDrawer(
             }
     }
 
+    // t154: one log line per browsing session — "prefetch=req:N dec:M hit:K".
     LaunchedEffect(visible) {
-        if (!visible) return@LaunchedEffect
+        if (!visible) {
+            LogoLoader.logPerfCounters(drawerOpen = false)
+            return@LaunchedEffect
+        }
         autoProgramScrollKey = null
     }
 

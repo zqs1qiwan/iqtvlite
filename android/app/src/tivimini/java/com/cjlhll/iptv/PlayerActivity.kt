@@ -428,6 +428,9 @@ fun VideoPlayerScreen(
     }
     var recentEntries by remember { mutableStateOf(recentCache.entries) }
     var recentWriteJob by remember { mutableStateOf<Job?>(null) }
+    // t154: perf-isolation switches (persisted; default on).
+    var logoPrefetchEnabled by remember { mutableStateOf(Prefs.isLogoPrefetchEnabled(context)) }
+    var logoLoadEnabled by remember { mutableStateOf(Prefs.isLogoLoadEnabled(context)) }
     var qualityDialogGroupIndex by remember { mutableIntStateOf(-1) }
     var infoBannerOpen by remember { mutableStateOf(false) }
     val channelSwitch = rememberChannelSwitchController()
@@ -1285,6 +1288,27 @@ fun VideoPlayerScreen(
                 }
             },
             logoCacheSummary = logoCacheSummary,
+            logoPrefetchEnabled = logoPrefetchEnabled,
+            logoLoadEnabled = logoLoadEnabled,
+            onToggleLogoPrefetch = { enabled ->
+                logoPrefetchEnabled = enabled
+                Prefs.setLogoPrefetchEnabled(context, enabled)
+                android.widget.Toast.makeText(
+                    context,
+                    if (enabled) "台标预取已开启" else "台标预取已关闭",
+                    android.widget.Toast.LENGTH_SHORT
+                ).show()
+            },
+            onToggleLogoLoad = { enabled ->
+                logoLoadEnabled = enabled
+                Prefs.setLogoLoadEnabled(context, enabled)
+                if (!enabled) LogoLoader.clearMemory() // free the bitmaps immediately
+                android.widget.Toast.makeText(
+                    context,
+                    if (enabled) "台标显示已开启" else "台标显示已关闭",
+                    android.widget.Toast.LENGTH_SHORT
+                ).show()
+            },
             onClose = { settingsDrawerOpen = false }
         )
 

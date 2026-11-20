@@ -49,6 +49,10 @@ fun SettingsDrawer(
     onRefreshLogos: () -> Unit = {},
     onClearLogoCache: () -> Unit = {},
     logoCacheSummary: String = "",
+    logoPrefetchEnabled: Boolean = true,
+    logoLoadEnabled: Boolean = true,
+    onToggleLogoPrefetch: (Boolean) -> Unit = {},
+    onToggleLogoLoad: (Boolean) -> Unit = {},
     onClose: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -63,6 +67,8 @@ fun SettingsDrawer(
     val recentRequester = remember { FocusRequester() }
     val logoRefreshRequester = remember { FocusRequester() }
     val logoClearRequester = remember { FocusRequester() }
+    val logoPrefetchRequester = remember { FocusRequester() }
+    val logoLoadRequester = remember { FocusRequester() }
 
     LaunchedEffect(visible) {
         if (visible) {
@@ -165,6 +171,32 @@ fun SettingsDrawer(
                             modifier = Modifier.padding(bottom = 6.dp)
                         )
                     }
+                    // t154: perf-isolation switches (default on; turning them off lowers load on
+                    // weak boxes and isolates the cost during A/B measurements).
+                    SettingsItem(
+                        text = if (logoPrefetchEnabled) "台标预取：开" else "台标预取：关",
+                        focusRequester = logoPrefetchRequester,
+                        onClick = { onToggleLogoPrefetch(!logoPrefetchEnabled) }
+                    )
+                    Text(
+                        text = "关闭后只加载可视台标，可降低低配设备负载",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(start = 16.dp, bottom = 6.dp)
+                    )
+                    Spacer(modifier = Modifier.padding(4.dp))
+                    SettingsItem(
+                        text = if (logoLoadEnabled) "台标显示：开" else "台标显示：关",
+                        focusRequester = logoLoadRequester,
+                        onClick = { onToggleLogoLoad(!logoLoadEnabled) }
+                    )
+                    Text(
+                        text = "关闭后不加载/解码台标，只显示占位",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(start = 16.dp, bottom = 6.dp)
+                    )
+                    Spacer(modifier = Modifier.padding(4.dp))
                     SettingsItem(
                         text = "刷新当前组台标",
                         focusRequester = logoRefreshRequester,

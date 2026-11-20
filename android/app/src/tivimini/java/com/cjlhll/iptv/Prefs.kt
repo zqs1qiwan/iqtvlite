@@ -14,6 +14,8 @@ object Prefs {
     private const val KEY_SOURCE_VERSION = "source_version"
     private const val KEY_RECENT_CHANNELS = "recent_channels_v1"
     private const val KEY_RECENT_CLEARED = "recent_channels_cleared"
+    private const val KEY_LOGO_PREFETCH_ENABLED = "logo_prefetch_enabled"
+    private const val KEY_LOGO_LOAD_ENABLED = "logo_load_enabled"
 
     private fun getPrefs(context: Context): SharedPreferences {
         return context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
@@ -103,4 +105,19 @@ object Prefs {
 
     fun isRecentChannelsCleared(context: Context): Boolean =
         getPrefs(context).getBoolean(KEY_RECENT_CLEARED, false)
+
+    // t154: perf-isolation switches (default ON; off isolates prefetch / logo decode cost).
+    fun isLogoPrefetchEnabled(context: Context): Boolean =
+        getPrefs(context).getBoolean(KEY_LOGO_PREFETCH_ENABLED, true)
+
+    fun setLogoPrefetchEnabled(context: Context, enabled: Boolean) {
+        getPrefs(context).edit().putBoolean(KEY_LOGO_PREFETCH_ENABLED, enabled).apply()
+    }
+
+    fun isLogoLoadEnabled(context: Context): Boolean =
+        getPrefs(context).getBoolean(KEY_LOGO_LOAD_ENABLED, true)
+
+    fun setLogoLoadEnabled(context: Context, enabled: Boolean) {
+        getPrefs(context).edit().putBoolean(KEY_LOGO_LOAD_ENABLED, enabled).apply()
+    }
 }
