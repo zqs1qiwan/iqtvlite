@@ -688,7 +688,7 @@ fun PlayerDrawer(
                                     modifier = Modifier.fillMaxSize(),
                                     state = groupListState
                                 ) {
-                                    itemsIndexed(groups, key = { _, g -> g }) { index, g ->
+                                    itemsIndexed(groups, key = { index, g -> DrawerKeys.groupKey(g, index) }) { index, g ->
                                         val isTarget = index == groupFocusTargetIndex
                                         DrawerGroupItem(
                                             name = g,
@@ -792,7 +792,7 @@ fun PlayerDrawer(
                                 ) {
                                     itemsIndexed(
                                         items = programs,
-                                        key = { _, p -> "${p.channelId}:${p.startMillis}:${p.endMillis}" }
+                                        key = { index, p -> DrawerKeys.programKey(p.channelId, p.startMillis, p.endMillis, index) }
                                     ) { index, p ->
                                         val timeText = formatEpgTimeRange(
                                             startMillis = p.startMillis,
@@ -872,7 +872,7 @@ fun PlayerDrawer(
                                     ) {
                                         itemsIndexed(
                                             items = dates,
-                                            key = { _, d -> d }
+                                            key = { index, d -> DrawerKeys.dateKey(d.toString(), index) }
                                         ) { index, d ->
                                             DrawerDateItem(
                                                 text = epgDateFormatter.format(d),

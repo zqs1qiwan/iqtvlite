@@ -39,10 +39,11 @@ object BackgroundSourceUpdater {
         startupRefreshScheduled = true
 
         val appContext = context.applicationContext
+        // t46: run the two startup refreshes in INDEPENDENT coroutines. t42 used a single coroutine,
+        // so the EPG refresh was serialized behind the (possibly slow) playlist download+parse and
+        // its "12s" delay was effectively >=20s. Independent delays fire EPG ~12s after start.
         scope.launch {
             val liveSource = Prefs.getLiveSource(appContext)
-            val epgSource = Prefs.getEpgSource(appContext)
-
             if (liveSource.isNotBlank()) {
                 // t42: defer the automatic startup network playlist refresh so its download+parse does
                 // not contend with cold start / the first video frame (startup CPU spike 86-270%).
@@ -51,7 +52,9 @@ object BackgroundSourceUpdater {
                 Log.i(TAG, "startup playlist refresh (delayed)")
                 refreshPlaylist(appContext, liveSource)
             }
-
+        }
+        scope.launch {
+            val epgSource = Prefs.getEpgSource(appContext)
             if (epgSource.isNotBlank()) {
                 delay(EPG_STARTUP_DELAY_MS)
                 Log.i(TAG, "startup epg refresh (delayed)")
