@@ -945,6 +945,12 @@ fun VideoPlayerScreen(
     }
 
     fun playChannel(channel: Channel) {
+        // t126: warm this channel's logo so the next drawer open is instant.
+        channel.logoUrl?.trim()?.takeIf { it.isNotBlank() }?.let { u ->
+            val pxW = with(density) { 64.dp.roundToPx() }
+            val pxH = with(density) { 40.dp.roundToPx() }
+            scope.launch { LogoLoader.prefetch(context, listOf(u), pxW, pxH) }
+        }
         channelGroups.forEachIndexed { groupIndex, group ->
             if (group.variants.any { it.channel.url == channel.url && (channel.id == 0L || it.channel.id == channel.id) }) {
                 playGroupAuto(groupIndex)
@@ -1091,6 +1097,11 @@ fun VideoPlayerScreen(
             refreshGroupLatencies(group, force = true)
         }
 
+        var logoCacheTick by remember { mutableIntStateOf(0) }
+        val logoCacheSummary = remember(settingsDrawerOpen, logoCacheTick) {
+            val s = LogoLoader.stats(context)
+            "内存 ${s.memoryEntries} 条 · 磁盘 ${s.diskFiles} 个 / ${s.diskBytes / 1024} KB"
+        }
         SettingsDrawer(
             visible = settingsDrawerOpen,
             onSourceConfigClick = {
@@ -1121,6 +1132,21 @@ fun VideoPlayerScreen(
                     }
                 }
             },
+            onRefreshLogos = {
+                val pxW = with(density) { 64.dp.roundToPx() }
+                val pxH = with(density) { 40.dp.roundToPx() }
+                scope.launch {
+                    LogoLoader.refreshGroup(context, filteredChannels, pxW, pxH)
+                    logoCacheTick++
+                    android.widget.Toast.makeText(context, "已刷新当前组台标", android.widget.Toast.LENGTH_SHORT).show()
+                }
+            },
+            onClearLogoCache = {
+                LogoLoader.clearAll(context)
+                logoCacheTick++
+                android.widget.Toast.makeText(context, "台标缓存已清理", android.widget.Toast.LENGTH_SHORT).show()
+            },
+            logoCacheSummary = logoCacheSummary,
             onClose = { settingsDrawerOpen = false }
         )
 

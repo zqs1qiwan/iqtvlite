@@ -44,6 +44,9 @@ fun SettingsDrawer(
     qualityMenuEnabled: Boolean = false,
     onQualityMenuClick: () -> Unit = {},
     onCheckUpdateClick: () -> Unit,
+    onRefreshLogos: () -> Unit = {},
+    onClearLogoCache: () -> Unit = {},
+    logoCacheSummary: String = "",
     onClose: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -55,6 +58,8 @@ fun SettingsDrawer(
     val epgSettingsRequester = remember { FocusRequester() }
     val qualityMenuRequester = remember { FocusRequester() }
     val checkUpdateRequester = remember { FocusRequester() }
+    val logoRefreshRequester = remember { FocusRequester() }
+    val logoClearRequester = remember { FocusRequester() }
 
     LaunchedEffect(visible) {
         if (visible) {
@@ -129,6 +134,35 @@ fun SettingsDrawer(
                         text = "检查更新",
                         focusRequester = checkUpdateRequester,
                         onClick = onCheckUpdateClick
+                    )
+
+                    Spacer(modifier = Modifier.padding(8.dp))
+
+                    // t126: 台标与缓存 (minimal single item; group skeleton can host it later)
+                    Text(
+                        text = "台标与缓存",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.padding(top = 8.dp, bottom = 6.dp)
+                    )
+                    if (logoCacheSummary.isNotBlank()) {
+                        Text(
+                            text = logoCacheSummary,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(bottom = 6.dp)
+                        )
+                    }
+                    SettingsItem(
+                        text = "刷新当前组台标",
+                        focusRequester = logoRefreshRequester,
+                        onClick = onRefreshLogos
+                    )
+                    Spacer(modifier = Modifier.padding(8.dp))
+                    SettingsItem(
+                        text = "清理台标缓存",
+                        focusRequester = logoClearRequester,
+                        onClick = onClearLogoCache
                     )
                 }
             }

@@ -52,6 +52,8 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import kotlinx.coroutines.delay
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import androidx.compose.foundation.lazy.LazyColumn
@@ -130,6 +132,25 @@ fun PlayerDrawer(
     val container = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f)
     val scrim = Color.Transparent
     val shape = RoundedCornerShape(0.dp)
+    val prefetchDensity = LocalDensity.current
+
+    // t126: prefetch logos for the visible window + next ~60 of the current group on open / group change.
+    // Runs in IO (LogoLoader.prefetch) with the same 3-way semaphore, after a tiny delay so the drawer
+    // scroll/first-frame is not blocked. Cached hits are skipped, so repeat opens are instant.
+    LaunchedEffect(visible, selectedGroup) {
+        if (!visible) return@LaunchedEffect
+        val pxW = with(prefetchDensity) { 64.dp.roundToPx() }
+        val pxH = with(prefetchDensity) { 40.dp.roundToPx() }
+        val urls = channels.asSequence()
+            .mapNotNull { it.logoUrl?.trim()?.takeIf { u -> u.isNotBlank() } }
+            .distinct()
+            .take(60)
+            .toList()
+        if (urls.isNotEmpty()) {
+            delay(180)
+            LogoLoader.prefetch(context, urls, pxW, pxH)
+        }
+    }
 
     var showGroups by remember { mutableStateOf(false) }
     var showDates by remember { mutableStateOf(false) }

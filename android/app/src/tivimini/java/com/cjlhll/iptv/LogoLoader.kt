@@ -121,6 +121,59 @@ object LogoLoader {
         synchronized(inFlight) { inFlight.remove(key) }
     }
 
+    // t126: cache management API for the settings entry + prefetch refresh.
+    data class LogoStats(val memoryEntries: Int, val diskFiles: Int, val diskBytes: Long)
+
+    fun stats(context: Context): LogoStats {
+        val mem = synchronized(cache) { cache.size }
+        val dir = cacheDir(context)
+        val files = try {
+            dir.listFiles()?.filter { it.isFile && it.extension == "webp" } ?: emptyList()
+        } catch (_: Exception) {
+            emptyList()
+        }
+        return LogoStats(mem, files.size, files.sumOf { it.length() })
+    }
+
+    fun clearMemory() {
+        synchronized(cache) { cache.clear() }
+    }
+
+    fun clearDisk(context: Context) {
+        try {
+            cacheDir(context).listFiles()?.forEach { runCatching { it.delete() } }
+        } catch (_: Exception) {
+        }
+    }
+
+    fun clearAll(context: Context) {
+        clearMemory()
+        clearDisk(context)
+    }
+
+    /** Drop both memory + disk entries for one logo url (all target sizes). */
+    fun invalidate(context: Context, url: String) {
+        if (url.isBlank()) return
+        synchronized(cache) {
+            cache.keys.filter { it.endsWith("|$url") }.toList().forEach { cache.remove(it) }
+        }
+        val prefix = sha256Hex(url) + "_"
+        try {
+            cacheDir(context).listFiles()?.filter { it.name.startsWith(prefix) }?.forEach { runCatching { it.delete() } }
+        } catch (_: Exception) {
+        }
+    }
+
+    /**
+     * t126: force-refresh the given group's logos — invalidate each channel logo url then prefetch them
+     * in the background (bounded by the same 3-way semaphore as normal loads).
+     */
+    suspend fun refreshGroup(context: Context, channels: List<Channel>, targetWidthPx: Int, targetHeightPx: Int) {
+        val urls = channels.mapNotNull { it.logoUrl?.trim()?.takeIf { u -> u.isNotBlank() } }.distinct()
+        urls.forEach { invalidate(context, it) }
+        prefetch(context, urls, targetWidthPx, targetHeightPx)
+    }
+
     private fun sha256Hex(value: String): String {
         val digest = MessageDigest.getInstance("SHA-256").digest(value.toByteArray(Charsets.UTF_8))
         val out = CharArray(digest.size * 2)
@@ -174,7 +227,31 @@ object LogoLoader {
         }
     }
 
+    /** t126: public load with in-flight de-duplication (one network/decode per url+size at a time). */
     suspend fun load(context: Context, url: String, targetWidthPx: Int, targetHeightPx: Int): ImageBitmap? {
+        if (url.isBlank()) return null
+        if (targetWidthPx <= 0 || targetHeightPx <= 0) return null
+        val memoryKey = memoryKey(url, targetWidthPx, targetHeightPx)
+        getCached(memoryKey)?.let { return it }
+        val diskKey = withContext(Dispatchers.Default) { diskKey(url, targetWidthPx, targetHeightPx) }
+        if (!tryMarkInFlight(diskKey)) {
+            // Another coroutine is loading the same logo; wait briefly for it to publish to memory.
+            var waited = 0
+            while (waited < 1500) {
+                getCached(memoryKey)?.let { return it }
+                delay(50)
+                waited += 50
+            }
+            return getCached(memoryKey)
+        }
+        return try {
+            loadInternal(context, url, targetWidthPx, targetHeightPx)
+        } finally {
+            unmarkInFlight(diskKey)
+        }
+    }
+
+    private suspend fun loadInternal(context: Context, url: String, targetWidthPx: Int, targetHeightPx: Int): ImageBitmap? {
         if (url.isBlank()) return null
         if (targetWidthPx <= 0 || targetHeightPx <= 0) return null
 
@@ -288,11 +365,10 @@ object LogoLoader {
                     cacheFile(dir, diskKey).exists()
                 }
                 if (diskExists) continue
-                if (!tryMarkInFlight(diskKey)) continue
+                // load() now performs its own in-flight de-dup + semaphore.
                 try {
                     load(context, url, targetWidthPx, targetHeightPx)
-                } finally {
-                    unmarkInFlight(diskKey)
+                } catch (_: Exception) {
                 }
             }
         }
