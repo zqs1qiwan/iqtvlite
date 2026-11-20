@@ -36,6 +36,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
@@ -100,6 +103,9 @@ fun RecentChannelsDialog(
                     .heightIn(max = 460.dp)
                     .background(container, shape)
                     .padding(20.dp)
+                    // t167: stable ids for uiautomator/instrumentation (see RecentDialogTags).
+                    .testTag(RecentDialogTags.DIALOG)
+                    .semantics { contentDescription = "最近观看" }
             ) {
                 Text(
                     text = "最近观看",
@@ -113,7 +119,9 @@ fun RecentChannelsDialog(
                         text = "暂无最近观看",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(vertical = 12.dp)
+                        modifier = Modifier
+                            .padding(vertical = 12.dp)
+                            .testTag(RecentDialogTags.EMPTY)
                     )
                 } else {
                     Column(
@@ -121,10 +129,12 @@ fun RecentChannelsDialog(
                             .fillMaxWidth()
                             .heightIn(max = 320.dp)
                             .verticalScroll(rememberScrollState())
+                            .testTag(RecentDialogTags.LIST)
                     ) {
                         items.forEachIndexed { index, item ->
                             RecentRow(
                                 item = item,
+                                index = index,
                                 focusRequester = if (index == 0) firstRequester else null,
                                 onClick = { onSelect(index) }
                             )
@@ -133,7 +143,18 @@ fun RecentChannelsDialog(
                 }
 
                 Spacer(modifier = Modifier.padding(6.dp))
-                RecentActionRow(text = "清空最近观看", focusRequester = clearRequester, onClick = onClear)
+                RecentActionRow(
+                    text = "清空最近观看",
+                    tag = RecentDialogTags.CLEAR,
+                    focusRequester = clearRequester,
+                    onClick = onClear
+                )
+                RecentActionRow(
+                    text = "关闭",
+                    tag = RecentDialogTags.CLOSE,
+                    focusRequester = null,
+                    onClick = onClose
+                )
             }
         }
     }
@@ -142,6 +163,7 @@ fun RecentChannelsDialog(
 @Composable
 private fun RecentRow(
     item: RecentChannelUi,
+    index: Int,
     focusRequester: FocusRequester?,
     onClick: () -> Unit,
 ) {
@@ -153,6 +175,8 @@ private fun RecentRow(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 3.dp)
+            .testTag(RecentDialogTags.row(index))
+            .semantics { contentDescription = "${item.number}. ${item.title}" }
             .let { m -> if (focusRequester != null) m.focusRequester(focusRequester) else m }
             .background(bg)
             .onFocusChanged { focused = it.isFocused }
@@ -183,6 +207,7 @@ private fun RecentRow(
 @Composable
 private fun RecentActionRow(
     text: String,
+    tag: String,
     focusRequester: FocusRequester? = null,
     onClick: () -> Unit,
 ) {
@@ -193,6 +218,8 @@ private fun RecentActionRow(
     Box(
         modifier = Modifier
             .fillMaxWidth()
+            .testTag(tag)
+            .semantics { contentDescription = text }
             .let { m -> if (focusRequester != null) m.focusRequester(focusRequester) else m }
             .background(bg)
             .onFocusChanged { focused = it.isFocused }

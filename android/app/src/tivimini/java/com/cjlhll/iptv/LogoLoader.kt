@@ -201,10 +201,16 @@ object LogoLoader {
 
     suspend fun clearDisk(context: Context) = withContext(Dispatchers.IO) {
         cacheGeneration.incrementAndGet()
-        try {
-            cacheDir(context).listFiles()?.forEach { runCatching { it.delete() } }
-        } catch (_: Exception) {
-        }
+        // t167: one deleter for the whole directory (also removes leftover .tmp files), then log the
+        // resulting counts so acceptance can assert "memory 0 / disk 0".
+        val dir = cacheDir(context)
+        LogoDiskStore.clear(dir)
+        LogoDiskStore.clearTemps(dir)
+        val after = LogoDiskStore.scan(dir)
+        android.util.Log.i(
+            "IQTV-LOGO",
+            "cache_cleared=memory:${synchronized(cache) { cache.size }} disk:${after.count}"
+        )
     }
 
     suspend fun clearAll(context: Context) {

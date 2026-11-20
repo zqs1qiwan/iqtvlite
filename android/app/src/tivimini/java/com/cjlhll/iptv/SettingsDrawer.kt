@@ -35,6 +35,9 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 
 @Composable
 fun SettingsDrawer(
@@ -72,7 +75,9 @@ fun SettingsDrawer(
 
     LaunchedEffect(visible) {
         if (visible) {
-            sourceConfigRequester.requestFocus()
+            // t167: land on 最近观看 first so the list/clear flow is reachable with one OK press
+            // (and reachable by uiautomator without walking the whole settings column).
+            recentRequester.requestFocus()
         }
     }
 
@@ -151,6 +156,7 @@ fun SettingsDrawer(
                     SettingsItem(
                         text = if (recentCount > 0) "最近观看（$recentCount）" else "最近观看",
                         focusRequester = recentRequester,
+                        tag = RecentDialogTags.SETTINGS_ENTRY,
                         onClick = onOpenRecent
                     )
 
@@ -218,7 +224,8 @@ fun SettingsDrawer(
 private fun SettingsItem(
     text: String,
     focusRequester: FocusRequester?,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    tag: String? = null,
 ) {
     var focused by remember { mutableStateOf(false) }
     val bg = when {
@@ -229,6 +236,8 @@ private fun SettingsItem(
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .let { m -> if (tag != null) m.testTag(tag) else m }
+            .semantics { contentDescription = text }
             .let { m -> if (focusRequester != null) m.focusRequester(focusRequester) else m }
             .background(bg, RoundedCornerShape(0.dp))
             .onFocusChanged { focused = it.isFocused }

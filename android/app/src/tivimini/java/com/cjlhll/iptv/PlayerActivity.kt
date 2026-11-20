@@ -1335,6 +1335,8 @@ fun VideoPlayerScreen(
                 recentWriteJob = null
                 recentEntries = recentCache.clearAll(channelGroups.getOrNull(currentGroupIndex)?.key)
                 recentTick++
+                // t167: hard evidence for acceptance — greps for "IQTV-RECENT cleared=true count=0".
+                android.util.Log.i("IQTV-RECENT", RecentDialogTags.clearedLog(recentEntries.size))
                 android.widget.Toast.makeText(context, "已清空最近观看", android.widget.Toast.LENGTH_SHORT).show()
             },
             onClose = { setRecentOpen(false) }
