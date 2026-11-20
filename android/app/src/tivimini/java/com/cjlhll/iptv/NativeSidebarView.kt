@@ -44,7 +44,7 @@ private data class SidebarRow(
 
 private class RowAdapter(
     private val rowHeightPx: Int,
-    private val onFocus: (SidebarRow) -> Unit,
+    private val onFocus: (SidebarRow, Int) -> Unit,
     private val onClick: (SidebarRow) -> Unit,
 ) : RecyclerView.Adapter<RowAdapter.H>() {
 
@@ -122,7 +122,7 @@ private class RowAdapter(
         applyFocus(holder, false)
         root.onFocusChangeListener = View.OnFocusChangeListener { _, hasFocus ->
             applyFocus(holder, hasFocus)
-            if (hasFocus) onFocus(row)
+            if (hasFocus) onFocus(row, holder.bindingAdapterPosition)
         }
         root.setOnClickListener { onClick(row) }
     }
@@ -157,37 +157,41 @@ class NativeSidebarView(
     private val programsRv = RecyclerView(context).apply { layoutManager = LinearLayoutManager(context) }
     private val datesRv = RecyclerView(context).apply { layoutManager = LinearLayoutManager(context) }
 
-    private val groupsAdapter = RowAdapter(dp(40), { onRowFocused(DrawerColumn.Groups, it) }, { onRowClicked(DrawerColumn.Groups, it) })
-    private val channelsAdapter = RowAdapter(dp(56), { onRowFocused(DrawerColumn.Channels, it) }, { onRowClicked(DrawerColumn.Channels, it) })
-    private val programsAdapter = RowAdapter(dp(44), { onRowFocused(DrawerColumn.Programs, it) }, { onRowClicked(DrawerColumn.Programs, it) })
-    private val datesAdapter = RowAdapter(dp(44), { onRowFocused(DrawerColumn.Dates, it) }, { onRowClicked(DrawerColumn.Dates, it) })
+    private val groupsAdapter = RowAdapter(dp(40), { row, pos -> onRowFocused(DrawerColumn.Groups, row, pos) }, { onRowClicked(DrawerColumn.Groups, it) })
+    private val channelsAdapter = RowAdapter(dp(56), { row, pos -> onRowFocused(DrawerColumn.Channels, row, pos) }, { onRowClicked(DrawerColumn.Channels, it) })
+    private val programsAdapter = RowAdapter(dp(44), { row, pos -> onRowFocused(DrawerColumn.Programs, row, pos) }, { onRowClicked(DrawerColumn.Programs, it) })
+    private val datesAdapter = RowAdapter(dp(44), { row, pos -> onRowFocused(DrawerColumn.Dates, row, pos) }, { onRowClicked(DrawerColumn.Dates, it) })
 
-    private val groupsColumn = column("分组", groupsRv, 150, groupsAdapter)
-    private val channelsColumn = column("频道", channelsRv, 300, channelsAdapter)
-    private val programsColumn = column("节目单", programsRv, 300, programsAdapter)
-    private val datesColumn = column("日期", datesRv, 110, datesAdapter)
+    private val groupsColumn = column("分组", groupsRv, groupsAdapter)
+    private val channelsColumn = column("频道", channelsRv, channelsAdapter)
+    private val programsColumn = column("节目单", programsRv, programsAdapter)
+    private val datesColumn = column("日期", datesRv, datesAdapter)
 
     private var lastState: SidebarState = controller.value
     private var lastSignature: Any? = null
     private var pendingInitialFocus = false
+    private val lastPositions = HashMap<DrawerColumn, Int>()
 
     init {
         setBackgroundColor(Color.TRANSPARENT)
-        val row = LinearLayout(context).apply {
+        // GAP-01: fixed 633dp base (channels 300 + programs 300 + 33 slack). Groups (151dp) and dates
+        // (120dp) are OVERLAY columns on the left/right; showing/hiding them never shifts the base.
+        val base = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             setBackgroundColor(0xE6161B22.toInt())
         }
-        addView(row, LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT))
-        row.addView(groupsColumn)
-        row.addView(channelsColumn)
-        row.addView(programsColumn)
-        row.addView(datesColumn)
+        addView(base, LayoutParams(dp(633), ViewGroup.LayoutParams.MATCH_PARENT))
+        base.addView(channelsColumn, LinearLayout.LayoutParams(dp(300), ViewGroup.LayoutParams.MATCH_PARENT))
+        base.addView(programsColumn, LinearLayout.LayoutParams(dp(300), ViewGroup.LayoutParams.MATCH_PARENT))
+        groupsColumn.layoutParams = LayoutParams(dp(151), ViewGroup.LayoutParams.MATCH_PARENT, Gravity.START)
+        datesColumn.layoutParams = LayoutParams(dp(120), ViewGroup.LayoutParams.MATCH_PARENT, Gravity.END)
+        addView(groupsColumn)
+        addView(datesColumn)
     }
 
-    private fun column(title: String, rv: RecyclerView, widthDp: Int, adapter: RowAdapter): LinearLayout =
+    private fun column(title: String, rv: RecyclerView, adapter: RowAdapter): LinearLayout =
         LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            layoutParams = LinearLayout.LayoutParams(dp(widthDp), ViewGroup.LayoutParams.MATCH_PARENT)
             addView(TextView(context).apply {
                 text = title
                 setTextColor(COLOR_INK)
@@ -269,7 +273,8 @@ class NativeSidebarView(
         }
     }
 
-    private fun onRowFocused(column: DrawerColumn, row: SidebarRow) {
+    private fun onRowFocused(column: DrawerColumn, row: SidebarRow, position: Int) {
+        if (position >= 0) lastPositions[column] = position
         controller.setActiveColumn(column)
         if (column == DrawerColumn.Channels && row.url != null) {
             controller.focusChannel(row.url)
@@ -335,23 +340,33 @@ class NativeSidebarView(
         Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
     }
 
-    fun focusGroups() = focusColumn(groupsRv)
-    fun focusChannels() = focusColumn(channelsRv)
-    fun focusPrograms() = focusColumn(programsRv)
-    fun focusDates() = focusColumn(datesRv)
+    fun focusGroups() = focusColumn(groupsRv, DrawerColumn.Groups)
+    fun focusChannels() = focusColumn(channelsRv, DrawerColumn.Channels)
+    fun focusPrograms() = focusColumn(programsRv, DrawerColumn.Programs)
+    fun focusDates() = focusColumn(datesRv, DrawerColumn.Dates)
 
-    private fun focusColumn(rv: RecyclerView) {
-        rv.post {
+    /** GAP-02: restore this column's last focused position (channels fall back to the playing channel). */
+    private fun focusColumn(rv: RecyclerView, column: DrawerColumn) {
+        val target = lastPositions[column] ?: defaultPosition(column)
+        // GAP-04: overlay columns become visible asynchronously; give layout one frame before focus.
+        rv.postDelayed({
             rv.isFocusable = true
-            if ((rv.adapter?.itemCount ?: 0) == 0) {
+            val count = rv.adapter?.itemCount ?: 0
+            if (count == 0) {
                 rv.requestFocus()
-                return@post
+                return@postDelayed
             }
-            val lm = rv.layoutManager as? LinearLayoutManager
-            val pos = lm?.findFirstCompletelyVisibleItemPosition()?.takeIf { it >= 0 } ?: 0
+            val pos = target.coerceIn(0, count - 1)
             rv.scrollToPosition(pos)
             rv.post { rv.findViewHolderForAdapterPosition(pos)?.itemView?.requestFocus() ?: rv.requestFocus() }
-        }
+        }, 30L)
+    }
+
+    private fun defaultPosition(column: DrawerColumn): Int {
+        if (column != DrawerColumn.Channels) return 0
+        val state = lastState
+        val url = state.focusedChannelUrl ?: state.selectedChannelUrl
+        return buildChannelRows(state).indexOfFirst { it.url == url }.takeIf { it >= 0 } ?: 0
     }
 
     private fun programsFor(state: SidebarState): List<SidebarRow> {

@@ -257,10 +257,12 @@ class PlayerActivity : ComponentActivity() {
                     KeyEvent.KEYCODE_DPAD_LEFT -> when (sidebarController.value.activeColumn) {
                         DrawerColumn.Channels -> { sidebarController.setShowGroups(true); nativeSidebar?.focusGroups(); return true }
                         DrawerColumn.Groups -> { sidebarController.setShowGroups(false); nativeSidebar?.focusChannels(); return true }
+                        DrawerColumn.Programs -> { nativeSidebar?.focusChannels(); return true }
                         DrawerColumn.Dates -> { sidebarController.setShowDates(false); nativeSidebar?.focusPrograms(); return true }
                         else -> {}
                     }
                     KeyEvent.KEYCODE_DPAD_RIGHT -> when (sidebarController.value.activeColumn) {
+                        DrawerColumn.Channels -> { nativeSidebar?.focusPrograms(); return true }
                         DrawerColumn.Programs -> { sidebarController.setShowDates(true); nativeSidebar?.focusDates(); return true }
                         else -> {}
                     }
@@ -1053,6 +1055,9 @@ fun VideoPlayerScreen(
                 catchupRequest = req
                 startPlayback(bound)
                 sidebarController.closeDrawer()
+            } else {
+                // GAP-08: never fail silently.
+                android.widget.Toast.makeText(context, "该节目暂不可回看", android.widget.Toast.LENGTH_SHORT).show()
             }
         }
         onDispose {
