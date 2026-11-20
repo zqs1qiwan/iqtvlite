@@ -11,13 +11,20 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.widget.AppCompatTextView
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -25,6 +32,7 @@ import java.time.format.DateTimeFormatter
 
 private const val COLOR_INK = 0xFFF2F5FA.toInt()
 private const val COLOR_MUTED = 0xFFA9B4C7.toInt()
+private const val COLOR_SUBTLE = 0xFFC7D0DD.toInt()
 private const val COLOR_BLUE = 0xFF4EA8FF.toInt()
 private const val COLOR_AMBER = 0xFFF5A524.toInt()
 private const val FOCUS_BG = 0x14FFFFFF
@@ -59,13 +67,17 @@ private data class SidebarRow(
     val programTitle: String? = null,
 )
 
+private enum class RowStyle { GROUP, CHANNEL, PROGRAM, DATE }
+
 private class RowAdapter(
+    private val style: RowStyle,
     private val rowHeightPx: Int,
     private val onFocus: (SidebarRow, Int) -> Unit,
     private val onClick: (SidebarRow) -> Unit,
 ) : RecyclerView.Adapter<RowAdapter.H>() {
 
     private var rows: List<SidebarRow> = emptyList()
+    private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
     fun submit(newRows: List<SidebarRow>) {
         val old = rows
@@ -83,8 +95,17 @@ private class RowAdapter(
         diff.dispatchUpdatesTo(this)
     }
 
-    class H(val root: FrameLayout, val accent: View, val primary: TextView, val secondary: TextView) :
-        RecyclerView.ViewHolder(root)
+    class H(
+        val root: FrameLayout,
+        val accent: View,
+        val logo: ImageView?,
+        val primary: FocusWeightTextView,
+        val secondary: TextView?,
+        val time: TextView?,
+    ) : RecyclerView.ViewHolder(root) {
+        var boundUrl: String? = null
+        var logoJob: Job? = null
+    }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): H {
         val ctx = parent.context
@@ -92,51 +113,124 @@ private class RowAdapter(
             layoutParams = RecyclerView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, rowHeightPx)
             isFocusable = true
             isFocusableInTouchMode = true
-            // Focus background via a state-list drawable: no per-focus setBackground/allocation/rebind.
             background = stateDrawable(FOCUS_BG, Color.TRANSPARENT)
         }
         val accent = View(ctx).apply { background = accentSelector() }
         root.addView(accent, FrameLayout.LayoutParams(dp(ctx, 2), ViewGroup.LayoutParams.MATCH_PARENT, Gravity.START))
-        val primary = FocusWeightTextView(ctx).apply {
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
-            setTextColor(textColorSelector())
-            isDuplicateParentStateEnabled = true
-            maxLines = 1
-            ellipsize = android.text.TextUtils.TruncateAt.END
-            gravity = Gravity.CENTER_VERTICAL
+
+        if (style == RowStyle.CHANNEL || style == RowStyle.PROGRAM) {
+            val logoSz = if (style == RowStyle.CHANNEL) 40 else 20
+            val logo = ImageView(ctx).apply {
+                scaleType = ImageView.ScaleType.CENTER_CROP
+                background = logoPlaceholder(ctx)
+                layoutParams = FrameLayout.LayoutParams(dp(ctx, logoSz), dp(ctx, logoSz), Gravity.START or Gravity.CENTER_VERTICAL).apply { marginStart = dp(ctx, 8) }
+            }
+            root.addView(logo)
+            var startX = dp(ctx, logoSz + 8 + 8)
+            val time = if (style == RowStyle.PROGRAM) TextView(ctx).apply {
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+                setTextColor(COLOR_MUTED)
+                maxLines = 1
+                gravity = Gravity.CENTER_VERTICAL
+                isDuplicateParentStateEnabled = true
+            } else null
+            if (time != null) {
+                val timeWidth = dp(ctx, 78)
+                root.addView(time, FrameLayout.LayoutParams(timeWidth, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.START or Gravity.CENTER_VERTICAL).apply { marginStart = startX })
+                startX += timeWidth + dp(ctx, 4)
+            }
+            val primary = FocusWeightTextView(ctx).apply {
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, if (style == RowStyle.CHANNEL) 16f else 15f)
+                setTextColor(textColorSelector())
+                isDuplicateParentStateEnabled = true
+                maxLines = 1
+                ellipsize = android.text.TextUtils.TruncateAt.END
+                gravity = Gravity.CENTER_VERTICAL
+            }
+            val secondary = if (style == RowStyle.CHANNEL) TextView(ctx).apply {
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+                setTextColor(COLOR_SUBTLE)
+                isDuplicateParentStateEnabled = true
+                maxLines = 1
+                ellipsize = android.text.TextUtils.TruncateAt.END
+                gravity = Gravity.CENTER_VERTICAL
+            } else null
+            if (secondary != null) {
+                root.addView(primary, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(ctx, 30), Gravity.START or Gravity.CENTER_VERTICAL).apply {
+                    marginStart = startX; marginEnd = dp(ctx, 8); topMargin = dp(ctx, 6)
+                })
+                root.addView(secondary, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(ctx, 20), Gravity.START or Gravity.BOTTOM).apply {
+                    marginStart = startX; marginEnd = dp(ctx, 8); bottomMargin = dp(ctx, 6)
+                })
+            } else {
+                root.addView(primary, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.START or Gravity.CENTER_VERTICAL).apply {
+                    marginStart = startX; marginEnd = dp(ctx, 8)
+                })
+            }
+            return H(root, accent, logo, primary, secondary, time)
+        } else {
+            val primary = FocusWeightTextView(ctx).apply {
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+                setTextColor(textColorSelector())
+                isDuplicateParentStateEnabled = true
+                maxLines = 1
+                ellipsize = android.text.TextUtils.TruncateAt.END
+                gravity = Gravity.CENTER_VERTICAL
+            }
+            root.addView(primary, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT).apply {
+                marginStart = dp(ctx, 12); marginEnd = dp(ctx, 8)
+            })
+            return H(root, accent, null, primary, null, null)
         }
-        root.addView(primary, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT).apply {
-            marginStart = dp(ctx, 12); marginEnd = dp(ctx, 96)
-        })
-        val secondary = TextView(ctx).apply {
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
-            // SIDEBAR3-03: secondary stays muted on focus (distinct from the primary).
-            setTextColor(COLOR_MUTED)
-            isDuplicateParentStateEnabled = true
-            maxLines = 1
-            ellipsize = android.text.TextUtils.TruncateAt.END
-            gravity = Gravity.CENTER_VERTICAL or Gravity.END
-        }
-        root.addView(secondary, FrameLayout.LayoutParams(dp(ctx, 90), ViewGroup.LayoutParams.MATCH_PARENT, Gravity.END).apply {
-            marginEnd = dp(ctx, 6)
-        })
-        return H(root, accent, primary, secondary)
     }
 
     override fun getItemCount(): Int = rows.size
 
     override fun onBindViewHolder(holder: H, position: Int) {
         val row = rows[position]
-        // Preformatted text incl. the ▶ marker — no per-frame formatting.
         holder.primary.text = if (row.selected) "▶ ${row.text}" else row.text
-        holder.secondary.text = row.secondary.orEmpty()
-        // Accent bar is a state-list drawable driven by view state (selected = blue, activated = amber).
+        holder.secondary?.text = row.secondary.orEmpty()
+        holder.time?.text = row.secondary.orEmpty()
         holder.accent.isSelected = row.selected
         holder.accent.isActivated = row.now
         holder.root.onFocusChangeListener = View.OnFocusChangeListener { _, hasFocus ->
             if (hasFocus) onFocus(row, holder.bindingAdapterPosition)
         }
         holder.root.setOnClickListener { onClick(row) }
+        if (holder.logo != null) bindLogo(holder, row)
+    }
+
+    override fun onViewRecycled(holder: H) {
+        super.onViewRecycled(holder)
+        holder.logoJob?.cancel()
+        holder.boundUrl = null
+    }
+
+    private fun bindLogo(holder: H, row: SidebarRow) {
+        val logo = holder.logo ?: return
+        val url = row.url ?: ""
+        holder.logoJob?.cancel()
+        if (url.isBlank()) {
+            logo.setImageDrawable(logoPlaceholder(holder.root.context))
+            holder.boundUrl = null
+            return
+        }
+        val ctx = holder.root.context
+        val w = dp(ctx, if (style == RowStyle.CHANNEL) 80 else 40)
+        val h = dp(ctx, if (style == RowStyle.CHANNEL) 40 else 20)
+        val cached = LogoLoader.getInMemory(url, w, h)
+        if (cached != null) {
+            logo.setImageBitmap(cached.asAndroidBitmap())
+            holder.boundUrl = url
+            return
+        }
+        logo.setImageDrawable(logoPlaceholder(ctx))
+        holder.boundUrl = url
+        val appCtx = ctx.applicationContext
+        holder.logoJob = scope.launch {
+            val bmp = LogoLoader.load(appCtx, url, w, h)
+            if (holder.boundUrl == url && bmp != null) logo.setImageBitmap(bmp.asAndroidBitmap())
+        }
     }
 
     private fun stateDrawable(focused: Int, normal: Int): android.graphics.drawable.StateListDrawable =
@@ -157,6 +251,12 @@ private class RowAdapter(
             arrayOf(intArrayOf(android.R.attr.state_focused), intArrayOf()),
             intArrayOf(COLOR_INK, COLOR_MUTED)
         )
+
+    private fun logoPlaceholder(ctx: Context): android.graphics.drawable.GradientDrawable =
+        android.graphics.drawable.GradientDrawable().apply {
+            cornerRadius = (2 * ctx.resources.displayMetrics.density)
+            setColor(0x22FFFFFF)
+        }
 
     private fun dp(ctx: Context, value: Int): Int =
         (value * ctx.resources.displayMetrics.density).toInt()
@@ -182,10 +282,10 @@ class NativeSidebarView(
     private val programsRv = RecyclerView(context).apply { layoutManager = LinearLayoutManager(context) }
     private val datesRv = RecyclerView(context).apply { layoutManager = LinearLayoutManager(context) }
 
-    private val groupsAdapter = RowAdapter(dp(40), { row, pos -> onRowFocused(DrawerColumn.Groups, row, pos) }, { onRowClicked(DrawerColumn.Groups, it) })
-    private val channelsAdapter = RowAdapter(dp(56), { row, pos -> onRowFocused(DrawerColumn.Channels, row, pos) }, { onRowClicked(DrawerColumn.Channels, it) })
-    private val programsAdapter = RowAdapter(dp(44), { row, pos -> onRowFocused(DrawerColumn.Programs, row, pos) }, { onRowClicked(DrawerColumn.Programs, it) })
-    private val datesAdapter = RowAdapter(dp(44), { row, pos -> onRowFocused(DrawerColumn.Dates, row, pos) }, { onRowClicked(DrawerColumn.Dates, it) })
+    private val groupsAdapter = RowAdapter(RowStyle.GROUP, dp(40), { row, pos -> onRowFocused(DrawerColumn.Groups, row, pos) }, { onRowClicked(DrawerColumn.Groups, it) })
+    private val channelsAdapter = RowAdapter(RowStyle.CHANNEL, dp(64), { row, pos -> onRowFocused(DrawerColumn.Channels, row, pos) }, { onRowClicked(DrawerColumn.Channels, it) })
+    private val programsAdapter = RowAdapter(RowStyle.PROGRAM, dp(52), { row, pos -> onRowFocused(DrawerColumn.Programs, row, pos) }, { onRowClicked(DrawerColumn.Programs, it) })
+    private val datesAdapter = RowAdapter(RowStyle.DATE, dp(44), { row, pos -> onRowFocused(DrawerColumn.Dates, row, pos) }, { onRowClicked(DrawerColumn.Dates, it) })
 
     private val groupsColumn = column("分组", groupsRv, groupsAdapter)
     private val channelsColumn = column("频道", channelsRv, channelsAdapter)
