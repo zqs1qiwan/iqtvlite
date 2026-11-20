@@ -34,7 +34,11 @@ object StreamPlayback {
         else Channel(title=title, url=url)
     }
     fun release(player: ExoPlayer) {
-        sessions.remove(player)?.let { it.cancelSummary(); player.removeAnalyticsListener(it) }
+        sessions.remove(player)?.let {
+            it.cancelSummary()
+            PlaybackSession.clear(it.mediaIdForSession())
+            player.removeAnalyticsListener(it)
+        }
         player.release()
     }
     fun prepare(player: ExoPlayer, context: Context, channel: Channel, streamUrl: String = channel.url): PreparedPlayback =
@@ -67,6 +71,9 @@ object StreamPlayback {
 
     private class Metrics(private val player: ExoPlayer) : AnalyticsListener {
         fun cancelSummary() { audioSummaryJob?.cancel(); audioSummaryJob = null }
+
+        /** The session this listener is bound to (no Player access). */
+        fun mediaIdForSession(): String? = binding?.mediaId
         // t165: one debug summary per session, 60 s after prepare.
         private var audioSummaryJob: Job? = null
         private val audioSummaryScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -88,12 +95,16 @@ object StreamPlayback {
             AudioCostCounters.enabled = BuildConfig.DEBUG && Log.isLoggable("IQTV-AUDIO", Log.DEBUG)
             audioSummaryJob?.cancel()
             audioSummaryJob = null
+            // t169: the session id is snapshotted here (main thread) — the 60 s job below reads the
+            // snapshot only. Never call player.currentMediaItem from a background dispatcher:
+            // ExoPlayer throws "Player is accessed on the wrong thread" and kills the process.
+            PlaybackSession.begin(prepared.mediaId)
             if (AudioCostCounters.enabled) {
                 AudioCostCounters.reset()
                 val session = prepared.mediaId
                 audioSummaryJob = audioSummaryScope.launch {
                     delay(60_000)
-                    if (player.currentMediaItem?.mediaId != session) return@launch
+                    if (!PlaybackSession.isCurrent(session)) return@launch
                     Log.i("IQTV-AUDIO", AudioCostCounters.format(AudioCostCounters.sample()))
                 }
             }
@@ -102,7 +113,9 @@ object StreamPlayback {
             emit("prepare", "at=$preparedAt")
         }
         private fun matches(event: AnalyticsListener.EventTime): Boolean {
-            if (player.currentMediaItem?.mediaId != session || event.timeline.isEmpty) return false
+            // t169: use the main-thread snapshot instead of player.currentMediaItem, so this is safe
+            // from any callback thread and cannot throw the wrong-thread IllegalStateException.
+            if (!PlaybackSession.isCurrent(session) || event.timeline.isEmpty) return false
             val window = androidx.media3.common.Timeline.Window()
             return event.windowIndex in 0 until event.timeline.windowCount && event.timeline.getWindow(event.windowIndex, window).mediaItem.mediaId == session
         }
