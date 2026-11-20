@@ -60,11 +60,17 @@ object LogoLoader {
     private const val PRUNE_EVERY_WRITES = 24
 
     /** Bumped by clearMemory/clearDisk/clearAll only (whole-cache invalidation). */
-    @Volatile private var cacheGeneration = 0
-    /** Per-url invalidation stamps, so refreshGroup/invalidate do not nuke unrelated in-flight loads. */
-    private val urlGeneration = HashMap<String, Int>()
+    private val cacheGeneration = java.util.concurrent.atomic.AtomicInteger(0)
+    /**
+     * Per-url invalidation stamps (CACHE-02b) so refreshGroup/invalidate do not nuke unrelated
+     * in-flight loads. Bounded LRU (URLGEN-01) so zapping many channels cannot grow it forever.
+     */
+    private val urlGeneration = object : LinkedHashMap<String, Int>(64, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Int>?): Boolean = size > 512
+    }
     private val writeCount = java.util.concurrent.atomic.AtomicInteger(0)
-    @Volatile private var lastPruneAt = 0L
+    // PRUNE-01: the first write must not trigger a full directory scan.
+    @Volatile private var lastPruneAt = System.currentTimeMillis()
 
     private val inFlight = HashSet<String>()
 
@@ -100,9 +106,18 @@ object LogoLoader {
         return getCached(memoryKey(url, targetWidthPx, targetHeightPx))
     }
 
-    private fun putCached(key: String, bitmap: ImageBitmap) {
-        synchronized(cache) { cache[key] = bitmap }
-    }
+    /**
+     * ATOMIC-01: publish only if the (global, per-url) generations captured by the loader are still
+     * current — the check and the put happen under the same cache lock, so a clear/invalidate can
+     * never interleave between "stale()" and "put".
+     */
+    private fun putCachedIfFresh(key: String, bitmap: ImageBitmap, gen: Int, urlGen: Int, url: String): Boolean =
+        synchronized(cache) {
+            if (gen != cacheGeneration.get()) return false
+            if (urlGen != synchronized(urlGeneration) { urlGeneration[url] ?: 0 }) return false
+            cache[key] = bitmap
+            true
+        }
 
     private fun cacheDir(context: Context): File {
         val cached = diskCacheDir
@@ -152,14 +167,24 @@ object LogoLoader {
     }
 
     fun clearMemory() {
-        cacheGeneration++
-        synchronized(cache) { cache.clear() }
+        // ATOMIC-01: bump and clear under the same lock as putCachedIfFresh.
+        synchronized(cache) {
+            cacheGeneration.incrementAndGet()
+            cache.clear()
+        }
     }
 
     private fun urlGenOf(url: String): Int = synchronized(urlGeneration) { urlGeneration[url] ?: 0 }
 
+    private fun bumpUrlGen(url: String): Int =
+        synchronized(urlGeneration) {
+            val next = (urlGeneration[url] ?: 0) + 1
+            urlGeneration[url] = next
+            next
+        }
+
     suspend fun clearDisk(context: Context) = withContext(Dispatchers.IO) {
-        cacheGeneration++
+        cacheGeneration.incrementAndGet()
         try {
             cacheDir(context).listFiles()?.forEach { runCatching { it.delete() } }
         } catch (_: Exception) {
@@ -175,7 +200,7 @@ object LogoLoader {
     suspend fun invalidate(context: Context, url: String) {
         if (url.isBlank()) return
         // CACHE-02b: per-url stamp only — other urls' in-flight loads stay valid.
-        synchronized(urlGeneration) { urlGeneration[url] = (urlGeneration[url] ?: 0) + 1 }
+        bumpUrlGen(url)
         synchronized(cache) {
             cache.keys.filter { it.endsWith("|$url") }.toList().forEach { cache.remove(it) }
         }
@@ -202,15 +227,19 @@ object LogoLoader {
     internal fun memoryKeyForTest(url: String, w: Int, h: Int): String = memoryKey(url, w, h)
     internal fun diskKeyForTest(url: String, w: Int, h: Int): String = diskKey(url, w, h)
     internal fun sha256ForTest(value: String): String = sha256Hex(value)
-    internal fun cacheGenerationForTest(): Int = cacheGeneration
-    internal fun bumpGenerationForTest() { cacheGeneration++ }
+    internal fun cacheGenerationForTest(): Int = cacheGeneration.get()
+    internal fun bumpGenerationForTest() { cacheGeneration.incrementAndGet() }
     internal fun urlGenerationForTest(url: String): Int = urlGenOf(url)
-    internal fun bumpUrlGenerationForTest(url: String) {
-        synchronized(urlGeneration) { urlGeneration[url] = (urlGeneration[url] ?: 0) + 1 }
-    }
+    internal fun bumpUrlGenerationForTest(url: String) { bumpUrlGen(url) }
+
+    /** Mirrors [putCachedIfFresh]'s atomic rule so the publish gate is unit-testable. */
+    internal fun shouldPublishForTest(gen: Int, url: String, urlGen: Int): Boolean =
+        gen == cacheGeneration.get() && urlGen == urlGenOf(url)
+
+    internal fun urlGenerationSizeForTest(): Int = synchronized(urlGeneration) { urlGeneration.size }
     /** Mirrors loadInternal's staleness rule so the rule itself is unit-testable. */
     internal fun isStaleForTest(globalGen: Int, url: String, urlGen: Int): Boolean =
-        globalGen != cacheGeneration || urlGen != urlGenOf(url)
+        !shouldPublishForTest(globalGen, url, urlGen)
 
     private fun sha256Hex(value: String): String {
         val digest = MessageDigest.getInstance("SHA-256").digest(value.toByteArray(Charsets.UTF_8))
@@ -292,9 +321,9 @@ object LogoLoader {
     private suspend fun loadInternal(context: Context, url: String, targetWidthPx: Int, targetHeightPx: Int): ImageBitmap? {
         if (url.isBlank()) return null
         if (targetWidthPx <= 0 || targetHeightPx <= 0) return null
-        val gen = cacheGeneration
+        val gen = cacheGeneration.get()
         val uGen = urlGenOf(url)
-        fun stale() = gen != cacheGeneration || uGen != urlGenOf(url)
+        fun stale() = gen != cacheGeneration.get() || uGen != urlGenOf(url)
 
         val memoryKey = memoryKey(url, targetWidthPx, targetHeightPx)
         getCached(memoryKey)?.let { return it }
@@ -316,13 +345,14 @@ object LogoLoader {
                     null
                 }
             }
-            // CACHE-02a: a clear/invalidate may have happened while decoding from disk.
-            if (bitmap != null && !stale()) {
+            // CACHE-02a + ATOMIC-01: publish only if still fresh, atomically.
+            if (bitmap != null) {
                 val imageBitmap = bitmap.asImageBitmap()
-                putCached(memoryKey, imageBitmap)
-                return imageBitmap
+                if (putCachedIfFresh(memoryKey, imageBitmap, gen, uGen, url)) return imageBitmap
+                // stale: drop the disk copy only if it is still the one we read
+                val readAt = diskFile.lastModified()
+                if (diskFile.lastModified() == readAt) runCatching { diskFile.delete() }
             }
-            if (bitmap != null) runCatching { diskFile.delete() }
         }
 
         return semaphore.withPermit {
@@ -338,12 +368,12 @@ object LogoLoader {
                         null
                     }
                 }
-                if (bitmap != null && !stale()) {
+                if (bitmap != null) {
                     val imageBitmap = bitmap.asImageBitmap()
-                    putCached(memoryKey, imageBitmap)
-                    return@withPermit imageBitmap
+                    if (putCachedIfFresh(memoryKey, imageBitmap, gen, uGen, url)) return@withPermit imageBitmap
+                    val readAt = diskFile.lastModified()
+                    if (diskFile.lastModified() == readAt) runCatching { diskFile.delete() }
                 }
-                if (bitmap != null) runCatching { diskFile.delete() }
             }
 
             try {
@@ -382,18 +412,18 @@ object LogoLoader {
                 // CACHE-02a: if a clear/invalidate happened while downloading, drop this result.
                 if (stale()) return@withPermit null
 
+                val writeStartedAt = System.currentTimeMillis()
                 withContext(Dispatchers.IO) {
                     writeBitmapToDisk(diskFile, bitmap)
                     maybePruneDisk(cacheDir(context))
                 }
 
-                // CACHE-02a: TOCTOU between write and publish — re-check, then commit atomically.
-                if (stale()) {
-                    runCatching { diskFile.delete() }
+                // ATOMIC-01: check + publish under the cache lock; only remove a file we wrote.
+                val imageBitmap = bitmap.asImageBitmap()
+                if (!putCachedIfFresh(memoryKey, imageBitmap, gen, uGen, url)) {
+                    if (diskFile.lastModified() >= writeStartedAt) runCatching { diskFile.delete() }
                     return@withPermit null
                 }
-                val imageBitmap = bitmap.asImageBitmap()
-                putCached(memoryKey, imageBitmap)
                 imageBitmap
             } catch (e: CancellationException) {
                 throw e
@@ -430,6 +460,8 @@ object LogoLoader {
         prefetchChunked(context, urls, targetWidthPx, targetHeightPx, concurrency = 2, limit = 60, batchSize = batchSize, batchGapMs = batchGapMs)
     }
 
+    private val prefetchGate = kotlinx.coroutines.sync.Semaphore(2)
+
     private suspend fun prefetchChunked(
         context: Context,
         urls: List<String>,
@@ -452,7 +484,7 @@ object LogoLoader {
                     async {
                         // CANCEL-01: never swallow cancellation.
                         try {
-                            load(context, url, targetWidthPx, targetHeightPx)
+                            prefetchGate.withPermit { load(context, url, targetWidthPx, targetHeightPx) }
                         } catch (e: CancellationException) {
                             throw e
                         } catch (_: Exception) {

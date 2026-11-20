@@ -261,10 +261,9 @@ fun PlayerDrawer(
     val programListState = rememberLazyListState()
     val dateListState = rememberLazyListState()
 
-    // t137 PREFETCH-02 + t136 CPU budget:
-    //   urgent  = visible window ∪ selected±8 (≤16 logos), requested right away;
-    //   idle    = the first 60 of the group, requested in batches of 4 with a 220 ms gap, 1 s later,
-    //             and only while the list is not being scrolled (interaction pauses the filler).
+    // t137/t145 PREFETCH: selected±8 first, then the full visible window (no truncation), and an
+    // idle filler that also covers a selection past the first 60. CPU stays bounded because the
+    // filler is deferred 1 s, batched 2-at-a-time with a gap, and cancelled on any scroll.
     LaunchedEffect(visible, selectedGroup, channels, selectedChannelUrl) {
         if (!visible) return@LaunchedEffect
         val pxW = with(prefetchDensity) { 64.dp.roundToPx() }
@@ -276,15 +275,20 @@ fun PlayerDrawer(
                     .let { if (it >= 0) it else channelListState.firstVisibleItemIndex }
 
                 val urgent = LinkedHashSet<Int>()
-                visibleIdx.forEach { if (it in channels.indices) urgent.add(it) }
+                // 1) selection neighbourhood first (it may be far outside the viewport)
                 for (i in (selectedIdx - 8)..(selectedIdx + 8)) if (i in channels.indices) urgent.add(i)
-                val urgentUrls = urgent.take(16)
+                // 2) the whole visible window, never truncated
+                visibleIdx.forEach { if (it in channels.indices) urgent.add(it) }
+                val urgentUrls = urgent
                     .mapNotNull { channels[it].logoUrl?.trim()?.takeIf { u -> u.isNotBlank() } }
                     .distinct()
                 if (urgentUrls.isNotEmpty()) LogoLoader.prefetch(context, urgentUrls, pxW, pxH)
 
-                // idle filler: first 60, skipping what the urgent pass already covered
-                val fillerUrls = (0 until minOf(60, channels.size))
+                // idle filler: first 60 + the selection's own band (covers selected index > 60)
+                val filler = LinkedHashSet<Int>()
+                for (i in 0 until minOf(60, channels.size)) filler.add(i)
+                for (i in (selectedIdx - 60)..(selectedIdx + 8)) if (i in channels.indices) filler.add(i)
+                val fillerUrls = filler.filterNot { it in urgent }
                     .mapNotNull { channels[it].logoUrl?.trim()?.takeIf { u -> u.isNotBlank() } }
                     .distinct()
                     .filterNot { it in urgentUrls }
