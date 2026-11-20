@@ -843,59 +843,16 @@ fun VideoPlayerScreen(
                 }
             }
 
-            // t50: revert the t42 8s deferral — t45 showed deferring only moved the parse spike into the
-            // user-browsing window. The cached EPG above already serves the first screen; refresh runs
-            // immediately on IO.
-            var lastAttemptTime = System.currentTimeMillis()
+            // t176 (EPG-DUAL-01): AutoUpdateScheduler is the ONLY EPG executor. This screen keeps the
+            // cached data and consumes epgUpdated; it never downloads/parses EPG itself, so a manual
+            // refresh and an automatic one can no longer run twice or race on epgData/last-update.
             while (true) {
-                val now = System.currentTimeMillis()
-
-                if (!shouldRefreshEpg.value && (now - lastAttemptTime < 5 * 60 * 1000L)) {
-                    delay(10_000L)
-                    continue
-                }
-
-                val lastEpgUpdate = Prefs.getLastEpgUpdateTime(context)
-                // t172: automatic EPG refresh obeys the user's 自动更新 EPG choice + backoff. The
-                // manual "立即刷新 EPG" path sets shouldRefreshEpg and bypasses both.
-                val epgAutoDue = AutoUpdateConfig.shouldRefresh(
-                    interval = Prefs.getAutoUpdateEpg(context),
-                    lastSuccessAt = lastEpgUpdate,
-                    lastFailureAt = Prefs.getEpgLastFailure(context),
-                    failureCount = Prefs.getEpgFailCount(context),
-                    startupRefreshDone = true,
-                    now = now,
-                )
-                if (!shouldRefreshEpg.value && !epgAutoDue) {
-                    delay(10_000L)
-                    continue
-                }
-                val zone = ZoneId.systemDefault()
-                val lastDate = Instant.ofEpochMilli(lastEpgUpdate).atZone(zone).toLocalDate()
-                val nowDate = Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
-
-                val isDifferentDay = !lastDate.isEqual(nowDate)
-                val isOver6Hours = (now - lastEpgUpdate) > 6 * 3600 * 1000L
-
-                if (shouldRefreshEpg.value || isDifferentDay || isOver6Hours) {
-                    lastAttemptTime = now
-                    val result = EpgRepository.loadStructured(context, epgSource, forceRefresh = true)
-                    val newEpg = result.dataOrNull
-                    if (result.isNetworkSuccess && newEpg != null && Prefs.getEpgSource(context) == epgSource) {
-                        epgData = newEpg
-                        Prefs.setLastEpgUpdateTime(context, System.currentTimeMillis())
-                        Log.i(epgLoadTag, "network refreshed. programs=${newEpg.programsByChannelId.size}")
-                        if (shouldRefreshEpg.value) {
-                            withContext(Dispatchers.Main) {
-                                android.widget.Toast.makeText(context, "EPG更新成功", android.widget.Toast.LENGTH_SHORT).show()
-                            }
-                        }
-                    } else {
-                        Log.w(epgLoadTag, "network refresh failed")
-                    }
+                if (shouldRefreshEpg.value) {
                     shouldRefreshEpg.value = false
+                    // manual path: bypasses interval + backoff, result reported through scheduler events
+                    AutoUpdateScheduler.refreshNow(context, playlist = false, epg = true)
                 }
-                delay(600_000L)
+                delay(2_000L)
             }
         }
     }
@@ -1303,7 +1260,9 @@ fun VideoPlayerScreen(
             }
         }
         val recentItems = recentResolved.map { it.first }
-        val recentCount = recentItems.size
+        // t176: the settings row count must reflect the stored list immediately (a clear leaves
+        // recentEntries empty in the same frame, while the resolved list depends on the playlist).
+        val recentCount = recentEntries.size
         // CACHE-01: stats does disk IO on Dispatchers.IO inside LogoLoader; only compute when settings shown.
         val logoCacheSummary by produceState(initialValue = "", settingsDrawerOpen, logoCacheTick) {
             value = if (settingsDrawerOpen) {
@@ -1316,6 +1275,8 @@ fun VideoPlayerScreen(
         SettingsDrawer(
             visible = settingsDrawerOpen,
             onSourceConfigClick = {
+                // t176 (STARTUP-RESET-01): the source may change, so allow a new startup pass.
+                AutoUpdateScheduler.resetStartupFlag(context)
                 val intent = Intent(context, MainActivity::class.java)
                 context.startActivity(intent)
             },

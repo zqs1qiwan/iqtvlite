@@ -81,6 +81,19 @@ object AutoUpdateConfig {
         return now - lastSuccessAt >= interval.periodMs
     }
 
+    /** t176: failure bookkeeping carried by the scheduler, kept pure so it can be tested. */
+    data class FailureState(val lastFailureAt: Long, val failCount: Int)
+
+    /** A successful refresh clears the failure state, so the next due check is interval-based. */
+    fun afterSuccess(): FailureState = FailureState(0L, 0)
+
+    /** A failed attempt records the time and bumps the consecutive counter (backoff input). */
+    fun afterFailure(now: Long, previousFailures: Int): FailureState =
+        FailureState(now, previousFailures + 1)
+
+    /** t176 (PERF-01): the startup pass waits for the first frame instead of racing cold start. */
+    const val STARTUP_DELAY_MS = 1_500L
+
     /** Human label for the "上次成功更新" line. */
     fun lastSuccessLabel(lastSuccessAt: Long, now: Long): String {
         if (lastSuccessAt <= 0L) return "从未更新"

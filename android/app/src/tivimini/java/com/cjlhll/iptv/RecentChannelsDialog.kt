@@ -37,6 +37,8 @@ import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -58,6 +60,7 @@ data class RecentChannelUi(
  * - Back closes only this list (playback continues),
  * - focus is the flat surfaceVariant highlight (no blue border), logos reuse [ChannelLogo]'s cache.
  */
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun RecentChannelsDialog(
     visible: Boolean,
@@ -105,7 +108,11 @@ fun RecentChannelsDialog(
                     .padding(20.dp)
                     // t167: stable ids for uiautomator/instrumentation (see RecentDialogTags).
                     .testTag(RecentDialogTags.DIALOG)
-                    .semantics { contentDescription = "最近观看" }
+                    // t176: expose the test tags to uiautomator (resource-id) so BACK can be asserted.
+                    .semantics {
+                        contentDescription = "最近观看"
+                        testTagsAsResourceId = true
+                    }
             ) {
                 Text(
                     text = "最近观看",

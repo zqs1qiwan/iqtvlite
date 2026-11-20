@@ -133,6 +133,8 @@ fun SettingsDrawer(
                         modifier = Modifier.padding(bottom = 24.dp)
                     )
 
+                    // t176 (GROUP-01): 基础 opens the group and covers 源配置/更新EPG/源选择/检查更新/最近观看.
+                    SettingsGroupHeader(text = "基础")
                     SettingsItem(
                         text = "源配置",
                         focusRequester = sourceConfigRequester,
@@ -163,6 +165,16 @@ fun SettingsDrawer(
                         text = "检查更新",
                         focusRequester = checkUpdateRequester,
                         onClick = onCheckUpdateClick
+                    )
+
+                    Spacer(modifier = Modifier.padding(8.dp))
+
+                    // t133: 最近观看 entry (belongs to the 基础 group above).
+                    SettingsItem(
+                        text = if (recentCount > 0) "最近观看（$recentCount）" else "最近观看",
+                        focusRequester = recentRequester,
+                        tag = RecentDialogTags.SETTINGS_ENTRY,
+                        onClick = onOpenRecent
                     )
 
                     Spacer(modifier = Modifier.padding(8.dp))
@@ -219,17 +231,6 @@ fun SettingsDrawer(
                             modifier = Modifier.padding(start = 16.dp, top = 2.dp, bottom = 6.dp)
                         )
                     }
-                    Spacer(modifier = Modifier.padding(8.dp))
-
-                    SettingsGroupHeader(text = "基础")
-                    // t133: 最近观看 entry (list + clear live in RecentChannelsDialog).
-                    SettingsItem(
-                        text = if (recentCount > 0) "最近观看（$recentCount）" else "最近观看",
-                        focusRequester = recentRequester,
-                        tag = RecentDialogTags.SETTINGS_ENTRY,
-                        onClick = onOpenRecent
-                    )
-
                     Spacer(modifier = Modifier.padding(8.dp))
 
                     // t126/t172: 台标与缓存 group

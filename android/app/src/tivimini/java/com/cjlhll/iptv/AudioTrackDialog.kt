@@ -36,6 +36,9 @@ import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
@@ -44,6 +47,7 @@ import androidx.tv.material3.Text
  * t175 (F4): audio track picker. Flat (0dp), focus = surfaceVariant (no blue frame), OK applies,
  * BACK closes only this dialog.
  */
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun AudioTrackDialog(
     visible: Boolean,
@@ -85,6 +89,8 @@ fun AudioTrackDialog(
                     .background(container, shape)
                     .padding(20.dp)
                     .testTag("audio_dialog")
+                    // t176: expose the test tags to uiautomator (resource-id) so BACK can be asserted.
+                    .semantics { testTagsAsResourceId = true }
             ) {
                 Text(
                     text = "音轨选择",

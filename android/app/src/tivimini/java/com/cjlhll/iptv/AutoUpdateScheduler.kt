@@ -30,6 +30,8 @@ import kotlinx.coroutines.withContext
 object AutoUpdateScheduler {
     private const val TAG = "AutoUpdate"
     private const val TICK_MS = 60_000L
+    /** t176 (PERF-01): let the first video frame land before the startup network pass. */
+    private const val STARTUP_DELAY_MS = 1_500L
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val mutex = Mutex()
@@ -46,6 +48,9 @@ object AutoUpdateScheduler {
         started = true
         val appContext = context.applicationContext
         scope.launch {
+            // t176 (PERF-01): the startup pass now waits for the first frame window instead of
+            // competing with cold start for CPU/network. Still off the main thread.
+            delay(STARTUP_DELAY_MS)
             // Startup pass: honour "关闭" (no automatic pull at all) and the failure backoff.
             runDue(appContext, startup = true)
             while (isActive) {
@@ -76,10 +81,21 @@ object AutoUpdateScheduler {
         }
     }
 
-    /** Reset for tests / after a source change. */
-    fun resetStartupFlag() {
+    /**
+     * t176 (STARTUP-RESET-01): a source change or OFF→periodic switch must allow a new startup pass.
+     * Runs off the main thread, so the caller never blocks the UI.
+     */
+    fun resetStartupFlag(context: Context) {
         startupDone = false
+        val appContext = context.applicationContext
+        scope.launch {
+            delay(STARTUP_DELAY_MS)
+            runDue(appContext, startup = true)
+        }
     }
+
+    /** Test/diagnostic view of the startup gate. */
+    fun isStartupDone(): Boolean = startupDone
 
     private suspend fun runDue(context: Context, startup: Boolean) {
         val playlistInterval = Prefs.getAutoUpdatePlaylist(context)
