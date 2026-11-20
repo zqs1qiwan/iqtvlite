@@ -25,6 +25,21 @@
 
 `.github/workflows/ffmpeg-audio.yml` (manual `workflow_dispatch`) builds it on Ubuntu with NDK r27, caches the FFmpeg source, and uploads the AAR artifact. It is **separate from `apk.yml`** so the stable release path is untouched.
 
+> Dispatch note: GitHub `workflow_dispatch` only looks up a workflow that exists on the **default branch**, and this repo's default branch is `main` (which we must not push to). So the build is driven through the existing `apk.yml` with the new boolean input **`build_ffmpeg_audio=true`** (a conditional `build-ffmpeg-audio` job), which is dispatchable on `integration/tivimini-baseline`. `ffmpeg-audio.yml` is kept as the standalone definition for when it can be added to the default branch.
+
+## 3b. Build verification — ACTUAL (green)
+
+The pipeline was executed end-to-end in GitHub Actions on `integration/tivimini-baseline`:
+
+- Run [44771318170](https://github.com/zqs1qiwan/iqtvlite/actions/runs/44771318170) job **Build Media3 FFmpeg audio AAR: success** — `BUILD SUCCESSFUL in 3m 9s` (FFmpeg source cache warm), NDK **r27**, FFmpeg **release/6.0**, media3 **1.11.1**.
+- Produced `libraries/decoder_ffmpeg/buildout/outputs/aar/lib-decoder-ffmpeg-release.aar`:
+  - **2,567,827 bytes**, sha256 `d531feb1d534803a09cf149f99435ca6252da3fb907bc9d170566f9a4ba106a7`
+  - `jni/arm64-v8a/libffmpegJNI.so` 1,341,096 B; `jni/armeabi-v7a/libffmpegJNI.so` 1,155,156 B (plus x86/x86_64 not needed by the app); `classes.jar` 13.5 KB.
+  - Artifact `media3-decoder-ffmpeg-aar` id `14648181799` (zip 2,558,951 B).
+- First cold run (44769973279) also built the AAR successfully in ~3m; it only failed at my post-build `ls` of the wrong path (`build/` vs media3's `buildout/`), which is fixed. (The APK job in 44771318170 failed only because I passed `isolated_test_package=false`, so the Rust-.so verifier that expects the `.validation` package rejected it — unrelated to the AAR.)
+
+**Size projection:** bundling only arm64-v8a + armeabi-v7a adds **≈2.5 MB** to the APK (10.4 MB → ≈12.9 MB), well under 30 MB (drop the x86/x86_64 ABIs via `abiFilters`).
+
 ## 4. Integration once the AAR exists
 
 1. Put it at `android/app/libs/media3-decoder-ffmpeg-release.aar` and add to `android/app/build.gradle.kts`:
@@ -64,5 +79,5 @@ FFmpeg is **LGPL-2.1-or-later** when built without `--enable-gpl` (the default b
 
 ## 9. Status of this task
 
-- Delivered: feasibility evidence, reproducible Linux CI build pipeline, exact integration steps, size/licence/risk analysis. **No app behaviour changed** (extension not enabled until the AAR is built), so CI10093 look/interaction/performance are untouched.
-- Not delivered: the compiled AAR and an MP2-enabled pair. Per the task's fallback clause ("若 CI 内不可行 → 给可复现的构建日志/证据 + 推荐路径与工作量评估"), the CI build is dispatched separately; once the AAR artifact is green, integration is a small, gated change (steps §4) — no half-baked code merged.
+- Delivered: feasibility evidence, a **green CI build of the audio-only AAR** (sha256 `d531feb1…a7`, 2.57 MB), reproducible Linux CI build pipeline, exact integration steps, size/licence/risk analysis. **No app behaviour changed** (extension not enabled until integration), so CI10093 look/interaction/performance are untouched.
+- Next (awaiting go-ahead, not half-baked): integrate the AAR + `EXTENSION_RENDERER_MODE_ON` + NOTICE (steps §4), rebuild the pair, and hand to acceptance for MP2 audio verification. Estimated 0.5 day integration + 0.5–1 day device verification.
