@@ -100,6 +100,8 @@ class PlayerActivity : ComponentActivity() {
     private var setDrawerOpen: ((Boolean) -> Unit)? = null
     private var isDrawerOpen: Boolean = false
     private val sidebarController = SidebarController()
+    private var onSidebarPlay: ((Int, Int) -> Unit)? = null
+    private var nativeSidebar: NativeSidebarView? = null
     private var drawerActiveColumn: DrawerColumn? = null
     private var focusToDrawerChannels: (() -> Unit)? = null
     private var setSettingsDrawerOpen: ((Boolean) -> Unit)? = null
@@ -141,12 +143,34 @@ class PlayerActivity : ComponentActivity() {
         }
         rootLayout.addView(videoView, android.widget.FrameLayout.LayoutParams(
             android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.MATCH_PARENT))
+        // t62: native View sidebar layer, between the zero-copy SurfaceView and the transparent
+        // Compose overlay. Renders from SidebarController (single source of truth).
+        val sidebarView = NativeSidebarView(this, sidebarController) { groupIndex, variantIndex ->
+            onSidebarPlay?.invoke(groupIndex, variantIndex)
+        }.apply { visibility = android.view.View.GONE }
+        nativeSidebar = sidebarView
+        rootLayout.addView(sidebarView, android.widget.FrameLayout.LayoutParams(
+            android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.MATCH_PARENT))
         val composeOverlay = androidx.compose.ui.platform.ComposeView(this).apply {
             setBackgroundColor(android.graphics.Color.TRANSPARENT)
         }
         rootLayout.addView(composeOverlay, android.widget.FrameLayout.LayoutParams(
             android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.MATCH_PARENT))
         setContentView(rootLayout)
+        lifecycleScope.launch {
+            sidebarController.state.collect { st ->
+                isDrawerOpen = st.drawerOpen
+                val sidebar = nativeSidebar ?: return@collect
+                if (st.drawerOpen) {
+                    val wasHidden = sidebar.visibility != android.view.View.VISIBLE
+                    sidebar.visibility = android.view.View.VISIBLE
+                    sidebar.render(st)
+                    if (wasHidden) sidebar.requestInitialFocus()
+                } else {
+                    sidebar.visibility = android.view.View.GONE
+                }
+            }
+        }
 
         composeOverlay.setContent {
             val colorScheme = darkColorScheme(
@@ -175,6 +199,7 @@ class PlayerActivity : ComponentActivity() {
                         sidebarController = sidebarController,
                         setOnChannelStep = { onChannelStep = it },
                         setOnNumberJump = { onNumberJump = it },
+                        setOnSidebarPlay = { onSidebarPlay = it },
                         setDrawerOpenController = { setDrawerOpen = it },
                         onDrawerOpenChanged = { isDrawerOpen = it },
                         onDrawerActiveColumnChanged = { drawerActiveColumn = it },
@@ -238,7 +263,7 @@ class PlayerActivity : ComponentActivity() {
                             val step = calculateSeekStep(event.repeatCount)
                             if (onCatchupSeek?.invoke(-step) == true) return true
                         } else {
-                            setDrawerOpen?.invoke(true)
+                            sidebarController.openDrawer()
                             return true
                         }
                     }
@@ -268,16 +293,9 @@ class PlayerActivity : ComponentActivity() {
                         setQualityDialogOpen?.invoke(false)
                         return true
                     }
-                    if (isDrawerOpen) {
-                        if (drawerActiveColumn != DrawerColumn.Channels) {
-                            focusToDrawerChannels?.invoke()
-                            lifecycleScope.launch {
-                                delay(80)
-                                setDrawerOpen?.invoke(false)
-                            }
-                        } else {
-                            setDrawerOpen?.invoke(false)
-                        }
+                    if (sidebarController.value.drawerOpen) {
+                        // TIV: one Back closes the whole native drawer from any column.
+                        sidebarController.closeDrawer()
                         return true
                     }
                     if (isSettingsDrawerOpen) {
@@ -347,6 +365,7 @@ fun VideoPlayerScreen(
     sidebarController: SidebarController,
     setOnChannelStep: (((Int) -> Boolean)?) -> Unit,
     setOnNumberJump: (((Int) -> Boolean)?) -> Unit,
+    setOnSidebarPlay: (((Int, Int) -> Unit)?) -> Unit,
     setDrawerOpenController: (((Boolean) -> Unit)?) -> Unit,
     onDrawerOpenChanged: (Boolean) -> Unit,
     onDrawerActiveColumnChanged: (DrawerColumn?) -> Unit,
@@ -400,6 +419,8 @@ fun VideoPlayerScreen(
     var epgData by remember { mutableStateOf<EpgData?>(null) }
     var nowMillis by remember { mutableStateOf(System.currentTimeMillis()) }
     var nowProgramByUrl by remember { mutableStateOf<Map<String, NowProgramUi>>(emptyMap()) }
+    // t62: push EPG into the Activity-level controller so the native sidebar renders it directly.
+    LaunchedEffect(epgData) { sidebarController.setEpgData(epgData) }
     var catchupRequest by remember { mutableStateOf<CatchupPlayRequest?>(null) }
     var catchupPositionMs by remember { mutableStateOf(0L) }
     var isSeekOverlayVisible by remember { mutableStateOf(false) }
@@ -1004,9 +1025,11 @@ fun VideoPlayerScreen(
             true
         }
 
+        setOnSidebarPlay { groupIndex, variantIndex -> playGroupVariant(groupIndex, variantIndex) }
         onDispose {
             setOnChannelStep(null)
             setOnNumberJump(null)
+            setOnSidebarPlay(null)
         }
     }
 
@@ -1021,39 +1044,7 @@ fun VideoPlayerScreen(
                 .padding(24.dp)
         )
 
-        PlayerDrawer(
-            visible = drawerOpen,
-            groups = groups,
-            selectedGroup = selectedGroup,
-            channels = filteredChannels,
-            channelNumbers = remember(channelGroups) {
-                buildMap { channelGroups.forEachIndexed { index, group ->
-                    group.variants.forEach { put(it.channel.url, index+1) }
-                } }
-            },
-            selectedChannelUrl = if (currentLive.retainedOutsideList) null else channelGroups.getOrNull(currentGroupIndex)?.defaultChannel?.url,
-            nowProgramByChannelUrl = nowProgramByUrl,
-            epgData = epgData,
-            nowMillis = nowMillis,
-            onSelectGroup = { sidebarController.selectGroup(it) },
-            onSelectChannel = { channel ->
-                playChannel(channel)
-            },
-            onPlayProgram = { req ->
-                val bound = PlaybackIntent.catchup(ChannelGrouper.allChannels(channelGroups), req, playbackIntent.request)
-                if (bound != null) {
-                    sourceSelectGeneration += 1
-                    sourceSelectJob?.cancel()
-                    playbackIntent.beginSelection()
-                    catchupRequest = req
-                    startPlayback(bound)
-                    sidebarController.closeDrawer()
-                }
-            },
-            onClose = { sidebarController.closeDrawer() },
-            onActiveColumnChanged = { sidebarController.setActiveColumn(it) },
-            requestedActiveColumn = drawerActiveColumn
-        )
+        // t62: Compose PlayerDrawer removed — the native NativeSidebarView owns the sidebar.
 
         val qualityDialogGroup = channelGroups.getOrNull(
             if (qualityDialogGroupIndex >= 0) qualityDialogGroupIndex else playingGroupIndex

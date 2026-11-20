@@ -28,6 +28,7 @@ data class SidebarState(
     val showGroups: Boolean = false,
     val showDates: Boolean = false,
     val selectedProgramKey: String? = null,
+    val epgData: EpgData? = null,
 ) {
     companion object {
         const val ALL_GROUP = "全部"
@@ -105,6 +106,7 @@ class SidebarController {
     fun selectGroup(name: String) = _state.update { it.copy(selectedGroup = name) }
     fun selectEpgDate(date: LocalDate?) = _state.update { it.copy(selectedEpgDate = date, showDates = true) }
     fun setEpgDates(dates: List<LocalDate>) = _state.update { it.copy(epgDates = dates) }
+    fun setEpgData(data: EpgData?) = _state.update { it.copy(epgData = data) }
     fun selectProgram(key: String?) = _state.update { it.copy(selectedProgramKey = key) }
 
     // ---- focus / channel stepping ----
