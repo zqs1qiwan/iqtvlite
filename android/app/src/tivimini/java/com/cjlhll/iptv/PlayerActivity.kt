@@ -186,7 +186,28 @@ class PlayerActivity : ComponentActivity() {
                     ) {
                         finish()
                     }
-                    if (digits.isNotEmpty()) Text(digits, modifier = Modifier.align(Alignment.TopEnd).padding(48.dp).background(ComposeColor.Black.copy(alpha=.8f)).padding(20.dp), style = MaterialTheme.typography.headlineLarge)
+                    if (digits.isNotEmpty()) {
+                        // t124: visible digit-entry OSD — dark panel + high-contrast brand ink.
+                        Column(
+                            modifier = Modifier
+                                .align(Alignment.TopCenter)
+                                .padding(top = 36.dp)
+                                .background(ComposeColor(0xE610141A.toInt()))
+                                .padding(horizontal = 28.dp, vertical = 14.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
+                                "请输入频道号",
+                                color = ComposeColor(0xFFA9B4C7),
+                                style = MaterialTheme.typography.titleMedium
+                            )
+                            Text(
+                                digits + "_",
+                                color = ComposeColor(0xFFF2F5FA),
+                                style = MaterialTheme.typography.headlineLarge
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -210,7 +231,7 @@ class PlayerActivity : ComponentActivity() {
                 if (event.repeatCount == 0) {
                     if (digits.length < 6) digits += (event.keyCode-KeyEvent.KEYCODE_0).toString()
                     numberJob?.cancel()
-                    numberJob = lifecycleScope.launch { delay(1200); submitNumber() }
+                    numberJob = lifecycleScope.launch { delay(3000); submitNumber() }
                 }
                 return true
             }
