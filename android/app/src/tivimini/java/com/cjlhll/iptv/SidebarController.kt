@@ -28,7 +28,8 @@ data class SidebarState(
     val showGroups: Boolean = false,
     val showDates: Boolean = false,
     val selectedProgramKey: String? = null,
-    val epgData: EpgData? = null,
+    // NS-03: EPG (large maps) is kept OUT of the StateFlow equality; only a version counter changes.
+    val epgVersion: Int = 0,
 ) {
     companion object {
         const val ALL_GROUP = "全部"
@@ -42,6 +43,11 @@ class SidebarController {
 
     /** Snapshot for non-Compose callers (tests / native view). */
     val value: SidebarState get() = _state.value
+
+    // NS-03: not part of SidebarState equality (avoids O(programs) deep-equals on every focus move).
+    @Volatile
+    private var epgDataRef: EpgData? = null
+    fun epgData(): EpgData? = epgDataRef
 
     // ---- channel list / selection sync (M2 native layer reads the same state) ----
 
@@ -83,6 +89,8 @@ class SidebarController {
             drawerOpen = true,
             focusedChannelUrl = existingFocus ?: s.selectedChannelUrl,
             activeColumn = DrawerColumn.Channels,
+            showGroups = false,
+            showDates = false,
         )
     }
 
@@ -106,7 +114,10 @@ class SidebarController {
     fun selectGroup(name: String) = _state.update { it.copy(selectedGroup = name) }
     fun selectEpgDate(date: LocalDate?) = _state.update { it.copy(selectedEpgDate = date, showDates = true) }
     fun setEpgDates(dates: List<LocalDate>) = _state.update { it.copy(epgDates = dates) }
-    fun setEpgData(data: EpgData?) = _state.update { it.copy(epgData = data) }
+    fun setEpgData(data: EpgData?) {
+        epgDataRef = data
+        _state.update { it.copy(epgVersion = it.epgVersion + 1) }
+    }
     fun selectProgram(key: String?) = _state.update { it.copy(selectedProgramKey = key) }
 
     // ---- focus / channel stepping ----

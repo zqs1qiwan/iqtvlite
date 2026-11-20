@@ -101,6 +101,7 @@ class PlayerActivity : ComponentActivity() {
     private var isDrawerOpen: Boolean = false
     private val sidebarController = SidebarController()
     private var onSidebarPlay: ((Int, Int) -> Unit)? = null
+    private var onSidebarCatchup: ((CatchupPlayRequest) -> Unit)? = null
     private var nativeSidebar: NativeSidebarView? = null
     private var drawerActiveColumn: DrawerColumn? = null
     private var focusToDrawerChannels: (() -> Unit)? = null
@@ -145,9 +146,9 @@ class PlayerActivity : ComponentActivity() {
             android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.MATCH_PARENT))
         // t62: native View sidebar layer, between the zero-copy SurfaceView and the transparent
         // Compose overlay. Renders from SidebarController (single source of truth).
-        val sidebarView = NativeSidebarView(this, sidebarController) { groupIndex, variantIndex ->
+        val sidebarView = NativeSidebarView(this, sidebarController, { groupIndex, variantIndex ->
             onSidebarPlay?.invoke(groupIndex, variantIndex)
-        }.apply { visibility = android.view.View.GONE }
+        }, { request -> onSidebarCatchup?.invoke(request) }).apply { visibility = android.view.View.GONE }
         nativeSidebar = sidebarView
         rootLayout.addView(sidebarView, android.widget.FrameLayout.LayoutParams(
             android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.MATCH_PARENT))
@@ -200,6 +201,7 @@ class PlayerActivity : ComponentActivity() {
                         setOnChannelStep = { onChannelStep = it },
                         setOnNumberJump = { onNumberJump = it },
                         setOnSidebarPlay = { onSidebarPlay = it },
+                        setOnSidebarCatchup = { onSidebarCatchup = it },
                         setDrawerOpenController = { setDrawerOpen = it },
                         onDrawerOpenChanged = { isDrawerOpen = it },
                         onDrawerActiveColumnChanged = { drawerActiveColumn = it },
@@ -248,6 +250,21 @@ class PlayerActivity : ComponentActivity() {
                 if (event.keyCode == KeyEvent.KEYCODE_BACK) { numberJob?.cancel(); digits = ""; return true }
                 if (event.keyCode in listOf(KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER)) { submitNumber(); return true }
                 numberJob?.cancel(); digits = ""
+            }
+            // t66: layered columns (channel+program main view; groups/date are overlay columns).
+            if (sidebarController.value.drawerOpen) {
+                when (event.keyCode) {
+                    KeyEvent.KEYCODE_DPAD_LEFT -> when (sidebarController.value.activeColumn) {
+                        DrawerColumn.Channels -> { sidebarController.setShowGroups(true); nativeSidebar?.focusGroups(); return true }
+                        DrawerColumn.Groups -> { sidebarController.setShowGroups(false); nativeSidebar?.focusChannels(); return true }
+                        DrawerColumn.Dates -> { sidebarController.setShowDates(false); nativeSidebar?.focusPrograms(); return true }
+                        else -> {}
+                    }
+                    KeyEvent.KEYCODE_DPAD_RIGHT -> when (sidebarController.value.activeColumn) {
+                        DrawerColumn.Programs -> { sidebarController.setShowDates(true); nativeSidebar?.focusDates(); return true }
+                        else -> {}
+                    }
+                }
             }
             when (event.keyCode) {
                 KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
@@ -366,6 +383,7 @@ fun VideoPlayerScreen(
     setOnChannelStep: (((Int) -> Boolean)?) -> Unit,
     setOnNumberJump: (((Int) -> Boolean)?) -> Unit,
     setOnSidebarPlay: (((Int, Int) -> Unit)?) -> Unit,
+    setOnSidebarCatchup: (((CatchupPlayRequest) -> Unit)?) -> Unit,
     setDrawerOpenController: (((Boolean) -> Unit)?) -> Unit,
     onDrawerOpenChanged: (Boolean) -> Unit,
     onDrawerActiveColumnChanged: (DrawerColumn?) -> Unit,
@@ -1026,10 +1044,22 @@ fun VideoPlayerScreen(
         }
 
         setOnSidebarPlay { groupIndex, variantIndex -> playGroupVariant(groupIndex, variantIndex) }
+        setOnSidebarCatchup { req ->
+            val bound = PlaybackIntent.catchup(ChannelGrouper.allChannels(channelGroups), req, playbackIntent.request)
+            if (bound != null) {
+                sourceSelectGeneration += 1
+                sourceSelectJob?.cancel()
+                playbackIntent.beginSelection()
+                catchupRequest = req
+                startPlayback(bound)
+                sidebarController.closeDrawer()
+            }
+        }
         onDispose {
             setOnChannelStep(null)
             setOnNumberJump(null)
             setOnSidebarPlay(null)
+            setOnSidebarCatchup(null)
         }
     }
 

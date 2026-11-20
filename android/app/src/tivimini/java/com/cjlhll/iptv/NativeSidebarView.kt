@@ -13,6 +13,8 @@ import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.widget.Toast
+import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import java.time.Instant
@@ -35,6 +37,9 @@ private data class SidebarRow(
     val groupIndex: Int = -1,
     val date: LocalDate? = null,
     val groupName: String? = null,
+    val startMillis: Long = 0L,
+    val endMillis: Long = 0L,
+    val programTitle: String? = null,
 )
 
 private class RowAdapter(
@@ -46,8 +51,19 @@ private class RowAdapter(
     private var rows: List<SidebarRow> = emptyList()
 
     fun submit(newRows: List<SidebarRow>) {
+        val old = rows
+        if (old == newRows) return
+        val diff = DiffUtil.calculateDiff(object : DiffUtil.Callback() {
+            override fun getOldListSize() = old.size
+            override fun getNewListSize() = newRows.size
+            override fun areItemsTheSame(o: Int, n: Int): Boolean {
+                val a = old[o]; val b = newRows[n]
+                return a.text == b.text && a.url == b.url && a.groupName == b.groupName && a.date == b.date && a.startMillis == b.startMillis
+            }
+            override fun areContentsTheSame(o: Int, n: Int): Boolean = old[o] == newRows[n]
+        })
         rows = newRows
-        notifyDataSetChanged()
+        diff.dispatchUpdatesTo(this)
     }
 
     class H(val root: FrameLayout, val accent: View, val arrow: TextView, val primary: TextView, val secondary: TextView) :
@@ -78,7 +94,7 @@ private class RowAdapter(
             gravity = Gravity.CENTER_VERTICAL
         }
         root.addView(primary, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT).apply {
-            marginStart = dp(ctx, 22); marginEnd = dp(ctx, 86)
+            marginStart = dp(ctx, 22); marginEnd = dp(ctx, 96)
         })
         val secondary = TextView(ctx).apply {
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
@@ -87,8 +103,8 @@ private class RowAdapter(
             ellipsize = android.text.TextUtils.TruncateAt.END
             gravity = Gravity.CENTER_VERTICAL or Gravity.END
         }
-        root.addView(secondary, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT).apply {
-            marginStart = dp(ctx, 24); marginEnd = dp(ctx, 8)
+        root.addView(secondary, FrameLayout.LayoutParams(dp(ctx, 90), ViewGroup.LayoutParams.MATCH_PARENT, Gravity.END).apply {
+            marginEnd = dp(ctx, 6)
         })
         return H(root, accent, arrow, primary, secondary)
     }
@@ -130,6 +146,7 @@ class NativeSidebarView(
     context: Context,
     private val controller: SidebarController,
     private val onPlayChannel: (groupIndex: Int, variantIndex: Int) -> Unit,
+    private val onPlayCatchup: (CatchupPlayRequest) -> Unit,
 ) : FrameLayout(context) {
 
     private val handler = Handler(Looper.getMainLooper())
@@ -155,8 +172,11 @@ class NativeSidebarView(
     private var pendingInitialFocus = false
 
     init {
-        setBackgroundColor(0xE6161B22.toInt())
-        val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
+        setBackgroundColor(Color.TRANSPARENT)
+        val row = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setBackgroundColor(0xE6161B22.toInt())
+        }
         addView(row, LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT))
         row.addView(groupsColumn)
         row.addView(channelsColumn)
@@ -187,8 +207,8 @@ class NativeSidebarView(
         lastState = state
         // Focus-only emissions must not re-bind the lists (that would steal/reset the native focus).
         val signature = listOf(
-            state.channelGroups, state.selectedGroup, state.epgData, state.selectedEpgDate,
-            state.selectedChannelUrl, state.showDates,
+            state.channelGroups, state.selectedGroup, state.epgVersion, state.selectedEpgDate,
+            state.showGroups, state.showDates,
         )
         if (signature == lastSignature) return
         lastSignature = signature
@@ -196,9 +216,30 @@ class NativeSidebarView(
         groupsAdapter.submit(groups.map { name ->
             SidebarRow(text = name, selected = name == state.selectedGroup, groupName = name)
         })
-        groupsColumn.visibility = View.VISIBLE
+        groupsColumn.visibility = if (state.showGroups) View.VISIBLE else View.GONE
 
-        val groupRows = state.channelGroups.mapIndexedNotNull { index, group ->
+        val groupRows = buildChannelRows(state)
+        channelsAdapter.submit(groupRows)
+        renderProgramsOnly()
+
+        if (pendingInitialFocus) {
+            pendingInitialFocus = false
+            requestInitialFocus()
+        }
+    }
+
+    /** Recompute only the program/date columns (used by the 350ms focus debounce). */
+    fun renderProgramsOnly() {        val state = lastState
+        programsAdapter.submit(programsFor(state))
+        val dates = datesFor(state)
+        datesAdapter.submit(dates.map { date ->
+            SidebarRow(text = date.format(DateTimeFormatter.ofPattern("MM-dd")), selected = date == (state.selectedEpgDate ?: today()), date = date)
+        })
+        datesColumn.visibility = if (state.showDates && dates.isNotEmpty()) View.VISIBLE else View.GONE
+    }
+
+    private fun buildChannelRows(state: SidebarState): List<SidebarRow> =
+        state.channelGroups.mapIndexedNotNull { index, group ->
             if (state.selectedGroup != SidebarState.ALL_GROUP && ChannelGrouper.displayGroupName(group) != state.selectedGroup) {
                 return@mapIndexedNotNull null
             }
@@ -211,25 +252,6 @@ class NativeSidebarView(
                 groupIndex = index,
             )
         }
-        channelsAdapter.submit(groupRows)
-        renderProgramsOnly()
-
-        if (pendingInitialFocus) {
-            pendingInitialFocus = false
-            requestInitialFocus()
-        }
-    }
-
-    /** Recompute only the program/date columns (used by the 350ms focus debounce). */
-    fun renderProgramsOnly() {
-        val state = lastState
-        programsAdapter.submit(programsFor(state))
-        val dates = datesFor(state)
-        datesAdapter.submit(dates.map { date ->
-            SidebarRow(text = date.format(DateTimeFormatter.ofPattern("MM-dd")), selected = date == (state.selectedEpgDate ?: today()), date = date)
-        })
-        datesColumn.visibility = if (state.showDates && dates.isNotEmpty()) View.VISIBLE else View.GONE
-    }
 
     fun requestInitialFocus() {
         val state = lastState
@@ -263,15 +285,77 @@ class NativeSidebarView(
             DrawerColumn.Channels -> if (row.groupIndex >= 0) {
                 controller.activateChannel(row.groupIndex, 0)
                 onPlayChannel(row.groupIndex, 0)
+                // NS-06: refresh only the selection marker; do not rebind/recreate the list (focus kept).
+                channelsAdapter.submit(buildChannelRows(controller.value))
             }
             DrawerColumn.Dates -> row.date?.let { controller.selectEpgDate(it) }
-            DrawerColumn.Programs -> Unit
+            DrawerColumn.Programs -> playCatchup(row)
         }
         render(controller.value)
     }
 
+    /** TIV-09: historical program OK -> catchup URL for the OWNING channel, then close + play. */
+    private fun playCatchup(row: SidebarRow) {
+        val state = lastState
+        val url = state.focusedChannelUrl ?: state.selectedChannelUrl
+        val channel = state.channelGroups.asSequence().flatMap { it.variants.asSequence() }
+            .firstOrNull { it.channel.url == url }?.channel
+        val now = System.currentTimeMillis()
+        when {
+            row.endMillis > now -> toast("仅历史节目可回看")
+            channel == null -> toast("无法回看")
+            else -> {
+                val catchupUrl = CatchupHelper.buildCatchupUrl(
+                    channel.url,
+                    channel.catchupMode,
+                    channel.catchupSource,
+                    Instant.ofEpochMilli(row.startMillis),
+                    Instant.ofEpochMilli(row.endMillis),
+                )
+                if (catchupUrl == null) {
+                    toast("该频道不支持回看")
+                } else {
+                    // The owning channel is captured immutably (id/UA/Referer) in the request.
+                    onPlayCatchup(
+                        CatchupPlayRequest(
+                            catchupUrl = catchupUrl,
+                            liveUrl = channel.url,
+                            programTitle = row.programTitle ?: row.text,
+                            startMillis = row.startMillis,
+                            endMillis = row.endMillis,
+                            owner = channel,
+                        )
+                    )
+                }
+            }
+        }
+    }
+
+    private fun toast(message: String) {
+        Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+    }
+
+    fun focusGroups() = focusColumn(groupsRv)
+    fun focusChannels() = focusColumn(channelsRv)
+    fun focusPrograms() = focusColumn(programsRv)
+    fun focusDates() = focusColumn(datesRv)
+
+    private fun focusColumn(rv: RecyclerView) {
+        rv.post {
+            rv.isFocusable = true
+            if ((rv.adapter?.itemCount ?: 0) == 0) {
+                rv.requestFocus()
+                return@post
+            }
+            val lm = rv.layoutManager as? LinearLayoutManager
+            val pos = lm?.findFirstCompletelyVisibleItemPosition()?.takeIf { it >= 0 } ?: 0
+            rv.scrollToPosition(pos)
+            rv.post { rv.findViewHolderForAdapterPosition(pos)?.itemView?.requestFocus() ?: rv.requestFocus() }
+        }
+    }
+
     private fun programsFor(state: SidebarState): List<SidebarRow> {
-        val epg = state.epgData ?: return emptyList()
+        val epg = controller.epgData() ?: return emptyList()
         val url = state.focusedChannelUrl ?: state.selectedChannelUrl ?: return emptyList()
         val channel = state.channelGroups.asSequence().flatMap { it.variants.asSequence() }
             .firstOrNull { it.channel.url == url }?.channel ?: return emptyList()
@@ -287,12 +371,15 @@ class NativeSidebarView(
                     text = p.title,
                     secondary = "${Instant.ofEpochMilli(p.startMillis).atZone(zone).format(timeFormat)}-${Instant.ofEpochMilli(p.endMillis).atZone(zone).format(timeFormat)}",
                     now = p.startMillis <= now && now < p.endMillis,
+                    startMillis = p.startMillis,
+                    endMillis = p.endMillis,
+                    programTitle = p.title,
                 )
             }
     }
 
     private fun datesFor(state: SidebarState): List<LocalDate> {
-        val epg = state.epgData ?: return emptyList()
+        val epg = controller.epgData() ?: return emptyList()
         val url = state.focusedChannelUrl ?: state.selectedChannelUrl ?: return emptyList()
         val channel = state.channelGroups.asSequence().flatMap { it.variants.asSequence() }
             .firstOrNull { it.channel.url == url }?.channel ?: return emptyList()
@@ -305,7 +392,7 @@ class NativeSidebarView(
     }
 
     private fun nowTitle(state: SidebarState, channel: Channel): String? {
-        val epg = state.epgData ?: return null
+        val epg = controller.epgData() ?: return null
         val channelId = epg.resolveChannelId(channel) ?: return null
         val now = System.currentTimeMillis()
         return epg.programsByChannelId[channelId]?.firstOrNull { it.startMillis <= now && now < it.endMillis }?.title
