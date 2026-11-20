@@ -361,6 +361,7 @@ fun MainScreen() {
                     value = liveSource,
                     onValueChange = { liveSource = it },
                     label = { Text("直播源地址") },
+                    shape = RoundedCornerShape(2.dp),
                     modifier = Modifier
                         .fillMaxWidth()
                         .onFocusChanged {
@@ -388,6 +389,7 @@ fun MainScreen() {
                     value = epgSource,
                     onValueChange = { epgSource = it },
                     label = { Text("EPG地址") },
+                    shape = RoundedCornerShape(2.dp),
                     modifier = Modifier
                         .fillMaxWidth()
                         .onFocusChanged {
@@ -416,6 +418,7 @@ fun MainScreen() {
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(56.dp),
+                    shape = androidx.tv.material3.ButtonDefaults.shape(shape = RoundedCornerShape(2.dp), focusedShape = RoundedCornerShape(2.dp), pressedShape = RoundedCornerShape(2.dp), disabledShape = RoundedCornerShape(2.dp), focusedDisabledShape = RoundedCornerShape(2.dp)),
                     enabled = !isLoading
                 ) {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {

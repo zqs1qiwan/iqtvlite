@@ -76,10 +76,6 @@ class SidebarController {
 
     // ---- drawer visibility / single-Back ----
 
-    fun setDrawerOpen(open: Boolean) {
-        if (open) openDrawer() else closeDrawer()
-    }
-
     /** TIV: on first open focus the currently playing channel; afterwards keep a valid browse focus. */
     fun openDrawer() = _state.update { s ->
         val existingFocus = s.focusedChannelUrl?.takeIf { url ->

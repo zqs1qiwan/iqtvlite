@@ -21,6 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Button
@@ -53,6 +54,7 @@ fun UpdateDialog(
     AlertDialog(
         onDismissRequest = { if (!isDownloading) onDismiss() },
         containerColor = dialogContainerColor,
+        shape = RoundedCornerShape(2.dp),
         titleContentColor = Color.White,
         textContentColor = Color.LightGray,
         title = {
@@ -68,6 +70,7 @@ fun UpdateDialog(
                         modifier = Modifier.fillMaxWidth(),
                         color = Color.White,
                         trackColor = Color(0xFF424242),
+                        strokeCap = StrokeCap.Butt,
                     )
                 }
             } else {
@@ -97,7 +100,8 @@ fun UpdateDialog(
                             }
                         }
                     },
-                    modifier = Modifier.focusRequester(confirmButtonFocusRequester)
+                    modifier = Modifier.focusRequester(confirmButtonFocusRequester),
+                    shape = androidx.tv.material3.ButtonDefaults.shape(shape = RoundedCornerShape(2.dp), focusedShape = RoundedCornerShape(2.dp), pressedShape = RoundedCornerShape(2.dp), disabledShape = RoundedCornerShape(2.dp), focusedDisabledShape = RoundedCornerShape(2.dp))
                 ) {
                     Text("更新")
                 }
@@ -105,7 +109,7 @@ fun UpdateDialog(
         },
         dismissButton = {
             if (!isDownloading) {
-                Button(onClick = onDismiss) {
+                Button(onClick = onDismiss, shape = androidx.tv.material3.ButtonDefaults.shape(shape = RoundedCornerShape(2.dp), focusedShape = RoundedCornerShape(2.dp), pressedShape = RoundedCornerShape(2.dp), disabledShape = RoundedCornerShape(2.dp), focusedDisabledShape = RoundedCornerShape(2.dp))) {
                     Text("取消")
                 }
             }
