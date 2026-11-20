@@ -633,7 +633,9 @@ fun VideoPlayerScreen(
         scope.launch {
             while (!heavyWorkEnabled) delay(200)
             if (channelGroups !== update.groups) return@launch
-            val logos = buildPrefetchLogoUrls(displayChannelsFromGroups(update.groups), currentGroupIndex)
+            // t42: bound the startup logo prefetch to the first 60 channels so a huge playlist can't
+            // spike CPU at startup; the rest load lazily when scrolled into view.
+            val logos = buildPrefetchLogoUrls(displayChannelsFromGroups(update.groups), currentGroupIndex).take(60)
             LogoLoader.prefetch(context, logos, drawerLogoWidthPx, drawerLogoHeightPx)
             delay(800)
             if (channelGroups === update.groups) LogoLoader.prefetch(context, logos, bannerLogoWidthPx, bannerLogoHeightPx)
@@ -724,6 +726,9 @@ fun VideoPlayerScreen(
                 }
             }
 
+            // t42: defer the first network EPG refresh so its parse CPU spike does not collide with
+            // cold start / the first video frame. The cached EPG above already serves the first screen.
+            delay(8_000L)
             var lastAttemptTime = System.currentTimeMillis()
             while (true) {
                 val now = System.currentTimeMillis()

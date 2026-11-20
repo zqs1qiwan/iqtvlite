@@ -18,7 +18,8 @@ import okhttp3.Request
 
 object BackgroundSourceUpdater {
     private const val TAG = "SourceRefresh"
-    private const val EPG_STARTUP_DELAY_MS = 2_500L
+    private const val PLAYLIST_STARTUP_DELAY_MS = 8_000L
+    private const val EPG_STARTUP_DELAY_MS = 12_000L
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val httpClient = NetUtil.ipv4OkHttpClient
@@ -43,7 +44,11 @@ object BackgroundSourceUpdater {
             val epgSource = Prefs.getEpgSource(appContext)
 
             if (liveSource.isNotBlank()) {
-                Log.i(TAG, "startup playlist refresh (immediate)")
+                // t42: defer the automatic startup network playlist refresh so its download+parse does
+                // not contend with cold start / the first video frame (startup CPU spike 86-270%).
+                // Foreground already reads the cached playlist immediately.
+                delay(PLAYLIST_STARTUP_DELAY_MS)
+                Log.i(TAG, "startup playlist refresh (delayed)")
                 refreshPlaylist(appContext, liveSource)
             }
 

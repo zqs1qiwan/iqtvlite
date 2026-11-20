@@ -8,7 +8,6 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.animateScrollBy
@@ -689,7 +688,7 @@ fun PlayerDrawer(
                                     modifier = Modifier.fillMaxSize(),
                                     state = groupListState
                                 ) {
-                                    itemsIndexed(groups, key = { index, g -> "$index:$g" }) { index, g ->
+                                    itemsIndexed(groups, key = { _, g -> g }) { index, g ->
                                         val isTarget = index == groupFocusTargetIndex
                                         DrawerGroupItem(
                                             name = g,
@@ -793,7 +792,7 @@ fun PlayerDrawer(
                                 ) {
                                     itemsIndexed(
                                         items = programs,
-                                        key = { index, p -> "$index:${p.channelId}:${p.startMillis}:${p.endMillis}:${p.title}" }
+                                        key = { _, p -> "${p.channelId}:${p.startMillis}:${p.endMillis}" }
                                     ) { index, p ->
                                         val timeText = formatEpgTimeRange(
                                             startMillis = p.startMillis,
@@ -873,7 +872,7 @@ fun PlayerDrawer(
                                     ) {
                                         itemsIndexed(
                                             items = dates,
-                                            key = { index, d -> "$index:${d}" }
+                                            key = { _, d -> d }
                                         ) { index, d ->
                                             DrawerDateItem(
                                                 text = epgDateFormatter.format(d),
@@ -1075,13 +1074,15 @@ private fun FocusMarqueeText(
     focused: Boolean,
     modifier: Modifier = Modifier
 ) {
+    // t42: no marquee. An infinite marquee animation recomposed/measured the focused row every frame,
+    // a major sidebar-browsing jank source. Static single-line ellipsis keeps browsing cheap.
     Text(
         text = text,
         maxLines = 1,
-        overflow = if (focused) TextOverflow.Clip else TextOverflow.Ellipsis,
+        overflow = TextOverflow.Ellipsis,
         style = style,
         color = color,
-        modifier = modifier.then(if (focused) Modifier.basicMarquee(iterations = Int.MAX_VALUE) else Modifier)
+        modifier = modifier
     )
 }
 
