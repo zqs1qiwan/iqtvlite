@@ -410,7 +410,9 @@ fun VideoPlayerScreen(
     LaunchedEffect(recentChannelsOpen) { onRecentChannelsOpenChanged(recentChannelsOpen) }
     var recentTick by remember { mutableIntStateOf(0) }
     var lastChannelSwitchAt by remember { mutableLongStateOf(0L) }
-    // PERF-01: coalesce rapid zapping into one prefs write.
+    // PERF-01/DEBOUNCE-01: the list lives in memory (source of truth for the UI and 上一台); the
+    // debounced write only mirrors it to Prefs.
+    var recentEntries by remember { mutableStateOf(RecentChannels.decode(Prefs.getRecentChannels(context))) }
     var pendingRecentEncoded by remember { mutableStateOf<String?>(null) }
     var recentWriteJob by remember { mutableStateOf<Job?>(null) }
     var qualityDialogGroupIndex by remember { mutableIntStateOf(-1) }
@@ -891,19 +893,24 @@ fun VideoPlayerScreen(
     }
 
     // ---- t133: recent channels / last channel ----
+    fun flushRecentChannels() {
+        val pending = pendingRecentEncoded
+        if (pending != null) {
+            Prefs.setRecentChannels(context, pending)
+            pendingRecentEncoded = null
+        }
+    }
+
     fun recordRecentChannel(group: ChannelGroup, number: Int, variantIndex: Int) {
-        val updated = RecentChannels.push(
-            RecentChannels.decode(Prefs.getRecentChannels(context)),
-            group,
-            number,
-            variantIndex,
-        )
+        // DEBOUNCE-01: always push onto the in-memory list, never onto a stale Prefs snapshot, so
+        // A→B→C keeps all three rows instead of dropping B.
+        val updated = RecentChannels.push(recentEntries, group, number, variantIndex)
+        recentEntries = updated
         pendingRecentEncoded = RecentChannels.encode(updated)
         recentWriteJob?.cancel()
         recentWriteJob = scope.launch {
             delay(400)
-            pendingRecentEncoded?.let { Prefs.setRecentChannels(context, it) }
-            pendingRecentEncoded = null
+            flushRecentChannels()
         }
         recentTick++
     }
@@ -1017,13 +1024,14 @@ fun VideoPlayerScreen(
         if (drawerOpen || settingsDrawerOpen || qualityDialogOpen || recentChannelsOpen) return false
         val now = System.currentTimeMillis()
         if (now - lastChannelSwitchAt < 800) return false
-        val entries = RecentChannels.decode(Prefs.getRecentChannels(context))
         val currentGroupKey = channelGroups.getOrNull(currentGroupIndex)?.key
-        val previous = RecentChannels.previous(entries, currentGroupKey) ?: return false
-        val targetGroupIndex = channelGroups.indexOfFirst { it.key == previous.groupKey }
-        if (targetGroupIndex < 0) return false
+        // PLAY-01: resolve first; only a fully valid target may mutate state / consume the key.
+        val target = RecentChannels.previousResolved(recentEntries, channelGroups, currentGroupKey)
+            ?: return false
+        if (target.groupIndex !in channelGroups.indices) return false
+        if (target.variantIndex !in target.group.variants.indices) return false
         lastChannelSwitchAt = now
-        playGroupVariant(targetGroupIndex, previous.variantIndex)
+        playGroupVariant(target.groupIndex, target.variantIndex)
         infoBannerOpen = true
         return true
     }
@@ -1065,6 +1073,18 @@ fun VideoPlayerScreen(
     val settingsDrawerOpenState = rememberUpdatedState(settingsDrawerOpen)
     val qualityDialogOpenState = rememberUpdatedState(qualityDialogOpen)
     val playGroupAutoState = rememberUpdatedState<(Int) -> Unit> { index -> playGroupAuto(index) }
+
+    // DEBOUNCE-01: never lose the last zap when the screen stops or the composition is disposed.
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_STOP || event == Lifecycle.Event.ON_PAUSE) flushRecentChannels()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            flushRecentChannels()
+        }
+    }
 
     DisposableEffect(player) {
         setOnPlayLastChannel { playLastChannel() }
@@ -1172,17 +1192,15 @@ fun VideoPlayerScreen(
 
         var logoCacheTick by remember { mutableIntStateOf(0) }
         // t133: recent channels resolved against the current playlist (missing ids are skipped).
-        val recentResolved = remember(recentTick, channelGroups, currentGroupIndex) {
-            val entries = RecentChannels.decode(Prefs.getRecentChannels(context))
+        val recentResolved = remember(recentEntries, channelGroups, currentGroupIndex) {
             val currentGroupKey = channelGroups.getOrNull(currentGroupIndex)?.key
-            RecentChannels.resolve(entries, channelGroups).map { (_, group, ch) ->
-                val groupIndex = channelGroups.indexOfFirst { it.key == group.key }
+            RecentChannels.resolvedDistinct(recentEntries, channelGroups).map { resolved ->
                 RecentChannelUi(
-                    title = group.displayTitle,
-                    number = groupIndex + 1,
-                    logoUrl = group.logoUrl ?: ch.logoUrl,
-                    selected = group.key == currentGroupKey,
-                ) to (group to ch)
+                    title = resolved.group.displayTitle,
+                    number = resolved.groupIndex + 1,
+                    logoUrl = resolved.group.logoUrl ?: resolved.channel.logoUrl,
+                    selected = resolved.group.key == currentGroupKey,
+                ) to (resolved.group to resolved.channel)
             }
         }
         val recentItems = recentResolved.map { it.first }
@@ -1271,10 +1289,11 @@ fun VideoPlayerScreen(
                 }
             },
             onClear = {
-                // t141: kill the debounced write first, otherwise a pending zap re-creates the list.
+                // t141/t153: kill the debounced write and the in-memory list first, then persist.
                 recentWriteJob?.cancel()
                 recentWriteJob = null
                 pendingRecentEncoded = null
+                recentEntries = emptyList()
                 Prefs.clearRecentChannels(context)
                 recentTick++
                 android.widget.Toast.makeText(context, "已清空最近观看", android.widget.Toast.LENGTH_SHORT).show()

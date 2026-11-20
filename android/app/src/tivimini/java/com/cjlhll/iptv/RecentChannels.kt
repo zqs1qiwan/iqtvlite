@@ -131,6 +131,64 @@ object RecentChannels {
         }
     }
 
+    /** One entry resolved to a concrete group/variant/channel (all indices valid). */
+    data class Resolved(
+        val entry: Entry,
+        val group: ChannelGroup,
+        val groupIndex: Int,
+        val variantIndex: Int,
+        val channel: Channel,
+    )
+
+    /**
+     * VARIANT-01: variant is matched by the entry's fallback url first (a channel whose line order
+     * changed still plays the same line), then by the stored index (clamped). Groups are matched by
+     * key, then `url:` prefix, then fallback url.
+     */
+    fun resolveOne(entries: List<Entry>, groups: List<ChannelGroup>): List<Resolved> {
+        if (entries.isEmpty() || groups.isEmpty()) return emptyList()
+        val byKey = HashMap<String, Int>()
+        groups.forEachIndexed { i, g -> byKey[g.key] = i }
+        val byUrl = HashMap<String, Int>()
+        groups.forEachIndexed { i, g -> g.variants.forEach { byUrl.putIfAbsent(it.channel.url, i) } }
+
+        return entries.mapNotNull { e ->
+            val groupIndex: Int? = byKey[e.groupKey]
+                ?: if (e.groupKey.startsWith("url:")) byUrl[e.groupKey.removePrefix("url:")] else null
+                ?: byUrl[e.fallbackUrl]
+            if (groupIndex == null) return@mapNotNull null
+            val group = groups[groupIndex]
+            if (group.variants.isEmpty()) return@mapNotNull null
+            val variantIndex = group.variants.indexOfFirst { it.channel.url == e.fallbackUrl }
+                .takeIf { it >= 0 }
+                // the stored index is only meaningful while it still exists; otherwise play the
+                // group's default line rather than an arbitrary clamped one.
+                ?: e.variantIndex.takeIf { it in group.variants.indices }
+                ?: 0
+            Resolved(e, group, groupIndex, variantIndex, group.variants[variantIndex].channel)
+        }
+    }
+
+    /**
+     * LEGACY-01: de-duplicated resolved list (a legacy `url:` row and a group-key row for the same
+     * channel collapse into the first occurrence), newest first, at most [MAX] rows.
+     */
+    fun resolvedDistinct(entries: List<Entry>, groups: List<ChannelGroup>): List<Resolved> {
+        val seen = HashSet<String>()
+        return resolveOne(entries, groups).filter { seen.add(it.group.key) }.take(MAX)
+    }
+
+    /**
+     * PLAY-01/LEGACY-01: the previous channel is the newest entry that resolves to a *different*
+     * group than the current one; unresolved and same-group (another line of this channel) rows are
+     * skipped. Returns null when there is nothing to switch to — callers must then do nothing.
+     */
+    fun previousResolved(
+        entries: List<Entry>,
+        groups: List<ChannelGroup>,
+        currentGroupKey: String?,
+    ): Resolved? = resolvedDistinct(entries, groups).firstOrNull { it.group.key != currentGroupKey }
+
     /** "Previous channel" = the most recent group that is not the currently playing group. */
     fun previous(entries: List<Entry>, currentGroupKey: String?): Entry? {
         if (entries.isEmpty()) return null
