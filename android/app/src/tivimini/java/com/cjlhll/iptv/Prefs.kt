@@ -16,6 +16,14 @@ object Prefs {
     private const val KEY_RECENT_CLEARED = "recent_channels_cleared"
     private const val KEY_LOGO_PREFETCH_ENABLED = "logo_prefetch_enabled"
     private const val KEY_LOGO_LOAD_ENABLED = "logo_load_enabled"
+    // t172 (F3): automatic update policy + attempt bookkeeping.
+    private const val KEY_AUTO_UPDATE_PLAYLIST = "auto_update_playlist"
+    private const val KEY_AUTO_UPDATE_EPG = "auto_update_epg"
+    private const val KEY_PLAYLIST_LAST_SUCCESS = "playlist_last_success_at"
+    private const val KEY_PLAYLIST_LAST_FAILURE = "playlist_last_failure_at"
+    private const val KEY_PLAYLIST_FAIL_COUNT = "playlist_fail_count"
+    private const val KEY_EPG_LAST_FAILURE = "epg_last_failure_at"
+    private const val KEY_EPG_FAIL_COUNT = "epg_fail_count"
 
     private fun getPrefs(context: Context): SharedPreferences {
         return context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
@@ -119,5 +127,66 @@ object Prefs {
 
     fun setLogoLoadEnabled(context: Context, enabled: Boolean) {
         getPrefs(context).edit().putBoolean(KEY_LOGO_LOAD_ENABLED, enabled).apply()
+    }
+
+    // ---- t172: automatic playlist / EPG updates ----
+    fun getAutoUpdatePlaylist(context: Context): AutoUpdateConfig.Interval =
+        AutoUpdateConfig.parse(getPrefs(context).getString(KEY_AUTO_UPDATE_PLAYLIST, null))
+
+    fun setAutoUpdatePlaylist(context: Context, interval: AutoUpdateConfig.Interval) {
+        getPrefs(context).edit().putString(KEY_AUTO_UPDATE_PLAYLIST, AutoUpdateConfig.encode(interval)).apply()
+    }
+
+    fun getAutoUpdateEpg(context: Context): AutoUpdateConfig.Interval =
+        AutoUpdateConfig.parse(getPrefs(context).getString(KEY_AUTO_UPDATE_EPG, null))
+
+    fun setAutoUpdateEpg(context: Context, interval: AutoUpdateConfig.Interval) {
+        getPrefs(context).edit().putString(KEY_AUTO_UPDATE_EPG, AutoUpdateConfig.encode(interval)).apply()
+    }
+
+    fun getPlaylistLastSuccess(context: Context): Long =
+        getPrefs(context).getLong(KEY_PLAYLIST_LAST_SUCCESS, 0L)
+
+    fun setPlaylistLastSuccess(context: Context, at: Long) {
+        getPrefs(context).edit()
+            .putLong(KEY_PLAYLIST_LAST_SUCCESS, at)
+            .putLong(KEY_PLAYLIST_LAST_FAILURE, 0L)
+            .putInt(KEY_PLAYLIST_FAIL_COUNT, 0)
+            .apply()
+    }
+
+    fun getPlaylistLastFailure(context: Context): Long =
+        getPrefs(context).getLong(KEY_PLAYLIST_LAST_FAILURE, 0L)
+
+    fun getPlaylistFailCount(context: Context): Int =
+        getPrefs(context).getInt(KEY_PLAYLIST_FAIL_COUNT, 0)
+
+    fun recordPlaylistFailure(context: Context, at: Long) {
+        val prefs = getPrefs(context)
+        prefs.edit()
+            .putLong(KEY_PLAYLIST_LAST_FAILURE, at)
+            .putInt(KEY_PLAYLIST_FAIL_COUNT, prefs.getInt(KEY_PLAYLIST_FAIL_COUNT, 0) + 1)
+            .apply()
+    }
+
+    fun getEpgLastFailure(context: Context): Long =
+        getPrefs(context).getLong(KEY_EPG_LAST_FAILURE, 0L)
+
+    fun getEpgFailCount(context: Context): Int =
+        getPrefs(context).getInt(KEY_EPG_FAIL_COUNT, 0)
+
+    fun recordEpgFailure(context: Context, at: Long) {
+        val prefs = getPrefs(context)
+        prefs.edit()
+            .putLong(KEY_EPG_LAST_FAILURE, at)
+            .putInt(KEY_EPG_FAIL_COUNT, prefs.getInt(KEY_EPG_FAIL_COUNT, 0) + 1)
+            .apply()
+    }
+
+    fun clearEpgFailure(context: Context) {
+        getPrefs(context).edit()
+            .putLong(KEY_EPG_LAST_FAILURE, 0L)
+            .putInt(KEY_EPG_FAIL_COUNT, 0)
+            .apply()
     }
 }

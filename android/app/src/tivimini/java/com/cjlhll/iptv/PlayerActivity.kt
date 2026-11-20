@@ -431,6 +431,10 @@ fun VideoPlayerScreen(
     // t154: perf-isolation switches (persisted; default on).
     var logoPrefetchEnabled by remember { mutableStateOf(Prefs.isLogoPrefetchEnabled(context)) }
     var logoLoadEnabled by remember { mutableStateOf(Prefs.isLogoLoadEnabled(context)) }
+    // t172 (F3): automatic playlist/EPG update policy (persisted; default 启动时).
+    var autoUpdatePlaylist by remember { mutableStateOf(Prefs.getAutoUpdatePlaylist(context)) }
+    var autoUpdateEpg by remember { mutableStateOf(Prefs.getAutoUpdateEpg(context)) }
+    var autoUpdateTick by remember { mutableIntStateOf(0) }
     var qualityDialogGroupIndex by remember { mutableIntStateOf(-1) }
     var infoBannerOpen by remember { mutableStateOf(false) }
     val channelSwitch = rememberChannelSwitchController()
@@ -787,6 +791,15 @@ fun VideoPlayerScreen(
         }
     }
 
+    // t172: start the auto-update policy once and surface its results as Toasts.
+    LaunchedEffect(Unit) {
+        AutoUpdateScheduler.start(context)
+        AutoUpdateScheduler.events.collect { message ->
+            android.widget.Toast.makeText(context, message, android.widget.Toast.LENGTH_SHORT).show()
+            autoUpdateTick++
+        }
+    }
+
     LaunchedEffect(Unit) {
         val epgSource = Prefs.getEpgSource(context)
         if (epgSource.isNotBlank()) {
@@ -816,6 +829,20 @@ fun VideoPlayerScreen(
                 }
 
                 val lastEpgUpdate = Prefs.getLastEpgUpdateTime(context)
+                // t172: automatic EPG refresh obeys the user's 自动更新 EPG choice + backoff. The
+                // manual "立即刷新 EPG" path sets shouldRefreshEpg and bypasses both.
+                val epgAutoDue = AutoUpdateConfig.shouldRefresh(
+                    interval = Prefs.getAutoUpdateEpg(context),
+                    lastSuccessAt = lastEpgUpdate,
+                    lastFailureAt = Prefs.getEpgLastFailure(context),
+                    failureCount = Prefs.getEpgFailCount(context),
+                    startupRefreshDone = true,
+                    now = now,
+                )
+                if (!shouldRefreshEpg.value && !epgAutoDue) {
+                    delay(10_000L)
+                    continue
+                }
                 val zone = ZoneId.systemDefault()
                 val lastDate = Instant.ofEpochMilli(lastEpgUpdate).atZone(zone).toLocalDate()
                 val nowDate = Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
@@ -1290,6 +1317,39 @@ fun VideoPlayerScreen(
             logoCacheSummary = logoCacheSummary,
             logoPrefetchEnabled = logoPrefetchEnabled,
             logoLoadEnabled = logoLoadEnabled,
+            autoUpdatePlaylistLabel = autoUpdatePlaylist.label,
+            autoUpdateEpgLabel = autoUpdateEpg.label,
+            lastUpdateSummary = run {
+                val now = System.currentTimeMillis()
+                val epg = AutoUpdateConfig.lastSuccessLabel(Prefs.getLastEpgUpdateTime(context), now)
+                val playlist = AutoUpdateConfig.lastSuccessLabel(Prefs.getPlaylistLastSuccess(context), now)
+                // autoUpdateTick keeps this line fresh after a manual refresh
+                autoUpdateTick
+                "上次更新：播放列表 $playlist · EPG $epg"
+            },
+            onCyclePlaylistInterval = {
+                autoUpdatePlaylist = AutoUpdateConfig.next(autoUpdatePlaylist)
+                Prefs.setAutoUpdatePlaylist(context, autoUpdatePlaylist)
+                android.widget.Toast.makeText(
+                    context, "自动更新播放列表：${autoUpdatePlaylist.label}", android.widget.Toast.LENGTH_SHORT
+                ).show()
+            },
+            onCycleEpgInterval = {
+                autoUpdateEpg = AutoUpdateConfig.next(autoUpdateEpg)
+                Prefs.setAutoUpdateEpg(context, autoUpdateEpg)
+                android.widget.Toast.makeText(
+                    context, "自动更新 EPG：${autoUpdateEpg.label}", android.widget.Toast.LENGTH_SHORT
+                ).show()
+            },
+            onRefreshPlaylistNow = {
+                android.widget.Toast.makeText(context, "正在刷新播放列表…", android.widget.Toast.LENGTH_SHORT).show()
+                AutoUpdateScheduler.refreshNow(context, playlist = true, epg = false)
+            },
+            onRefreshEpgNow = {
+                android.widget.Toast.makeText(context, "正在刷新 EPG…", android.widget.Toast.LENGTH_SHORT).show()
+                shouldRefreshEpg.value = true
+                AutoUpdateScheduler.refreshNow(context, playlist = false, epg = true)
+            },
             onToggleLogoPrefetch = { enabled ->
                 logoPrefetchEnabled = enabled
                 Prefs.setLogoPrefetchEnabled(context, enabled)

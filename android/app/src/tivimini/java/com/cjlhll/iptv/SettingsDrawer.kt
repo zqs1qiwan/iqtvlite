@@ -56,6 +56,14 @@ fun SettingsDrawer(
     logoLoadEnabled: Boolean = true,
     onToggleLogoPrefetch: (Boolean) -> Unit = {},
     onToggleLogoLoad: (Boolean) -> Unit = {},
+    // t172 (F3): automatic playlist/EPG updates
+    autoUpdatePlaylistLabel: String = "启动时",
+    autoUpdateEpgLabel: String = "启动时",
+    lastUpdateSummary: String = "",
+    onCyclePlaylistInterval: () -> Unit = {},
+    onCycleEpgInterval: () -> Unit = {},
+    onRefreshPlaylistNow: () -> Unit = {},
+    onRefreshEpgNow: () -> Unit = {},
     onClose: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -72,6 +80,8 @@ fun SettingsDrawer(
     val logoClearRequester = remember { FocusRequester() }
     val logoPrefetchRequester = remember { FocusRequester() }
     val logoLoadRequester = remember { FocusRequester() }
+    val playlistIntervalRequester = remember { FocusRequester() }
+    val epgIntervalRequester = remember { FocusRequester() }
 
     LaunchedEffect(visible) {
         if (visible) {
@@ -152,6 +162,43 @@ fun SettingsDrawer(
 
                     Spacer(modifier = Modifier.padding(8.dp))
 
+                    // t172: 数据与更新 group (auto playlist/EPG refresh + manual refresh).
+                    SettingsGroupHeader(text = "数据与更新")
+                    SettingsItem(
+                        text = "自动更新播放列表：$autoUpdatePlaylistLabel",
+                        focusRequester = playlistIntervalRequester,
+                        tag = "settings_auto_playlist",
+                        onClick = onCyclePlaylistInterval
+                    )
+                    SettingsItem(
+                        text = "立即刷新播放列表",
+                        focusRequester = null,
+                        tag = "settings_refresh_playlist",
+                        onClick = onRefreshPlaylistNow
+                    )
+                    SettingsItem(
+                        text = "自动更新 EPG：$autoUpdateEpgLabel",
+                        focusRequester = epgIntervalRequester,
+                        tag = "settings_auto_epg",
+                        onClick = onCycleEpgInterval
+                    )
+                    SettingsItem(
+                        text = "立即刷新 EPG",
+                        focusRequester = null,
+                        tag = "settings_refresh_epg",
+                        onClick = onRefreshEpgNow
+                    )
+                    if (lastUpdateSummary.isNotBlank()) {
+                        Text(
+                            text = lastUpdateSummary,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(start = 16.dp, top = 2.dp, bottom = 6.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.padding(8.dp))
+
+                    SettingsGroupHeader(text = "基础")
                     // t133: 最近观看 entry (list + clear live in RecentChannelsDialog).
                     SettingsItem(
                         text = if (recentCount > 0) "最近观看（$recentCount）" else "最近观看",
@@ -162,13 +209,8 @@ fun SettingsDrawer(
 
                     Spacer(modifier = Modifier.padding(8.dp))
 
-                    // t126: 台标与缓存 (minimal single item; group skeleton can host it later)
-                    Text(
-                        text = "台标与缓存",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.padding(top = 8.dp, bottom = 6.dp)
-                    )
+                    // t126/t172: 台标与缓存 group
+                    SettingsGroupHeader(text = "台标与缓存")
                     if (logoCacheSummary.isNotBlank()) {
                         Text(
                             text = logoCacheSummary,
@@ -218,6 +260,17 @@ fun SettingsDrawer(
             }
         }
     }
+}
+
+@Composable
+private fun SettingsGroupHeader(text: String) {
+    // t172: flat group title (0dp, no focus — it is a label, not a control).
+    Text(
+        text = text,
+        style = MaterialTheme.typography.titleMedium,
+        color = MaterialTheme.colorScheme.onSurface,
+        modifier = Modifier.padding(start = 16.dp, top = 10.dp, bottom = 4.dp)
+    )
 }
 
 @Composable
