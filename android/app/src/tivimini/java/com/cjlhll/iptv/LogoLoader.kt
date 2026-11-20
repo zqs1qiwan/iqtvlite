@@ -56,7 +56,15 @@ object LogoLoader {
     private var client: OkHttpClient? = null
     private val semaphore = kotlinx.coroutines.sync.Semaphore(3) // 限制并发数，防止UI卡顿
     private const val MAX_DISK_BYTES = 32L * 1024 * 1024
+    private const val PRUNE_INTERVAL_MS = 60_000L
+    private const val PRUNE_EVERY_WRITES = 24
+
+    /** Bumped by clearMemory/clearDisk/clearAll only (whole-cache invalidation). */
     @Volatile private var cacheGeneration = 0
+    /** Per-url invalidation stamps, so refreshGroup/invalidate do not nuke unrelated in-flight loads. */
+    private val urlGeneration = HashMap<String, Int>()
+    private val writeCount = java.util.concurrent.atomic.AtomicInteger(0)
+    @Volatile private var lastPruneAt = 0L
 
     private val inFlight = HashSet<String>()
 
@@ -148,6 +156,8 @@ object LogoLoader {
         synchronized(cache) { cache.clear() }
     }
 
+    private fun urlGenOf(url: String): Int = synchronized(urlGeneration) { urlGeneration[url] ?: 0 }
+
     suspend fun clearDisk(context: Context) = withContext(Dispatchers.IO) {
         cacheGeneration++
         try {
@@ -164,7 +174,8 @@ object LogoLoader {
     /** Drop both memory + disk entries for one logo url (all target sizes). */
     suspend fun invalidate(context: Context, url: String) {
         if (url.isBlank()) return
-        cacheGeneration++
+        // CACHE-02b: per-url stamp only — other urls' in-flight loads stay valid.
+        synchronized(urlGeneration) { urlGeneration[url] = (urlGeneration[url] ?: 0) + 1 }
         synchronized(cache) {
             cache.keys.filter { it.endsWith("|$url") }.toList().forEach { cache.remove(it) }
         }
@@ -191,6 +202,15 @@ object LogoLoader {
     internal fun memoryKeyForTest(url: String, w: Int, h: Int): String = memoryKey(url, w, h)
     internal fun diskKeyForTest(url: String, w: Int, h: Int): String = diskKey(url, w, h)
     internal fun sha256ForTest(value: String): String = sha256Hex(value)
+    internal fun cacheGenerationForTest(): Int = cacheGeneration
+    internal fun bumpGenerationForTest() { cacheGeneration++ }
+    internal fun urlGenerationForTest(url: String): Int = urlGenOf(url)
+    internal fun bumpUrlGenerationForTest(url: String) {
+        synchronized(urlGeneration) { urlGeneration[url] = (urlGeneration[url] ?: 0) + 1 }
+    }
+    /** Mirrors loadInternal's staleness rule so the rule itself is unit-testable. */
+    internal fun isStaleForTest(globalGen: Int, url: String, urlGen: Int): Boolean =
+        globalGen != cacheGeneration || urlGen != urlGenOf(url)
 
     private fun sha256Hex(value: String): String {
         val digest = MessageDigest.getInstance("SHA-256").digest(value.toByteArray(Charsets.UTF_8))
@@ -273,6 +293,8 @@ object LogoLoader {
         if (url.isBlank()) return null
         if (targetWidthPx <= 0 || targetHeightPx <= 0) return null
         val gen = cacheGeneration
+        val uGen = urlGenOf(url)
+        fun stale() = gen != cacheGeneration || uGen != urlGenOf(url)
 
         val memoryKey = memoryKey(url, targetWidthPx, targetHeightPx)
         getCached(memoryKey)?.let { return it }
@@ -294,11 +316,13 @@ object LogoLoader {
                     null
                 }
             }
-            if (bitmap != null) {
+            // CACHE-02a: a clear/invalidate may have happened while decoding from disk.
+            if (bitmap != null && !stale()) {
                 val imageBitmap = bitmap.asImageBitmap()
                 putCached(memoryKey, imageBitmap)
                 return imageBitmap
             }
+            if (bitmap != null) runCatching { diskFile.delete() }
         }
 
         return semaphore.withPermit {
@@ -314,11 +338,12 @@ object LogoLoader {
                         null
                     }
                 }
-                if (bitmap != null) {
+                if (bitmap != null && !stale()) {
                     val imageBitmap = bitmap.asImageBitmap()
                     putCached(memoryKey, imageBitmap)
                     return@withPermit imageBitmap
                 }
+                if (bitmap != null) runCatching { diskFile.delete() }
             }
 
             try {
@@ -354,14 +379,19 @@ object LogoLoader {
                     }
                 } ?: return@withPermit null
 
-                // CACHE-02: if a clear/invalidate happened while we were downloading, drop this result.
-                if (gen != cacheGeneration) return@withPermit null
+                // CACHE-02a: if a clear/invalidate happened while downloading, drop this result.
+                if (stale()) return@withPermit null
 
                 withContext(Dispatchers.IO) {
                     writeBitmapToDisk(diskFile, bitmap)
-                    pruneDiskIfNeeded(cacheDir(context))
+                    maybePruneDisk(cacheDir(context))
                 }
 
+                // CACHE-02a: TOCTOU between write and publish — re-check, then commit atomically.
+                if (stale()) {
+                    runCatching { diskFile.delete() }
+                    return@withPermit null
+                }
                 val imageBitmap = bitmap.asImageBitmap()
                 putCached(memoryKey, imageBitmap)
                 imageBitmap
@@ -377,21 +407,76 @@ object LogoLoader {
         return load(context, url, 160, 100)
     }
 
+    /**
+     * t137: urgent prefetch — the visible window + the selected neighbourhood. No truncation of the
+     * caller's list (PREFETCH-02), concurrency 2 (t136 CPU budget).
+     */
     suspend fun prefetch(context: Context, urls: List<String>, targetWidthPx: Int, targetHeightPx: Int) {
+        prefetchChunked(context, urls, targetWidthPx, targetHeightPx, concurrency = 2, limit = Int.MAX_VALUE)
+    }
+
+    /**
+     * t137: idle/low-priority prefetch — the rest of the group, in small batches with a pause between
+     * them so the browsing window keeps its CPU budget.
+     */
+    suspend fun prefetchBackground(
+        context: Context,
+        urls: List<String>,
+        targetWidthPx: Int,
+        targetHeightPx: Int,
+        batchSize: Int = 4,
+        batchGapMs: Long = 220,
+    ) {
+        prefetchChunked(context, urls, targetWidthPx, targetHeightPx, concurrency = 2, limit = 60, batchSize = batchSize, batchGapMs = batchGapMs)
+    }
+
+    private suspend fun prefetchChunked(
+        context: Context,
+        urls: List<String>,
+        targetWidthPx: Int,
+        targetHeightPx: Int,
+        concurrency: Int,
+        limit: Int,
+        batchSize: Int = concurrency,
+        batchGapMs: Long = 0L,
+    ) {
         if (targetWidthPx <= 0 || targetHeightPx <= 0) return
         if (urls.isEmpty()) return
+        val unique = urls.asSequence().map { it.trim() }.filter { it.isNotBlank() }.distinct().take(limit).toList()
+        if (unique.isEmpty()) return
 
         coroutineScope {
-            urls.asSequence().map { it.trim() }.filter { it.isNotBlank() }.distinct().take(80).toList()
-                .chunked(3)
-                .forEach { chunk ->
-                    currentCoroutineContext().ensureActive()
-                    chunk.map { url -> async { runCatching { load(context, url, targetWidthPx, targetHeightPx) } } }.awaitAll()
-                }
+            unique.chunked(batchSize).forEach { chunk ->
+                currentCoroutineContext().ensureActive()
+                chunk.map { url ->
+                    async {
+                        // CANCEL-01: never swallow cancellation.
+                        try {
+                            load(context, url, targetWidthPx, targetHeightPx)
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (_: Exception) {
+                            null
+                        }
+                    }
+                }.awaitAll()
+                if (batchGapMs > 0) delay(batchGapMs)
+            }
         }
     }
 
-    /** CACHE-02: keep the disk logo cache under MAX_DISK_BYTES (oldest files first). */
+    /**
+     * CACHE-02/PERF-02a: keep the disk cache under MAX_DISK_BYTES, but only scan at most once per
+     * [PRUNE_INTERVAL_MS] or every [PRUNE_EVERY_WRITES] writes — never a full directory scan per write.
+     */
+    private fun maybePruneDisk(dir: File) {
+        val now = System.currentTimeMillis()
+        val writes = writeCount.incrementAndGet()
+        if (writes % PRUNE_EVERY_WRITES != 0 && now - lastPruneAt < PRUNE_INTERVAL_MS) return
+        lastPruneAt = now
+        pruneDiskIfNeeded(dir)
+    }
+
     private fun pruneDiskIfNeeded(dir: File) {
         try {
             val files = dir.listFiles()?.filter { it.isFile && it.extension == "webp" } ?: return

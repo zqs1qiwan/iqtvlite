@@ -261,10 +261,10 @@ fun PlayerDrawer(
     val programListState = rememberLazyListState()
     val dateListState = rememberLazyListState()
 
-    // t126/t130 PREFETCH-01: prefetch = visible window + selected/current index ±8 + first 60, de-duped.
-    // snapshotFlow makes it incremental on scroll (debounced 200ms); keys include channels/selectedChannelUrl
-    // so a current channel at index >= 60 or after scrolling is never missed. All work happens in
-    // LogoLoader.prefetch on IO; closing the drawer cancels this effect (collectLatest).
+    // t137 PREFETCH-02 + t136 CPU budget:
+    //   urgent  = visible window ∪ selected±8 (≤16 logos), requested right away;
+    //   idle    = the first 60 of the group, requested in batches of 4 with a 220 ms gap, 1 s later,
+    //             and only while the list is not being scrolled (interaction pauses the filler).
     LaunchedEffect(visible, selectedGroup, channels, selectedChannelUrl) {
         if (!visible) return@LaunchedEffect
         val pxW = with(prefetchDensity) { 64.dp.roundToPx() }
@@ -274,14 +274,24 @@ fun PlayerDrawer(
                 delay(200)
                 val selectedIdx = channels.indexOfFirst { it.url == selectedChannelUrl }
                     .let { if (it >= 0) it else channelListState.firstVisibleItemIndex }
-                val indices = LinkedHashSet<Int>()
-                visibleIdx.forEach { if (it in channels.indices) indices.add(it) }
-                for (i in (selectedIdx - 8)..(selectedIdx + 8)) if (i in channels.indices) indices.add(i)
-                for (i in 0 until minOf(60, channels.size)) indices.add(i)
-                val urls = indices.sorted()
+
+                val urgent = LinkedHashSet<Int>()
+                visibleIdx.forEach { if (it in channels.indices) urgent.add(it) }
+                for (i in (selectedIdx - 8)..(selectedIdx + 8)) if (i in channels.indices) urgent.add(i)
+                val urgentUrls = urgent.take(16)
                     .mapNotNull { channels[it].logoUrl?.trim()?.takeIf { u -> u.isNotBlank() } }
                     .distinct()
-                if (urls.isNotEmpty()) LogoLoader.prefetch(context, urls, pxW, pxH)
+                if (urgentUrls.isNotEmpty()) LogoLoader.prefetch(context, urgentUrls, pxW, pxH)
+
+                // idle filler: first 60, skipping what the urgent pass already covered
+                val fillerUrls = (0 until minOf(60, channels.size))
+                    .mapNotNull { channels[it].logoUrl?.trim()?.takeIf { u -> u.isNotBlank() } }
+                    .distinct()
+                    .filterNot { it in urgentUrls }
+                if (fillerUrls.isNotEmpty()) {
+                    delay(1000)
+                    LogoLoader.prefetchBackground(context, fillerUrls, pxW, pxH)
+                }
             }
     }
 
