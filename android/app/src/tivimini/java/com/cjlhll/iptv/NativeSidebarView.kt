@@ -109,9 +109,11 @@ private class RowAdapter(
         val root: FrameLayout,
         val accent: View,
         val logo: ImageView?,
+        val logoLetter: TextView?,
         val primary: FocusWeightTextView,
         val secondary: TextView?,
-        val time: TextView?,
+        val timeStart: TextView?,
+        val timeEnd: TextView?,
     ) : RecyclerView.ViewHolder(root) {
         var boundUrl: String? = null
         var logoJob: Job? = null
@@ -130,25 +132,45 @@ private class RowAdapter(
 
         if (style == RowStyle.CHANNEL || style == RowStyle.PROGRAM) {
             val logoSz = if (style == RowStyle.CHANNEL) 40 else 20
+            val logoBox = FrameLayout(ctx)
             val logo = ImageView(ctx).apply {
                 scaleType = ImageView.ScaleType.CENTER_INSIDE
                 background = logoPlaceholder(ctx)
-                layoutParams = FrameLayout.LayoutParams(dp(ctx, logoSz), dp(ctx, logoSz), Gravity.START or Gravity.CENTER_VERTICAL).apply { marginStart = dp(ctx, 8) }
+                layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
             }
-            root.addView(logo)
-            var startX = dp(ctx, logoSz + 8 + 8)
-            val time = if (style == RowStyle.PROGRAM) TextView(ctx).apply {
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
-                setTextColor(COLOR_MUTED)
-                maxLines = 1
-                gravity = Gravity.CENTER_VERTICAL
-                isDuplicateParentStateEnabled = true
-            } else null
-            if (time != null) {
-                val timeWidth = dp(ctx, 42)
-                root.addView(time, FrameLayout.LayoutParams(timeWidth, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.START or Gravity.CENTER_VERTICAL).apply { marginStart = startX })
-                // LOGO-04: v3 time column 42dp, title starts at 86dp.
-                startX += timeWidth + dp(ctx, 8)
+            logoBox.addView(logo)
+            // LOGO-06: first-letter placeholder shown until the bitmap arrives.
+            val letter = TextView(ctx).apply {
+                setTextColor(COLOR_SUBTLE)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, if (style == RowStyle.CHANNEL) 16f else 10f)
+                setTypeface(null, Typeface.BOLD)
+                gravity = Gravity.CENTER
+                layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+            }
+            logoBox.addView(letter)
+            // LOGO-12: logo x=12dp; channel text starts at 64dp.
+            root.addView(logoBox, FrameLayout.LayoutParams(dp(ctx, logoSz), dp(ctx, logoSz), Gravity.START or Gravity.CENTER_VERTICAL).apply { marginStart = dp(ctx, 12) })
+            var startX = dp(ctx, 12 + logoSz + 12)
+            val timeStart: TextView?
+            val timeEnd: TextView?
+            if (style == RowStyle.PROGRAM) {
+                // LOGO-04: two-line time column (start 12sp / end 11sp), title starts at 86dp.
+                val timeBox = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_VERTICAL }
+                timeStart = TextView(ctx).apply {
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f); setTextColor(COLOR_SUBTLE); maxLines = 1
+                    ellipsize = android.text.TextUtils.TruncateAt.END; isDuplicateParentStateEnabled = true
+                }
+                timeEnd = TextView(ctx).apply {
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f); setTextColor(COLOR_MUTED); maxLines = 1
+                    ellipsize = android.text.TextUtils.TruncateAt.END; isDuplicateParentStateEnabled = true
+                }
+                timeBox.addView(timeStart)
+                timeBox.addView(timeEnd)
+                root.addView(timeBox, FrameLayout.LayoutParams(dp(ctx, 42), ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.START or Gravity.CENTER_VERTICAL).apply { marginStart = startX })
+                startX += dp(ctx, 42)
+            } else {
+                timeStart = null
+                timeEnd = null
             }
             val primary = FocusWeightTextView(ctx).apply {
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, if (style == RowStyle.CHANNEL) 16f else 15f)
@@ -178,7 +200,7 @@ private class RowAdapter(
                     marginStart = startX; marginEnd = dp(ctx, 8)
                 })
             }
-            return H(root, accent, logo, primary, secondary, time)
+            return H(root, accent, logo, letter, primary, secondary, timeStart, timeEnd)
         } else {
             val primary = FocusWeightTextView(ctx).apply {
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
@@ -191,7 +213,7 @@ private class RowAdapter(
             root.addView(primary, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT).apply {
                 marginStart = dp(ctx, 12); marginEnd = dp(ctx, 8)
             })
-            return H(root, accent, null, primary, null, null)
+            return H(root, accent, null, null, primary, null, null, null)
         }
     }
 
@@ -200,8 +222,18 @@ private class RowAdapter(
     override fun onBindViewHolder(holder: H, position: Int) {
         val row = rows[position]
         holder.primary.text = if (row.selected) "▶ ${row.text}" else row.text
-        holder.secondary?.text = row.secondary.orEmpty()
-        holder.time?.text = row.secondary.orEmpty()
+        val secondary = row.secondary.orEmpty()
+        holder.secondary?.text = if (row.selected && style == RowStyle.CHANNEL && secondary.isNotBlank()) {
+            "$secondary · 播放中"
+        } else {
+            secondary
+        }
+        holder.logoLetter?.text = row.text.substringAfter(". ", row.text).firstOrNull()?.toString().orEmpty()
+        if (holder.timeStart != null && holder.timeEnd != null) {
+            val parts = secondary.split("-", limit = 2)
+            holder.timeStart.text = parts.getOrNull(0).orEmpty()
+            holder.timeEnd.text = parts.getOrNull(1).orEmpty()
+        }
         holder.accent.isSelected = row.selected
         holder.accent.isActivated = row.now
         holder.root.onFocusChangeListener = View.OnFocusChangeListener { _, hasFocus ->
@@ -223,25 +255,31 @@ private class RowAdapter(
         holder.logoJob?.cancel()
         if (url.isBlank()) {
             logo.setImageDrawable(logoPlaceholder(holder.root.context))
+            holder.logoLetter?.visibility = View.VISIBLE
             holder.boundUrl = null
             return
         }
         val ctx = holder.root.context
-        val w = dp(ctx, if (style == RowStyle.CHANNEL) 80 else 40)
-        // LOGO-02: square decode + CENTER_INSIDE so wide logos are not cropped.
-        val h = dp(ctx, if (style == RowStyle.CHANNEL) 80 else 40)
+        // LOGO-11: decode at the view's pixel size (80x80 / 40x40), not dp*density (2x oversample).
+        val w = if (style == RowStyle.CHANNEL) 80 else 40
+        val h = if (style == RowStyle.CHANNEL) 80 else 40
         val cached = LogoLoader.getInMemory(url, w, h)
         if (cached != null) {
             logo.setImageBitmap(cached.asAndroidBitmap())
+            holder.logoLetter?.visibility = View.GONE
             holder.boundUrl = url
             return
         }
         logo.setImageDrawable(logoPlaceholder(ctx))
+        holder.logoLetter?.visibility = View.VISIBLE
         holder.boundUrl = url
         val appCtx = ctx.applicationContext
         holder.logoJob = scope.launch {
             val bmp = logoGate.withPermit { LogoLoader.load(appCtx, url, w, h) }
-            if (holder.boundUrl == url && bmp != null) logo.setImageBitmap(bmp.asAndroidBitmap())
+            if (holder.boundUrl == url && bmp != null) {
+                logo.setImageBitmap(bmp.asAndroidBitmap())
+                holder.logoLetter?.visibility = View.GONE
+            }
         }
     }
 
@@ -348,12 +386,15 @@ class NativeSidebarView(
         val base = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             background = panelBg(context)
+            clipToOutline = true
         }
         panel.addView(base, LayoutParams(dp(633), ViewGroup.LayoutParams.MATCH_PARENT))
         base.addView(channelsColumn, LinearLayout.LayoutParams(dp(300), ViewGroup.LayoutParams.MATCH_PARENT))
         base.addView(programsColumn, LinearLayout.LayoutParams(dp(300), ViewGroup.LayoutParams.MATCH_PARENT))
         groupsColumn.background = panelBg(context)
+        groupsColumn.clipToOutline = true
         datesColumn.background = panelBg(context)
+        datesColumn.clipToOutline = true
         groupsColumn.layoutParams = LayoutParams(dp(151), ViewGroup.LayoutParams.MATCH_PARENT, Gravity.START)
         datesColumn.layoutParams = LayoutParams(dp(120), ViewGroup.LayoutParams.MATCH_PARENT, Gravity.START).apply {
             leftMargin = dp(513)
