@@ -46,7 +46,7 @@ import androidx.compose.ui.unit.Dp
 
 object LogoLoader {
     // t42: cap the in-memory bitmap cache a bit lower (96) to help PSS; disk cache still serves misses.
-    private const val MAX_ENTRIES = 96
+    private const val MAX_ENTRIES = 128
     private var client: OkHttpClient? = null
     private val semaphore = kotlinx.coroutines.sync.Semaphore(3) // 限制并发数，防止UI卡顿
 
@@ -353,7 +353,7 @@ fun ChannelLogo(
         if (loaded != null) fallbackJob.cancel()
     }
 
-    val shape = RoundedCornerShape(10.dp)
+    val shape = RoundedCornerShape(0.dp)
     val bg = MaterialTheme.colorScheme.surfaceVariant
 
     if (loaded != null) {

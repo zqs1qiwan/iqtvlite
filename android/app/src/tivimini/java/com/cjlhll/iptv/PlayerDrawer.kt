@@ -129,7 +129,7 @@ fun PlayerDrawer(
     val context = LocalContext.current
     val container = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f)
     val scrim = Color.Transparent
-    val shape = RoundedCornerShape(topEnd = 18.dp, bottomEnd = 18.dp)
+    val shape = RoundedCornerShape(0.dp)
 
     var showGroups by remember { mutableStateOf(false) }
     var showDates by remember { mutableStateOf(false) }
@@ -933,7 +933,7 @@ private fun DrawerGroupItem(
             .fillMaxWidth()
             .padding(vertical = 3.dp)
             .let { m -> if (focusRequester != null) m.focusRequester(focusRequester) else m }
-            .background(bg, RoundedCornerShape(12.dp))
+            .background(bg, RoundedCornerShape(0.dp))
             .onFocusChanged {
                 if (it.isFocused) onFocused()
                 focused = it.isFocused
@@ -978,7 +978,7 @@ private fun DrawerChannelItem(
             .fillMaxWidth()
             .padding(vertical = 3.dp)
             .let { m -> if (focusRequester != null) m.focusRequester(focusRequester) else m }
-            .background(bg, RoundedCornerShape(12.dp))
+            .background(bg, RoundedCornerShape(0.dp))
             .onFocusChanged {
                 if (it.isFocused) onFocused()
                 focused = it.isFocused
@@ -1049,13 +1049,13 @@ private fun ThinProgressBar(
     Box(
         modifier = modifier
             .height(3.dp)
-            .background(track, RoundedCornerShape(999.dp))
+            .background(track, RoundedCornerShape(0.dp))
     ) {
         Box(
             modifier = Modifier
                 .fillMaxHeight()
                 .fillMaxWidth(clamped)
-                .background(fill, RoundedCornerShape(999.dp))
+                .background(fill, RoundedCornerShape(0.dp))
         )
     }
 }
@@ -1104,7 +1104,7 @@ private fun DrawerDateItem(
             .fillMaxWidth()
             .padding(vertical = 3.dp)
             .let { m -> if (focusRequester != null) m.focusRequester(focusRequester) else m }
-            .background(bg, RoundedCornerShape(12.dp))
+            .background(bg, RoundedCornerShape(0.dp))
             .onFocusChanged {
                 if (it.isFocused) onFocused()
                 focused = it.isFocused
@@ -1152,7 +1152,7 @@ private fun DrawerProgramItem(
             .fillMaxWidth()
             .padding(vertical = 3.dp)
             .let { m -> if (focusRequester != null) m.focusRequester(focusRequester) else m }
-            .background(bg, RoundedCornerShape(12.dp))
+            .background(bg, RoundedCornerShape(0.dp))
             .onFocusChanged {
                 if (it.isFocused) onFocused()
                 focused = it.isFocused

@@ -38,7 +38,7 @@ fun ChannelInfoBanner(
     // 抽屉是 surface alpha 0.92f
     val containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f)
     // 底部浮窗，上面两个角圆角
-    val shape = RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp)
+    val shape = RoundedCornerShape(0.dp)
 
     val content: @Composable () -> Unit = {
         Box(
@@ -199,7 +199,7 @@ private fun CatchupProgressRow(
                     .fillMaxWidth()
                     .height(4.dp)
                     .align(Alignment.Center)
-                    .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.22f), RoundedCornerShape(2.dp))
+                    .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.22f), RoundedCornerShape(0.dp))
             )
 
             // Progress Fill
@@ -208,7 +208,7 @@ private fun CatchupProgressRow(
                     .fillMaxWidth(progress)
                     .height(4.dp)
                     .align(Alignment.CenterStart)
-                    .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(2.dp))
+                    .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(0.dp))
             )
 
             // Dot
@@ -253,13 +253,13 @@ private fun BannerProgressBar(
             .padding(top = 4.dp)
             .fillMaxWidth()
             .height(3.dp)
-            .background(track, RoundedCornerShape(2.dp))
+            .background(track, RoundedCornerShape(0.dp))
     ) {
         Box(
             modifier = Modifier
                 .fillMaxHeight()
                 .fillMaxWidth(clamped)
-                .background(fill, RoundedCornerShape(2.dp))
+                .background(fill, RoundedCornerShape(0.dp))
         )
     }
 }

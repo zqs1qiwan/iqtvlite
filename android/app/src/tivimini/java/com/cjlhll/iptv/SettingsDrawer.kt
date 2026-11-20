@@ -49,7 +49,7 @@ fun SettingsDrawer(
 ) {
     val container = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)
     val scrim = Color.Transparent
-    val shape = RoundedCornerShape(topStart = 18.dp, bottomStart = 18.dp)
+    val shape = RoundedCornerShape(0.dp)
 
     val sourceConfigRequester = remember { FocusRequester() }
     val epgSettingsRequester = remember { FocusRequester() }
@@ -152,7 +152,7 @@ private fun SettingsItem(
         modifier = Modifier
             .fillMaxWidth()
             .let { m -> if (focusRequester != null) m.focusRequester(focusRequester) else m }
-            .background(bg, RoundedCornerShape(2.dp))
+            .background(bg, RoundedCornerShape(0.dp))
             .onFocusChanged { focused = it.isFocused }
             .focusable()
             .clickable {

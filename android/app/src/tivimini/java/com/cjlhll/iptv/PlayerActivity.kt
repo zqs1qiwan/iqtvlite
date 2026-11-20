@@ -97,11 +97,9 @@ class PlayerActivity : ComponentActivity() {
         super.onStop()
     }
     private var onChannelStep: ((Int) -> Boolean)? = null
-    private var setDrawerOpen: ((Boolean) -> Unit)? = null
     private var isDrawerOpen: Boolean = false
     private val sidebarController = SidebarController()
     private var drawerActiveColumn: DrawerColumn? = null
-    private var focusToDrawerChannels: (() -> Unit)? = null
     private var setSettingsDrawerOpen: ((Boolean) -> Unit)? = null
     private var isSettingsDrawerOpen: Boolean = false
     private var setQualityDialogOpen: ((Boolean) -> Unit)? = null
@@ -174,10 +172,8 @@ class PlayerActivity : ComponentActivity() {
                         sidebarController = sidebarController,
                         setOnChannelStep = { onChannelStep = it },
                         setOnNumberJump = { onNumberJump = it },
-                        setDrawerOpenController = { setDrawerOpen = it },
                         onDrawerOpenChanged = { isDrawerOpen = it },
                         onDrawerActiveColumnChanged = { drawerActiveColumn = it },
-                        setFocusToDrawerChannelsController = { focusToDrawerChannels = it },
                         setSettingsDrawerOpenController = { setSettingsDrawerOpen = it },
                         onSettingsDrawerOpenChanged = { isSettingsDrawerOpen = it },
                         setQualityDialogOpenController = { setQualityDialogOpen = it },
@@ -339,10 +335,8 @@ fun VideoPlayerScreen(
     sidebarController: SidebarController,
     setOnChannelStep: (((Int) -> Boolean)?) -> Unit,
     setOnNumberJump: (((Int) -> Boolean)?) -> Unit,
-    setDrawerOpenController: (((Boolean) -> Unit)?) -> Unit,
     onDrawerOpenChanged: (Boolean) -> Unit,
     onDrawerActiveColumnChanged: (DrawerColumn?) -> Unit,
-    setFocusToDrawerChannelsController: (() -> Unit) -> Unit,
     setSettingsDrawerOpenController: (((Boolean) -> Unit)?) -> Unit,
     onSettingsDrawerOpenChanged: (Boolean) -> Unit,
     setQualityDialogOpenController: (((Boolean) -> Unit)?) -> Unit,
@@ -555,13 +549,10 @@ fun VideoPlayerScreen(
     BindChannelSwitchLoading(channelSwitch, player)
 
     DisposableEffect(Unit) {
-        setDrawerOpenController { open -> sidebarController.setDrawerOpen(open) }
-        setFocusToDrawerChannelsController(focusToChannels)
         setSettingsDrawerOpenController { settingsDrawerOpen = it }
         setQualityDialogOpenController { qualityDialogOpen = it }
         setInfoBannerOpenController { infoBannerOpen = it }
         onDispose {
-            setDrawerOpenController(null)
             setSettingsDrawerOpenController(null)
             setQualityDialogOpenController(null)
             setInfoBannerOpenController(null)
@@ -1246,7 +1237,7 @@ private fun CatchupProgressBar(
     val endText = catchupTimeFormatter.format(Instant.ofEpochMilli(endMillis).atZone(zone))
 
     val containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f)
-    val shape = RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp)
+    val shape = RoundedCornerShape(0.dp)
     val bottomPadding = if (isBottomPaddingNeeded) 20.dp else 4.dp
 
     Box(
@@ -1280,7 +1271,7 @@ private fun CatchupProgressBar(
                         .fillMaxWidth()
                         .height(4.dp)
                         .align(Alignment.Center)
-                        .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.22f), RoundedCornerShape(2.dp))
+                        .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.22f), RoundedCornerShape(0.dp))
                 )
 
                 // Progress Fill
@@ -1289,7 +1280,7 @@ private fun CatchupProgressBar(
                         .fillMaxWidth(progress)
                         .height(4.dp)
                         .align(Alignment.CenterStart)
-                        .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(2.dp))
+                        .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(0.dp))
                 )
 
                 // Dot
