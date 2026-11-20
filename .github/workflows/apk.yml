@@ -14,6 +14,10 @@ on:
         description: Build separate validation applicationId without replacing installed data
         type: boolean
         default: true
+      build_ffmpeg_audio:
+        description: Also build the Media3 FFmpeg audio-only decoder AAR (MP2/MP3 fallback), upload as artifact
+        type: boolean
+        default: false
 
 jobs:
   build-apk:
@@ -130,3 +134,36 @@ jobs:
           files: android/app/build/outputs/apk/debug/app-debug.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-ffmpeg-audio:
+    name: Build Media3 FFmpeg audio AAR
+    if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.build_ffmpeg_audio == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+      - uses: nttld/setup-ndk@v1
+        id: ndk
+        with:
+          ndk-version: r27
+      - name: Install build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build cmake git curl unzip
+      - name: Cache FFmpeg source
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/media3/libraries/decoder_ffmpeg/src/main/jni/ffmpeg
+          key: ffmpeg-release-6.0-${{ runner.os }}
+      - name: Fetch media3 1.11.1
+        run: git clone --depth 1 --branch "1.11.1" https://github.com/androidx/media.git media3
+      - name: Build FFmpeg + decoder_ffmpeg AAR
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+        run: bash scripts/build_media3_ffmpeg_audio.sh "$GITHUB_WORKSPACE/media3" "$ANDROID_NDK_HOME" 21
+      - name: Upload AAR
+        uses: actions/upload-artifact@v4
+        with:
+          name: media3-decoder-ffmpeg-aar
+          path: media3/libraries/decoder_ffmpeg/build/outputs/aar/*.aar
+          if-no-files-found: error
