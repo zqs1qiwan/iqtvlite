@@ -76,6 +76,8 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer-rtsp:1.11.1")
     implementation("androidx.media3:media3-datasource-okhttp:1.11.1")
     implementation("androidx.media3:media3-ui:1.11.1")
+    // MP2/MP3/AAC software audio fallback (Media3 FFmpeg audio extension, LGPL; arm64+armv7 only).
+    implementation(files("libs/lib-decoder-ffmpeg-release.aar"))
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("androidx.core:core-ktx:1.16.0")
     implementation("androidx.appcompat:appcompat:1.7.0")

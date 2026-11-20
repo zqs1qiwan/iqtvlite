@@ -1,0 +1,22 @@
+FFmpeg / Media3 FFmpeg audio extension — third-party licence notice
+==================================================================
+
+This application bundles the Media3 ExoPlayer FFmpeg audio decoder extension
+(`androidx.media3.decoder.ffmpeg`, Apache-2.0) together with FFmpeg
+(https://ffmpeg.org), which is licensed under the GNU Lesser General Public
+License, version 2.1 or later (LGPL-2.1-or-later).
+
+The FFmpeg libraries are built WITHOUT --enable-gpl (no GPL-only components) and
+are loaded dynamically as shared libraries (`libffmpegJNI.so`) bundled in this APK.
+
+You are entitled to the corresponding source code of the LGPL-covered FFmpeg
+components. FFmpeg source: https://ffmpeg.org/download.html (release/6.0 series)
+and https://github.com/androidx/media (libraries/decoder_ffmpeg).
+On written request the maintainers will provide the exact FFmpeg source used to
+build the bundled binaries.
+
+This notice is provided in addition to any other licence files shipped with the
+application. The FFmpeg LGPL-2.1 full text is available at:
+https://www.gnu.org/licenses/old-licenses/lgpl-2.1.txt
+
+No warranty is provided for FFmpeg; see the LGPL for details.

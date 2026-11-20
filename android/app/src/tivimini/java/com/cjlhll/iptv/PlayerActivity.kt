@@ -453,6 +453,10 @@ fun VideoPlayerScreen(
 
         val renderersFactory = DefaultRenderersFactory(context)
             .setEnableDecoderFallback(true)
+            // t117: use the FFmpeg audio extension ONLY as a fallback when the platform decoder
+            // can't decode the track (e.g. MP2 / audio-mpeg-L2). ON (not PREFER) keeps AVC/AAC on
+            // MediaCodec so hardware decode and A/V sync are unchanged.
+            .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
             // Removed experimental MediaCodec video pre-warming: it eagerly creates and warms a video
             // decoder at startup, which on this weak v7a box costs seconds of cold start and a CPU
             // spike. The normal first-frame path is faster overall here.
