@@ -28,51 +28,11 @@ object BackgroundSourceUpdater {
     private val httpClient = NetUtil.ipv4OkHttpClient
     private val playlistRefreshMutex = Mutex()
 
-    @Volatile
-    private var startupRefreshScheduled = false
-
     private val _playlistUpdated = MutableSharedFlow<String>(extraBufferCapacity = 1)
     val playlistUpdated: SharedFlow<String> = _playlistUpdated.asSharedFlow()
 
     private val _epgUpdated = MutableSharedFlow<EpgData>(extraBufferCapacity = 1)
     val epgUpdated: SharedFlow<EpgData> = _epgUpdated.asSharedFlow()
-
-    fun scheduleStartupRefresh(context: Context) {
-        if (startupRefreshScheduled) return
-        startupRefreshScheduled = true
-
-        val appContext = context.applicationContext
-        // t46: run the two startup refreshes in INDEPENDENT coroutines. t42 used a single coroutine,
-        // so the EPG refresh was serialized behind the (possibly slow) playlist download+parse and
-        // its "12s" delay was effectively >=20s. Independent delays fire EPG ~12s after start.
-        scope.launch {
-            val liveSource = Prefs.getLiveSource(appContext)
-            if (liveSource.isNotBlank()) {
-                // t42: defer the automatic startup network playlist refresh so its download+parse does
-                // not contend with cold start / the first video frame (startup CPU spike 86-270%).
-                // Foreground already reads the cached playlist immediately.
-                delay(PLAYLIST_STARTUP_DELAY_MS)
-                Log.i(TAG, "startup playlist refresh (delayed)")
-                refreshPlaylist(appContext, liveSource)
-            }
-        }
-        scope.launch {
-            val epgSource = Prefs.getEpgSource(appContext)
-            if (epgSource.isNotBlank()) {
-                delay(EPG_STARTUP_DELAY_MS)
-                Log.i(TAG, "startup epg refresh (delayed)")
-                refreshEpg(appContext, epgSource)
-            }
-        }
-    }
-
-    fun scheduleRefresh(context: Context, delayMs: Long = EPG_STARTUP_DELAY_MS) {
-        val appContext = context.applicationContext
-        scope.launch {
-            if (delayMs > 0) delay(delayMs)
-            refreshAll(appContext)
-        }
-    }
 
     suspend fun refreshPlaylistUrgent(context: Context): Boolean {
         val liveSource = Prefs.getLiveSource(context)
@@ -80,22 +40,6 @@ object BackgroundSourceUpdater {
         return refreshPlaylist(context, liveSource)
     }
 
-    suspend fun refreshAll(context: Context) {
-        val liveSource = Prefs.getLiveSource(context)
-        val epgSource = Prefs.getEpgSource(context)
-        if (liveSource.isBlank() && epgSource.isBlank()) return
-
-        Log.i(TAG, "refresh all begin. live=${liveSource.isNotBlank()} epg=${epgSource.isNotBlank()}")
-
-        if (liveSource.isNotBlank()) {
-            refreshPlaylist(context, liveSource)
-        }
-        if (epgSource.isNotBlank()) {
-            refreshEpg(context, epgSource)
-        }
-
-        Log.i(TAG, "refresh all finished")
-    }
 
     suspend fun refreshPlaylist(context: Context, liveSource: String): Boolean {
         return playlistRefreshMutex.withLock {

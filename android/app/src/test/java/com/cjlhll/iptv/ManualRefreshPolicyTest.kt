@@ -34,13 +34,16 @@ class ManualRefreshPolicyTest {
     }
 
     @Test
-    fun theSchedulerIsTheOnlyRefreshPath() {
-        assertTrue(ManualRefreshPolicy.usesSingleRefreshPath(schedulerUsed = true, legacyRefreshAllUsed = false))
-        assertFalse(
-            "the legacy refreshAll() path must not run alongside the scheduler",
-            ManualRefreshPolicy.usesSingleRefreshPath(schedulerUsed = true, legacyRefreshAllUsed = true)
-        )
-        assertFalse(ManualRefreshPolicy.usesSingleRefreshPath(schedulerUsed = false, legacyRefreshAllUsed = true))
+    fun onlyOneNetworkPassRunsAtATime() {
+        // t189 (SOURCE-SAVE-02): a tick / saved source / manual refresh share one ticket.
+        val gate = ManualRefreshPolicy.RefreshGate()
+        assertTrue("first caller owns the pass", gate.tryEnter())
+        assertTrue(gate.isInFlight())
+        assertFalse("a concurrent pass is rejected", gate.tryEnter())
+        gate.exit()
+        assertFalse(gate.isInFlight())
+        assertTrue("after the pass finishes a new one may start", gate.tryEnter())
+        gate.exit()
     }
 
     @Test

@@ -38,8 +38,12 @@ object AutoUpdateScheduler {
 
     @Volatile private var started = false
     @Volatile private var startupDone = false
+    /** t189 (SOURCE-SAVE-02): only one network pass at a time, even across tick/save/manual. */
+    private val refreshGate = ManualRefreshPolicy.RefreshGate()
 
-    private val _events = MutableSharedFlow<String>(extraBufferCapacity = 4)
+    // t189 (SOURCE-SAVE-02): replay = 1 so an Activity created AFTER the refresh (MainActivity
+    // finishing → PlayerActivity starting) still receives the "源已更新" result instead of missing it.
+    private val _events = MutableSharedFlow<String>(replay = 1, extraBufferCapacity = 4)
     val events: SharedFlow<String> = _events.asSharedFlow()
 
     /** Idempotent: starts the policy loop once per process (never on the main thread). */
@@ -71,23 +75,43 @@ object AutoUpdateScheduler {
      */
     fun onSourceChanged(context: Context) {
         val appContext = context.applicationContext
-        startupDone = false
         scope.launch {
             mutex.withLock {
-                val live = Prefs.getLiveSource(appContext)
-                if (live.isNotBlank()) {
-                    val ok = runCatching { BackgroundSourceUpdater.refreshPlaylistUrgent(appContext) }
-                        .getOrDefault(false)
-                    onPlaylistResult(appContext, ok)
+                if (!refreshGate.tryEnter()) return@withLock
+                // t189 (SOURCE-SAVE-02): the startup gate is touched INSIDE the lock, so a concurrent
+                // 60 s tick can no longer observe "reset but not yet done" and start a second pass.
+                startupDone = false
+                var allOk = true
+                var attempted = false
+                try {
+                    val live = Prefs.getLiveSource(appContext)
+                    if (live.isNotBlank()) {
+                        attempted = true
+                        val ok = runCatching { BackgroundSourceUpdater.refreshPlaylistUrgent(appContext) }
+                            .getOrDefault(false)
+                        onPlaylistResult(appContext, ok)
+                        if (!ok) allOk = false
+                    }
+                    val epg = Prefs.getEpgSource(appContext)
+                    if (epg.isNotBlank()) {
+                        attempted = true
+                        val data = runCatching { BackgroundSourceUpdater.refreshEpg(appContext, epg) }.getOrNull()
+                        onEpgResult(appContext, data != null)
+                        if (data == null) allOk = false
+                    }
+                } finally {
+                    startupDone = true
+                    refreshGate.exit()
                 }
-                val epg = Prefs.getEpgSource(appContext)
-                if (epg.isNotBlank()) {
-                    val data = runCatching { BackgroundSourceUpdater.refreshEpg(appContext, epg) }.getOrNull()
-                    onEpgResult(appContext, data != null)
-                }
+                // t189 (SOURCE-EVENT-01): never claim success when something failed.
+                _events.tryEmit(
+                    when {
+                        !attempted -> "源未配置"
+                        allOk -> "源已更新"
+                        else -> "源更新失败"
+                    }
+                )
             }
-            startupDone = true
-            _events.tryEmit("源已更新")
         }
     }
 
@@ -96,6 +120,9 @@ object AutoUpdateScheduler {
         val appContext = context.applicationContext
         scope.launch {
             mutex.withLock {
+                // t189: a manual request must not stack on top of a running automatic/save pass.
+                if (!refreshGate.tryEnter()) return@withLock
+                try {
                 if (playlist) {
                     val ok = BackgroundSourceUpdater.refreshPlaylistUrgent(appContext)
                     onPlaylistResult(appContext, ok)
@@ -108,27 +135,26 @@ object AutoUpdateScheduler {
                     onEpgResult(appContext, ok)
                     _events.tryEmit(if (ok) "EPG已更新" else "EPG更新失败")
                 }
+                } finally {
+                    refreshGate.exit()
+                }
             }
         }
     }
 
     /**
-     * t176 (STARTUP-RESET-01): a source change or OFF→periodic switch must allow a new startup pass.
-     * Runs off the main thread, so the caller never blocks the UI.
+     * t189 (MANUAL-POLICY-01): THE single manual-EPG entry point. Every caller (settings row, EPG
+     * settings row, legacy flag) goes through here so one user action can only ever mean one download.
      */
-    fun resetStartupFlag(context: Context) {
-        startupDone = false
-        val appContext = context.applicationContext
-        scope.launch {
-            delay(STARTUP_DELAY_MS)
-            runDue(appContext, startup = true)
-        }
+    fun requestManualEpg(context: Context) {
+        refreshNow(context, playlist = false, epg = true)
     }
 
     /** Test/diagnostic view of the startup gate. */
     fun isStartupDone(): Boolean = startupDone
 
     private suspend fun runDue(context: Context, startup: Boolean) {
+        if (refreshGate.isInFlight()) return
         val playlistInterval = Prefs.getAutoUpdatePlaylist(context)
         val epgInterval = Prefs.getAutoUpdateEpg(context)
         val now = System.currentTimeMillis()
@@ -156,6 +182,8 @@ object AutoUpdateScheduler {
         }
 
         mutex.withLock {
+            if (!refreshGate.tryEnter()) return@withLock
+            try {
             withContext(Dispatchers.IO) {
                 if (playlistDue) {
                     Log.i(TAG, "playlist auto refresh (startup=$startup)")
@@ -171,6 +199,9 @@ object AutoUpdateScheduler {
                     }
                 }
             }
+            } finally {
+                refreshGate.exit()
+            }
         }
         if (startup) startupDone = true
     }
@@ -182,11 +213,14 @@ object AutoUpdateScheduler {
 
     private fun onEpgResult(context: Context, ok: Boolean) {
         val now = System.currentTimeMillis()
-        if (ok) {
+        // t189 (TEST-01): the transition comes from AutoUpdateConfig, so the scheduler and the tests
+        // share one definition of "success clears the backoff".
+        val state = if (ok) {
             Prefs.setLastEpgUpdateTime(context, now)
-            Prefs.clearEpgFailure(context)
+            AutoUpdateConfig.afterSuccess()
         } else {
-            Prefs.recordEpgFailure(context, now)
+            AutoUpdateConfig.afterFailure(now, Prefs.getEpgFailCount(context))
         }
+        Prefs.setEpgFailureState(context, state.lastFailureAt, state.failCount)
     }
 }

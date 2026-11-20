@@ -232,6 +232,14 @@ object Prefs {
             .apply()
     }
 
+    /** t189: write the EPG failure state in one step (single source: AutoUpdateConfig). */
+    fun setEpgFailureState(context: Context, lastFailureAt: Long, failCount: Int) {
+        getPrefs(context).edit()
+            .putLong(KEY_EPG_LAST_FAILURE, lastFailureAt)
+            .putInt(KEY_EPG_FAIL_COUNT, failCount)
+            .apply()
+    }
+
     fun clearEpgFailure(context: Context) {
         getPrefs(context).edit()
             .putLong(KEY_EPG_LAST_FAILURE, 0L)

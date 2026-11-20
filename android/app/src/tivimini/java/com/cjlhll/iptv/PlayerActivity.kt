@@ -486,6 +486,10 @@ fun VideoPlayerScreen(
     // t154: perf-isolation switches (persisted; default on).
     var logoPrefetchEnabled by remember { mutableStateOf(Prefs.isLogoPrefetchEnabled(context)) }
     var logoLoadEnabled by remember { mutableStateOf(Prefs.isLogoLoadEnabled(context)) }
+    // t189 (MANUAL-POLICY-01): every manual EPG request funnels through this single flow, which the
+    // EPG effect consumes once — the only path to AutoUpdateScheduler.requestManualEpg.
+    val manualEpgRequests = remember { kotlinx.coroutines.flow.MutableSharedFlow<Unit>(extraBufferCapacity = 1) }
+    val requestManualEpg: () -> Unit = { manualEpgRequests.tryEmit(Unit) }
     // t175 (F4): audio tracks of the current item + manual override (-1 = 自动).
     var audioTracks by remember { mutableStateOf<List<AudioTrackUi.Raw>>(emptyList()) }
     var audioOverrideGroup by remember { mutableIntStateOf(-1) }
@@ -562,7 +566,6 @@ fun VideoPlayerScreen(
     val playingGroup = channelGroups.getOrNull(playingGroupIndex)
     val playingVariantIndex = currentLive.variantIndex.coerceAtLeast(0)
     val epgLoadTag = remember { "EPG" }
-    val shouldRefreshEpg = remember { mutableStateOf(false) }
 
     var heavyWorkEnabled by remember { mutableStateOf(false) }
     var firstDrawerOpenSeen by remember { mutableStateOf(false) }
@@ -896,15 +899,15 @@ fun VideoPlayerScreen(
             }
 
             // t176 (EPG-DUAL-01): AutoUpdateScheduler is the ONLY EPG executor. This screen keeps the
-            // cached data and consumes epgUpdated; it never downloads/parses EPG itself, so a manual
-            // refresh and an automatic one can no longer run twice or race on epgData/last-update.
-            while (true) {
-                if (shouldRefreshEpg.value) {
-                    shouldRefreshEpg.value = false
-                    // manual path: bypasses interval + backoff, result reported through scheduler events
-                    AutoUpdateScheduler.refreshNow(context, playlist = false, epg = true)
+            // cached data and consumes epgUpdated; it never downloads/parses EPG itself.
+            // t189 (MANUAL-POLICY-01): one emission of [manualEpgRequests] = at most one download, and
+            // the decision comes from ManualRefreshPolicy instead of a hand-written flag check.
+            manualEpgRequests.collect {
+                when (ManualRefreshPolicy.actionFor(manualFlagRaised = true, pumpAlreadyConsumed = false)) {
+                    ManualRefreshPolicy.Action.CALL_SCHEDULER -> AutoUpdateScheduler.requestManualEpg(context)
+                    ManualRefreshPolicy.Action.CONSUME_FLAG,
+                    ManualRefreshPolicy.Action.NONE -> Unit
                 }
-                delay(2_000L)
             }
         }
     }
@@ -1339,9 +1342,9 @@ fun VideoPlayerScreen(
                 context.startActivity(intent)
             },
             onEpgSettingsClick = {
-                shouldRefreshEpg.value = true
                 settingsDrawerOpen = false
                 android.widget.Toast.makeText(context, "开始更新EPG...", android.widget.Toast.LENGTH_SHORT).show()
+                requestManualEpg()
             },
             qualityMenuEnabled = playingGroup?.variants?.size?.let { it > 1 } == true,
             onQualityMenuClick = {
@@ -1471,11 +1474,9 @@ fun VideoPlayerScreen(
                 AutoUpdateScheduler.refreshNow(context, playlist = true, epg = false)
             },
             onRefreshEpgNow = {
-                // t182 (EPG-MANUAL-01): ONE path only — raise the manual flag, the pump in the EPG
-                // effect consumes it once and calls refreshNow. Calling refreshNow here as well made
-                // the EPG download twice (two Toasts, last-update advanced twice).
+                // t189: ONE path — the flow → policy → AutoUpdateScheduler.requestManualEpg.
                 android.widget.Toast.makeText(context, "正在刷新 EPG…", android.widget.Toast.LENGTH_SHORT).show()
-                shouldRefreshEpg.value = true
+                requestManualEpg()
             },
             onToggleLogoPrefetch = { enabled ->
                 logoPrefetchEnabled = enabled

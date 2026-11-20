@@ -1,9 +1,8 @@
 package com.cjlhll.iptv
 
 /**
- * t182: pure policy for the manual EPG refresh and the source-change flow.
- *
- * Kept Android-free so the "exactly one execution per request" rule can be unit-tested.
+ * t189 (MANUAL-POLICY-01 / SOURCE-SAVE-02): pure policy for the manual EPG refresh, the saved-source
+ * flow and the "one network pass at a time" gate.
  */
 object ManualRefreshPolicy {
 
@@ -11,9 +10,9 @@ object ManualRefreshPolicy {
     enum class Action { NONE, CONSUME_FLAG, CALL_SCHEDULER }
 
     /**
-     * t182 (EPG-MANUAL-01): the settings row only *raises* the flag; the pump consumes it once and
-     * calls the scheduler. Calling the scheduler from both places ran the EPG twice (two Toasts,
-     * last-update advanced twice).
+     * The settings row (and the legacy flag) only *raise* a request; the flow pump consumes it once
+     * and calls the scheduler. Previously the scheduler was called from both places, which ran the
+     * EPG twice (two Toasts, last-update advanced twice).
      */
     fun actionFor(manualFlagRaised: Boolean, pumpAlreadyConsumed: Boolean): Action = when {
         !manualFlagRaised -> Action.NONE
@@ -28,9 +27,27 @@ object ManualRefreshPolicy {
     fun shouldRefreshAfterSourceScreen(saved: Boolean): Boolean = saved
 
     /**
-     * t182 (EPG-SOURCE-SAVE-01): after a save, both sources go through the scheduler; the legacy
-     * `refreshAll()` path must not be used as well.
+     * t189 (SOURCE-SAVE-02): a single ticket for the network pass, so a 60 s tick, a saved source and
+     * a manual refresh can never run concurrently (and a save cannot be followed by a second startup
+     * pass). Thread-safe because the scheduler touches it from IO coroutines.
      */
-    fun usesSingleRefreshPath(schedulerUsed: Boolean, legacyRefreshAllUsed: Boolean): Boolean =
-        schedulerUsed && !legacyRefreshAllUsed
+    class RefreshGate {
+        @Volatile
+        private var inFlight = false
+
+        /** @return true when this caller now owns the pass and must call [exit] when finished. */
+        @Synchronized
+        fun tryEnter(): Boolean {
+            if (inFlight) return false
+            inFlight = true
+            return true
+        }
+
+        @Synchronized
+        fun exit() {
+            inFlight = false
+        }
+
+        fun isInFlight(): Boolean = inFlight
+    }
 }
