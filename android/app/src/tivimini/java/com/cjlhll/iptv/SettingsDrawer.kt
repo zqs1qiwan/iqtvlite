@@ -61,6 +61,18 @@ fun SettingsDrawer(
     audioSummary: String? = null,
     audioEntryLabel: String = "音轨选择",
     onAudioTrackClick: () -> Unit = {},
+    // t186 (F1): remote habits
+    remoteUpDownLabel: String = "换台",
+    remoteOkLabel: String = "打开频道列表",
+    remoteBackLabel: String = "关闭抽屉",
+    remoteDigitsLabel: String = "直接跳台",
+    remoteChannelKeysEnabled: Boolean = true,
+    onCycleRemoteUpDown: () -> Unit = {},
+    onCycleRemoteOk: () -> Unit = {},
+    onCycleRemoteBack: () -> Unit = {},
+    onCycleRemoteDigits: () -> Unit = {},
+    onToggleRemoteChannelKeys: () -> Unit = {},
+    onResetRemoteHabits: () -> Unit = {},
     autoUpdatePlaylistLabel: String = "启动时",
     autoUpdateEpgLabel: String = "启动时",
     lastUpdateSummary: String = "",
@@ -87,6 +99,12 @@ fun SettingsDrawer(
     val playlistIntervalRequester = remember { FocusRequester() }
     val epgIntervalRequester = remember { FocusRequester() }
     val audioTrackRequester = remember { FocusRequester() }
+    val remoteUpDownRequester = remember { FocusRequester() }
+    val remoteOkRequester = remember { FocusRequester() }
+    val remoteBackRequester = remember { FocusRequester() }
+    val remoteDigitsRequester = remember { FocusRequester() }
+    val remoteChannelKeysRequester = remember { FocusRequester() }
+    val remoteResetRequester = remember { FocusRequester() }
 
     LaunchedEffect(visible) {
         if (visible) {
@@ -177,6 +195,47 @@ fun SettingsDrawer(
                         onClick = onOpenRecent
                     )
 
+                    Spacer(modifier = Modifier.padding(8.dp))
+
+                    // t186 (F1): 遥控器与操作 group — every row cycles its own value, defaults keep
+                    // the shipped behaviour.
+                    SettingsGroupHeader(text = "遥控器与操作")
+                    SettingsItem(
+                        text = "上下键：$remoteUpDownLabel",
+                        focusRequester = remoteUpDownRequester,
+                        tag = "settings_remote_updown",
+                        onClick = onCycleRemoteUpDown
+                    )
+                    SettingsItem(
+                        text = "OK键：$remoteOkLabel",
+                        focusRequester = remoteOkRequester,
+                        tag = "settings_remote_ok",
+                        onClick = onCycleRemoteOk
+                    )
+                    SettingsItem(
+                        text = "Back键：$remoteBackLabel",
+                        focusRequester = remoteBackRequester,
+                        tag = "settings_remote_back",
+                        onClick = onCycleRemoteBack
+                    )
+                    SettingsItem(
+                        text = "数字键：$remoteDigitsLabel",
+                        focusRequester = remoteDigitsRequester,
+                        tag = "settings_remote_digits",
+                        onClick = onCycleRemoteDigits
+                    )
+                    SettingsItem(
+                        text = if (remoteChannelKeysEnabled) "频道键 166/167：启用" else "频道键 166/167：禁用",
+                        focusRequester = remoteChannelKeysRequester,
+                        tag = "settings_remote_channel_keys",
+                        onClick = onToggleRemoteChannelKeys
+                    )
+                    SettingsItem(
+                        text = "恢复默认",
+                        focusRequester = remoteResetRequester,
+                        tag = "settings_remote_reset",
+                        onClick = onResetRemoteHabits
+                    )
                     Spacer(modifier = Modifier.padding(8.dp))
 
                     // t175: 音频与字幕 group (audio track picker; summary line when known).

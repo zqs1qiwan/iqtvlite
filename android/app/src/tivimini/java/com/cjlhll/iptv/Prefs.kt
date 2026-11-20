@@ -24,6 +24,12 @@ object Prefs {
     private const val KEY_PLAYLIST_FAIL_COUNT = "playlist_fail_count"
     private const val KEY_EPG_LAST_FAILURE = "epg_last_failure_at"
     private const val KEY_EPG_FAIL_COUNT = "epg_fail_count"
+    // t186 (F1): remote-control habits.
+    private const val KEY_REMOTE_UPDOWN = "remote_updown"
+    private const val KEY_REMOTE_OK = "remote_ok"
+    private const val KEY_REMOTE_BACK = "remote_back"
+    private const val KEY_REMOTE_DIGITS = "remote_digits"
+    private const val KEY_REMOTE_CHANNEL_KEYS = "remote_channel_keys"
 
     private fun getPrefs(context: Context): SharedPreferences {
         return context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
@@ -180,6 +186,49 @@ object Prefs {
         prefs.edit()
             .putLong(KEY_EPG_LAST_FAILURE, at)
             .putInt(KEY_EPG_FAIL_COUNT, prefs.getInt(KEY_EPG_FAIL_COUNT, 0) + 1)
+            .apply()
+    }
+
+    // ---- t186: remote habits (read on every key event, so a change applies immediately) ----
+    fun getRemoteSettings(context: Context): RemoteHabits.Settings {
+        val p = getPrefs(context)
+        return RemoteHabits.Settings(
+            upDown = RemoteHabits.parseUpDown(p.getString(KEY_REMOTE_UPDOWN, null)),
+            ok = RemoteHabits.parseOk(p.getString(KEY_REMOTE_OK, null)),
+            back = RemoteHabits.parseBack(p.getString(KEY_REMOTE_BACK, null)),
+            digits = RemoteHabits.parseDigits(p.getString(KEY_REMOTE_DIGITS, null)),
+            channelKeysEnabled = p.getBoolean(KEY_REMOTE_CHANNEL_KEYS, true),
+        )
+    }
+
+    fun setRemoteUpDown(context: Context, value: RemoteHabits.UpDown) {
+        getPrefs(context).edit().putString(KEY_REMOTE_UPDOWN, value.name).apply()
+    }
+
+    fun setRemoteOk(context: Context, value: RemoteHabits.Ok) {
+        getPrefs(context).edit().putString(KEY_REMOTE_OK, value.name).apply()
+    }
+
+    fun setRemoteBack(context: Context, value: RemoteHabits.Back) {
+        getPrefs(context).edit().putString(KEY_REMOTE_BACK, value.name).apply()
+    }
+
+    fun setRemoteDigits(context: Context, value: RemoteHabits.Digits) {
+        getPrefs(context).edit().putString(KEY_REMOTE_DIGITS, value.name).apply()
+    }
+
+    fun setRemoteChannelKeys(context: Context, enabled: Boolean) {
+        getPrefs(context).edit().putBoolean(KEY_REMOTE_CHANNEL_KEYS, enabled).apply()
+    }
+
+    /** t186: 「恢复默认」 — clears every remote key so the built-in defaults apply again. */
+    fun resetRemoteSettings(context: Context) {
+        getPrefs(context).edit()
+            .remove(KEY_REMOTE_UPDOWN)
+            .remove(KEY_REMOTE_OK)
+            .remove(KEY_REMOTE_BACK)
+            .remove(KEY_REMOTE_DIGITS)
+            .remove(KEY_REMOTE_CHANNEL_KEYS)
             .apply()
     }
 

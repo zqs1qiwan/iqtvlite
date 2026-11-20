@@ -111,6 +111,8 @@ class PlayerActivity : ComponentActivity() {
     private var isQualityDialogOpen: Boolean = false
     private var isRecentChannelsOpen: Boolean = false
     private var isAudioDialogOpen: Boolean = false
+    // t186 (F1): remote habits; re-read on resume so a settings change applies immediately.
+    private var remote = RemoteHabits.DEFAULT
     private var setInfoBannerOpen: ((Boolean) -> Unit)? = null
     private var isInfoBannerOpen: Boolean = false
     private var isCatchupPlayback: Boolean = false
@@ -119,9 +121,17 @@ class PlayerActivity : ComponentActivity() {
     private var lastBackPressTime: Long = 0
     private var lastBackPressTimeCatchup: Long = 0
 
+    // t186 (F1): the habits are re-read here (and at start) so a change in settings takes effect on
+    // the very next key event without restarting playback.
+    override fun onResume() {
+        super.onResume()
+        remote = Prefs.getRemoteSettings(this)
+    }
+
     @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        remote = Prefs.getRemoteSettings(this)
 
         val videoUrl = intent.getStringExtra("VIDEO_URL") ?: ""
         val videoTitle = intent.getStringExtra("VIDEO_TITLE") ?: "Live"
@@ -243,7 +253,10 @@ class PlayerActivity : ComponentActivity() {
                 if (event.repeatCount == 0) {
                     if (digits.length < 6) digits += (event.keyCode-KeyEvent.KEYCODE_0).toString()
                     numberJob?.cancel()
-                    numberJob = lifecycleScope.launch { delay(3000); submitNumber() }
+                    // t186: 直接跳台 auto-submits after the OSD timeout; 需确认 waits for OK.
+                    if (RemoteHabits.onDigit(remote) == RemoteHabits.DigitAction.DIRECT) {
+                        numberJob = lifecycleScope.launch { delay(3000); submitNumber() }
+                    }
                 }
                 return true
             }
@@ -265,7 +278,12 @@ class PlayerActivity : ComponentActivity() {
 
                 KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
                     if (!isDrawerOpen && !isSettingsDrawerOpen && !isQualityDialogOpen && !isRecentChannelsOpen && !isAudioDialogOpen) {
-                        setInfoBannerOpen?.invoke(true)
+                        // t186 (F1): the OK habit decides between opening the list and confirming.
+                        when (RemoteHabits.onOk(remote, overlayOpen = false)) {
+                            RemoteHabits.OkAction.OPEN_DRAWER -> sidebarController.openDrawer()
+                            RemoteHabits.OkAction.SHOW_INFO -> setInfoBannerOpen?.invoke(true)
+                            RemoteHabits.OkAction.NONE -> Unit
+                        }
                         return true
                     }
                 }
@@ -342,6 +360,11 @@ class PlayerActivity : ComponentActivity() {
                         return true
                     }
 
+                    // t186 (F1): 直接退出 exits on the first BACK; 关闭抽屉 keeps the historical
+                    // double-press guard so a stray press never kills playback.
+                    if (RemoteHabits.onBack(remote, overlayOpen = false) == RemoteHabits.BackAction.EXIT) {
+                        return super.dispatchKeyEvent(event)
+                    }
                     val currentTime = System.currentTimeMillis()
                     if (currentTime - lastBackPressTime > 2000) {
                         lastBackPressTime = currentTime
@@ -356,7 +379,18 @@ class PlayerActivity : ComponentActivity() {
                             setInfoBannerOpen?.invoke(true)
                             return true
                         }
-                        if (onChannelStep?.invoke(-1) == true) return true
+                        // t186: 166/167 can be disabled; D-pad up follows the 上下键 habit.
+                        val isChannelKey = event.keyCode == KeyEvent.KEYCODE_CHANNEL_UP ||
+                            event.keyCode == KeyEvent.KEYCODE_PAGE_UP
+                        if (isChannelKey && !RemoteHabits.channelKeysEnabled(remote)) return true
+                        when (RemoteHabits.onUpDown(remote, overlayOpen = false, up = true)) {
+                            RemoteHabits.UpDownAction.CHANNEL_UP -> if (onChannelStep?.invoke(-1) == true) return true
+                            RemoteHabits.UpDownAction.OPEN_DRAWER -> {
+                                sidebarController.openDrawer()
+                                return true
+                            }
+                            else -> Unit
+                        }
                     }
                 }
 
@@ -366,7 +400,17 @@ class PlayerActivity : ComponentActivity() {
                             setInfoBannerOpen?.invoke(true)
                             return true
                         }
-                        if (onChannelStep?.invoke(1) == true) return true
+                        val isChannelKey = event.keyCode == KeyEvent.KEYCODE_CHANNEL_DOWN ||
+                            event.keyCode == KeyEvent.KEYCODE_PAGE_DOWN
+                        if (isChannelKey && !RemoteHabits.channelKeysEnabled(remote)) return true
+                        when (RemoteHabits.onUpDown(remote, overlayOpen = false, up = false)) {
+                            RemoteHabits.UpDownAction.CHANNEL_DOWN -> if (onChannelStep?.invoke(1) == true) return true
+                            RemoteHabits.UpDownAction.OPEN_DRAWER -> {
+                                sidebarController.openDrawer()
+                                return true
+                            }
+                            else -> Unit
+                        }
                     }
                 }
             }
@@ -450,6 +494,8 @@ fun VideoPlayerScreen(
     LaunchedEffect(audioDialogOpen) { onAudioDialogOpenChanged(audioDialogOpen) }
     // t172 (F3): automatic playlist/EPG update policy (persisted; default 启动时).
     var autoUpdatePlaylist by remember { mutableStateOf(Prefs.getAutoUpdatePlaylist(context)) }
+    // t186 (F1): remote habits (persisted; the Activity re-reads them on resume).
+    var remoteHabits by remember { mutableStateOf(Prefs.getRemoteSettings(context)) }
     var autoUpdateEpg by remember { mutableStateOf(Prefs.getAutoUpdateEpg(context)) }
     var autoUpdateTick by remember { mutableIntStateOf(0) }
     var qualityDialogGroupIndex by remember { mutableIntStateOf(-1) }
@@ -1336,6 +1382,41 @@ fun VideoPlayerScreen(
             logoCacheSummary = logoCacheSummary,
             logoPrefetchEnabled = logoPrefetchEnabled,
             logoLoadEnabled = logoLoadEnabled,
+            remoteUpDownLabel = remoteHabits.upDown.label,
+            remoteOkLabel = remoteHabits.ok.label,
+            remoteBackLabel = remoteHabits.back.label,
+            remoteDigitsLabel = remoteHabits.digits.label,
+            remoteChannelKeysEnabled = remoteHabits.channelKeysEnabled,
+            onCycleRemoteUpDown = {
+                val next = RemoteHabits.nextUpDown(remoteHabits.upDown)
+                Prefs.setRemoteUpDown(context, next)
+                remoteHabits = remoteHabits.copy(upDown = next)
+            },
+            onCycleRemoteOk = {
+                val next = RemoteHabits.nextOk(remoteHabits.ok)
+                Prefs.setRemoteOk(context, next)
+                remoteHabits = remoteHabits.copy(ok = next)
+            },
+            onCycleRemoteBack = {
+                val next = RemoteHabits.nextBack(remoteHabits.back)
+                Prefs.setRemoteBack(context, next)
+                remoteHabits = remoteHabits.copy(back = next)
+            },
+            onCycleRemoteDigits = {
+                val next = RemoteHabits.nextDigits(remoteHabits.digits)
+                Prefs.setRemoteDigits(context, next)
+                remoteHabits = remoteHabits.copy(digits = next)
+            },
+            onToggleRemoteChannelKeys = {
+                val next = !remoteHabits.channelKeysEnabled
+                Prefs.setRemoteChannelKeys(context, next)
+                remoteHabits = remoteHabits.copy(channelKeysEnabled = next)
+            },
+            onResetRemoteHabits = {
+                Prefs.resetRemoteSettings(context)
+                remoteHabits = RemoteHabits.DEFAULT
+                android.widget.Toast.makeText(context, "已恢复默认遥控设置", android.widget.Toast.LENGTH_SHORT).show()
+            },
             audioSummary = AudioTrackUi.summary(audioTracks, audioOverrideGroup, audioOverrideTrack),
             audioEntryLabel = AudioTrackUi.entryLabel(audioTracks),
             onAudioTrackClick = {
