@@ -68,9 +68,12 @@ fun RecentChannelsDialog(
     val shape = RoundedCornerShape(0.dp)
 
     val firstRequester = remember { FocusRequester() }
+    val clearRequester = remember { FocusRequester() }
 
-    LaunchedEffect(visible) {
-        if (visible && items.isNotEmpty()) firstRequester.requestFocus()
+    LaunchedEffect(visible, items.size) {
+        if (!visible) return@LaunchedEffect
+        // UI-01: deterministic focus even when the list is empty / just cleared.
+        if (items.isNotEmpty()) firstRequester.requestFocus() else clearRequester.requestFocus()
     }
 
     AnimatedVisibility(
@@ -130,7 +133,7 @@ fun RecentChannelsDialog(
                 }
 
                 Spacer(modifier = Modifier.padding(6.dp))
-                RecentActionRow(text = "清空最近观看", onClick = onClear)
+                RecentActionRow(text = "清空最近观看", focusRequester = clearRequester, onClick = onClear)
             }
         }
     }
@@ -161,12 +164,15 @@ private fun RecentRow(
         ChannelLogo(
             logoUrl = item.logoUrl,
             fallbackTitle = item.title,
-            width = 40.dp,
-            height = 28.dp
+            width = 64.dp,
+            height = 40.dp
         )
         Spacer(modifier = Modifier.width(10.dp))
         Text(
-            text = "${item.number}. ${item.title}",
+            text = buildString {
+                if (item.selected) append("▶ ")
+                append(item.number).append(". ").append(item.title)
+            },
             style = MaterialTheme.typography.bodyLarge,
             color = if (focused) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 1
@@ -175,7 +181,11 @@ private fun RecentRow(
 }
 
 @Composable
-private fun RecentActionRow(text: String, onClick: () -> Unit) {
+private fun RecentActionRow(
+    text: String,
+    focusRequester: FocusRequester? = null,
+    onClick: () -> Unit,
+) {
     var focused by remember { mutableStateOf(false) }
     val bg = if (focused) MaterialTheme.colorScheme.surfaceVariant
     else MaterialTheme.colorScheme.surface.copy(alpha = 0.01f)
@@ -183,6 +193,7 @@ private fun RecentActionRow(text: String, onClick: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
+            .let { m -> if (focusRequester != null) m.focusRequester(focusRequester) else m }
             .background(bg)
             .onFocusChanged { focused = it.isFocused }
             .focusable()

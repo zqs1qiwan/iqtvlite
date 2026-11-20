@@ -1,15 +1,15 @@
 package com.cjlhll.iptv
 
 /**
- * t133: "recent channels" + "last channel" bookkeeping.
+ * t133/t141: "recent channels" + "last channel" bookkeeping.
  *
- * Pure Kotlin (no Android deps) so the de-dup / cap / resolve / clear rules are unit-testable.
- * Persistence is a single compact string in [Prefs] (see [Prefs.getRecentChannels]).
+ * Pure Kotlin (no Android deps) so de-dup / cap / resolve / clear rules are unit-testable.
+ * Identity is the **channel group key** ([ChannelGroup.key]) — not the variant url/id — so a
+ * quality/line switch inside the same channel never counts as a new channel (RECENT-01).
  *
- * Entry encoding (per entry, fields separated by '\u0001', entries separated by '\u0002'):
- *   stableKey \u0001 number \u0001 title \u0001 logoUrl \u0001 url
- *
- * `stableKey` = channel.id when known (survives playlist re-parse), else the stream url.
+ * Entry encoding (fields '\u0001', entries '\u0002'):
+ *   groupKey \1 number \1 title \1 logoUrl \1 variantIndex \1 fallbackUrl
+ * (5-field legacy rows decode with groupKey derived from the fallback url.)
  */
 object RecentChannels {
     const val MAX = 10
@@ -18,47 +18,54 @@ object RecentChannels {
     private const val ENTRY = '\u0002'
 
     data class Entry(
-        val key: String,
+        val groupKey: String,
         val number: Int,
         val title: String,
         val logoUrl: String?,
-        val url: String,
+        val variantIndex: Int,
+        val fallbackUrl: String,
     )
 
-    /** Stable identity for a channel: its parsed id when available, else its url. */
+    /** Legacy-compatible fallback identity when only a channel is available (no group). */
     fun stableKey(channel: Channel): String =
         if (channel.id != 0L) "id:${channel.id}" else "url:${channel.url}"
 
+    private fun sanitize(value: String): String =
+        value.replace(FIELD, ' ').replace(ENTRY, ' ').trim()
+
     /**
-     * Push a channel to the front. De-duplicates by stable key (a re-selected channel moves to the
-     * front instead of appearing twice) and caps the list at [MAX].
+     * Push a group to the front. De-duplicates by **group key** (switching quality/variant inside the
+     * same channel updates its variant instead of adding a row) and caps at [MAX].
      */
     fun push(
         current: List<Entry>,
-        channel: Channel,
+        group: ChannelGroup,
         number: Int,
-        title: String = channel.title,
-        logoUrl: String? = channel.logoUrl,
+        variantIndex: Int,
+        title: String = group.displayTitle,
+        logoUrl: String? = group.logoUrl,
     ): List<Entry> {
-        val key = stableKey(channel)
+        val safeVariant = variantIndex.coerceIn(0, (group.variants.size - 1).coerceAtLeast(0))
         val entry = Entry(
-            key = key,
+            groupKey = sanitize(group.key),
             number = number,
-            title = title.ifBlank { channel.title },
-            logoUrl = logoUrl,
-            url = channel.url,
+            title = sanitize(title.ifBlank { group.displayTitle }),
+            logoUrl = logoUrl?.let { sanitize(it) }?.takeIf { it.isNotBlank() },
+            variantIndex = safeVariant,
+            fallbackUrl = sanitize(group.variants.getOrNull(safeVariant)?.channel?.url ?: ""),
         )
-        val without = current.filterNot { it.key == key }
+        val without = current.filterNot { it.groupKey == entry.groupKey }
         return (listOf(entry) + without).take(MAX)
     }
 
     fun encode(entries: List<Entry>): String = entries.joinToString(ENTRY.toString()) { e ->
         listOf(
-            e.key,
+            sanitize(e.groupKey),
             e.number.toString(),
-            e.title.replace(FIELD, ' ').replace(ENTRY, ' '),
-            (e.logoUrl ?: "").replace(FIELD, ' ').replace(ENTRY, ' '),
-            e.url.replace(FIELD, ' ').replace(ENTRY, ' '),
+            sanitize(e.title),
+            sanitize(e.logoUrl ?: ""),
+            e.variantIndex.toString(),
+            sanitize(e.fallbackUrl),
         ).joinToString(FIELD.toString())
     }
 
@@ -66,39 +73,67 @@ object RecentChannels {
         if (raw.isNullOrBlank()) return emptyList()
         return raw.split(ENTRY).mapNotNull { line ->
             val parts = line.split(FIELD)
-            if (parts.size < 5) return@mapNotNull null
-            val number = parts[1].toIntOrNull() ?: 0
-            val title = parts[2]
-            val logo = parts[3].ifBlank { null }
-            val url = parts[4]
-            if (parts[0].isBlank() || url.isBlank()) return@mapNotNull null
-            Entry(parts[0], number, title, logo, url)
+            when {
+                parts.size >= 6 -> {
+                    val groupKey = parts[0].trim()
+                    val fallbackUrl = parts[5].trim()
+                    if (groupKey.isBlank() && fallbackUrl.isBlank()) return@mapNotNull null
+                    Entry(
+                        groupKey = groupKey.ifBlank { "url:$fallbackUrl" },
+                        number = parts[1].toIntOrNull() ?: 0,
+                        title = parts[2],
+                        logoUrl = parts[3].ifBlank { null },
+                        variantIndex = parts[4].toIntOrNull() ?: 0,
+                        fallbackUrl = fallbackUrl,
+                    )
+                }
+                parts.size >= 5 -> {
+                    // legacy row (t133 format): key \1 number \1 title \1 logo \1 url
+                    // The old key was a variant identity, not a group key — resolve via url instead.
+                    val url = parts[4].trim()
+                    if (url.isBlank()) return@mapNotNull null
+                    Entry(
+                        groupKey = "url:$url",
+                        number = parts[1].toIntOrNull() ?: 0,
+                        title = parts[2],
+                        logoUrl = parts[3].ifBlank { null },
+                        variantIndex = 0,
+                        fallbackUrl = url,
+                    )
+                }
+                else -> null
+            }
         }.take(MAX)
     }
 
     /**
-     * Map entries onto the current playlist. Channels that no longer exist are skipped (never
-     * throws, never returns a half-built row) — this is what makes a playlist refresh safe.
+     * Map entries onto the current playlist by **group key**; a missing group is skipped, and the
+     * fallback url/legacy row can still resolve through the channel urls. Never throws.
      */
-    fun resolve(entries: List<Entry>, channels: List<Channel>): List<Pair<Entry, Channel>> {
-        if (entries.isEmpty() || channels.isEmpty()) return emptyList()
-        val byId = HashMap<Long, Channel>()
-        val byUrl = HashMap<String, Channel>()
-        for (c in channels) {
-            if (c.id != 0L) byId.putIfAbsent(c.id, c)
-            byUrl.putIfAbsent(c.url, c)
-        }
+    fun resolve(
+        entries: List<Entry>,
+        groups: List<ChannelGroup>,
+    ): List<Triple<Entry, ChannelGroup, Channel>> {
+        if (entries.isEmpty() || groups.isEmpty()) return emptyList()
+        val byKey = HashMap<String, Int>()
+        groups.forEachIndexed { index, g -> byKey[g.key] = index }
+        val byUrl = HashMap<String, Int>()
+        groups.forEachIndexed { index, g -> g.variants.forEach { byUrl.putIfAbsent(it.channel.url, index) } }
+
         return entries.mapNotNull { e ->
-            val channel = if (e.key.startsWith("id:")) {
-                e.key.removePrefix("id:").toLongOrNull()?.let { byId[it] }
-            } else {
-                byUrl[e.key.removePrefix("url:")]
-            } ?: byUrl[e.url]
-            channel?.let { e to it }
+            val groupIndex: Int? = byKey[e.groupKey]
+                ?: if (e.groupKey.startsWith("url:")) byUrl[e.groupKey.removePrefix("url:")] else null
+                ?: byUrl[e.fallbackUrl]
+            if (groupIndex == null) return@mapNotNull null
+            val group = groups[groupIndex]
+            val variant = e.variantIndex.coerceIn(0, (group.variants.size - 1).coerceAtLeast(0))
+            Triple(e, group, group.variants[variant].channel)
         }
     }
 
-    /** "Previous channel" = the most recent entry that is not the channel currently playing. */
-    fun previous(entries: List<Entry>, currentKey: String?): Entry? =
-        entries.firstOrNull { it.key != currentKey }
+    /** "Previous channel" = the most recent group that is not the currently playing group. */
+    fun previous(entries: List<Entry>, currentGroupKey: String?): Entry? {
+        if (entries.isEmpty()) return null
+        return entries.firstOrNull { it.groupKey != currentGroupKey }
+    }
 }

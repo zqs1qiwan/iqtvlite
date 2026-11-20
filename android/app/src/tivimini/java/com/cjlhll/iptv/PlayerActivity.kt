@@ -85,6 +85,7 @@ private enum class PlaylistUpdateMode {
 class PlayerActivity : ComponentActivity() {
     private var onNumberJump: ((Int) -> Boolean)? = null
     private var setPlayLastChannel: (() -> Boolean)? = null
+    private var setRecentChannelsOpen: ((Boolean) -> Unit)? = null
     private var digits by mutableStateOf("")
     private var numberJob: Job? = null
     private fun submitNumber() {
@@ -107,6 +108,7 @@ class PlayerActivity : ComponentActivity() {
     private var isSettingsDrawerOpen: Boolean = false
     private var setQualityDialogOpen: ((Boolean) -> Unit)? = null
     private var isQualityDialogOpen: Boolean = false
+    private var isRecentChannelsOpen: Boolean = false
     private var setInfoBannerOpen: ((Boolean) -> Unit)? = null
     private var isInfoBannerOpen: Boolean = false
     private var isCatchupPlayback: Boolean = false
@@ -176,6 +178,8 @@ class PlayerActivity : ComponentActivity() {
                         setOnChannelStep = { onChannelStep = it },
                         setOnNumberJump = { onNumberJump = it },
                         setOnPlayLastChannel = { setPlayLastChannel = it },
+                        setRecentChannelsOpenController = { setRecentChannelsOpen = it },
+                        onRecentChannelsOpenChanged = { isRecentChannelsOpen = it },
                         onDrawerOpenChanged = { isDrawerOpen = it },
                         onDrawerActiveColumnChanged = { drawerActiveColumn = it },
                         setSettingsDrawerOpenController = { setSettingsDrawerOpen = it },
@@ -231,7 +235,7 @@ class PlayerActivity : ComponentActivity() {
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (event.action == KeyEvent.ACTION_UP && event.keyCode in KeyEvent.KEYCODE_0..KeyEvent.KEYCODE_9) return true
         if (event.action == KeyEvent.ACTION_DOWN) {
-            if (event.keyCode in KeyEvent.KEYCODE_0..KeyEvent.KEYCODE_9 && !isDrawerOpen && !isSettingsDrawerOpen && !isQualityDialogOpen) {
+            if (event.keyCode in KeyEvent.KEYCODE_0..KeyEvent.KEYCODE_9 && !isDrawerOpen && !isSettingsDrawerOpen && !isQualityDialogOpen && !isRecentChannelsOpen) {
                 if (event.repeatCount == 0) {
                     if (digits.length < 6) digits += (event.keyCode-KeyEvent.KEYCODE_0).toString()
                     numberJob?.cancel()
@@ -247,18 +251,23 @@ class PlayerActivity : ComponentActivity() {
             when (event.keyCode) {
                 // t133: last channel — only while no overlay is open; repeats are debounced inside.
                 KeyEvent.KEYCODE_LAST_CHANNEL, KeyEvent.KEYCODE_MEDIA_PREVIOUS -> {
+                    // t141: same guards as every other key — an open overlay must swallow/reject it,
+                    // never switch channels underneath (KEYCODE_LAST_CHANNEL is 229 on the remote).
+                    if (isDrawerOpen || isSettingsDrawerOpen || isQualityDialogOpen || isRecentChannelsOpen) {
+                        return false
+                    }
                     if (event.repeatCount == 0 && setPlayLastChannel?.invoke() == true) return true
                 }
 
                 KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
-                    if (!isDrawerOpen && !isSettingsDrawerOpen && !isQualityDialogOpen) {
+                    if (!isDrawerOpen && !isSettingsDrawerOpen && !isQualityDialogOpen && !isRecentChannelsOpen) {
                         setInfoBannerOpen?.invoke(true)
                         return true
                     }
                 }
 
                 KeyEvent.KEYCODE_DPAD_LEFT -> {
-                    if (!isDrawerOpen && !isSettingsDrawerOpen && !isQualityDialogOpen) {
+                    if (!isDrawerOpen && !isSettingsDrawerOpen && !isQualityDialogOpen && !isRecentChannelsOpen) {
                         if (isCatchupPlayback) {
                             val step = calculateSeekStep(event.repeatCount)
                             if (onCatchupSeek?.invoke(-step) == true) return true
@@ -270,7 +279,7 @@ class PlayerActivity : ComponentActivity() {
                 }
 
                 KeyEvent.KEYCODE_DPAD_RIGHT -> {
-                    if (!isDrawerOpen && !isSettingsDrawerOpen && !isQualityDialogOpen) {
+                    if (!isDrawerOpen && !isSettingsDrawerOpen && !isQualityDialogOpen && !isRecentChannelsOpen) {
                         if (isCatchupPlayback) {
                             val step = calculateSeekStep(event.repeatCount)
                             if (onCatchupSeek?.invoke(step) == true) return true
@@ -282,13 +291,17 @@ class PlayerActivity : ComponentActivity() {
                 }
 
                 KeyEvent.KEYCODE_MENU -> {
-                    if (!isDrawerOpen && !isSettingsDrawerOpen && !isQualityDialogOpen) {
+                    if (!isDrawerOpen && !isSettingsDrawerOpen && !isQualityDialogOpen && !isRecentChannelsOpen) {
                         setSettingsDrawerOpen?.invoke(true)
                         return true
                     }
                 }
 
                 KeyEvent.KEYCODE_BACK -> {
+                    if (isRecentChannelsOpen) {
+                        setRecentChannelsOpen?.invoke(false)
+                        return true
+                    }
                     if (isQualityDialogOpen) {
                         setQualityDialogOpen?.invoke(false)
                         return true
@@ -330,7 +343,7 @@ class PlayerActivity : ComponentActivity() {
                 }
 
                 KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_CHANNEL_UP, KeyEvent.KEYCODE_PAGE_UP -> {
-                    if (!isDrawerOpen && !isSettingsDrawerOpen && !isQualityDialogOpen) {
+                    if (!isDrawerOpen && !isSettingsDrawerOpen && !isQualityDialogOpen && !isRecentChannelsOpen) {
                         if (isCatchupPlayback) {
                             setInfoBannerOpen?.invoke(true)
                             return true
@@ -340,7 +353,7 @@ class PlayerActivity : ComponentActivity() {
                 }
 
                 KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_CHANNEL_DOWN, KeyEvent.KEYCODE_PAGE_DOWN -> {
-                    if (!isDrawerOpen && !isSettingsDrawerOpen && !isQualityDialogOpen) {
+                    if (!isDrawerOpen && !isSettingsDrawerOpen && !isQualityDialogOpen && !isRecentChannelsOpen) {
                         if (isCatchupPlayback) {
                             setInfoBannerOpen?.invoke(true)
                             return true
@@ -366,6 +379,8 @@ fun VideoPlayerScreen(
     setOnChannelStep: (((Int) -> Boolean)?) -> Unit,
     setOnNumberJump: (((Int) -> Boolean)?) -> Unit,
     setOnPlayLastChannel: ((() -> Boolean)?) -> Unit,
+    setRecentChannelsOpenController: (((Boolean) -> Unit)?) -> Unit,
+    onRecentChannelsOpenChanged: (Boolean) -> Unit,
     onDrawerOpenChanged: (Boolean) -> Unit,
     onDrawerActiveColumnChanged: (DrawerColumn?) -> Unit,
     setSettingsDrawerOpenController: (((Boolean) -> Unit)?) -> Unit,
@@ -392,8 +407,12 @@ fun VideoPlayerScreen(
     var qualityDialogOpen by remember { mutableStateOf(false) }
     // t133: recent-channels list + last-channel debounce bookkeeping.
     var recentChannelsOpen by remember { mutableStateOf(false) }
+    LaunchedEffect(recentChannelsOpen) { onRecentChannelsOpenChanged(recentChannelsOpen) }
     var recentTick by remember { mutableIntStateOf(0) }
     var lastChannelSwitchAt by remember { mutableLongStateOf(0L) }
+    // PERF-01: coalesce rapid zapping into one prefs write.
+    var pendingRecentEncoded by remember { mutableStateOf<String?>(null) }
+    var recentWriteJob by remember { mutableStateOf<Job?>(null) }
     var qualityDialogGroupIndex by remember { mutableIntStateOf(-1) }
     var infoBannerOpen by remember { mutableStateOf(false) }
     val channelSwitch = rememberChannelSwitchController()
@@ -872,10 +891,20 @@ fun VideoPlayerScreen(
     }
 
     // ---- t133: recent channels / last channel ----
-    fun recordRecentChannel(channel: Channel, number: Int) {
-        val encoded = Prefs.getRecentChannels(context)
-        val updated = RecentChannels.push(RecentChannels.decode(encoded), channel, number)
-        Prefs.setRecentChannels(context, RecentChannels.encode(updated))
+    fun recordRecentChannel(group: ChannelGroup, number: Int, variantIndex: Int) {
+        val updated = RecentChannels.push(
+            RecentChannels.decode(Prefs.getRecentChannels(context)),
+            group,
+            number,
+            variantIndex,
+        )
+        pendingRecentEncoded = RecentChannels.encode(updated)
+        recentWriteJob?.cancel()
+        recentWriteJob = scope.launch {
+            delay(400)
+            pendingRecentEncoded?.let { Prefs.setRecentChannels(context, it) }
+            pendingRecentEncoded = null
+        }
         recentTick++
     }
 
@@ -893,8 +922,8 @@ fun VideoPlayerScreen(
         currentGroupIndex = groupIndex
         currentVariantIndex = variantIndex
         Prefs.setLastChannel(context, channel.url, channel.title)
-        // t133: remember for "上一台" + 最近观看 (stable-id de-dup, newest first).
-        recordRecentChannel(channel, groupIndex + 1)
+        // t133/t141: identity = group key + the variant actually playing.
+        recordRecentChannel(group, groupIndex + 1, variantIndex)
     }
 
     fun mergeMeasuredLatencies(results: Map<String, Int?>) {
@@ -989,13 +1018,12 @@ fun VideoPlayerScreen(
         val now = System.currentTimeMillis()
         if (now - lastChannelSwitchAt < 800) return false
         val entries = RecentChannels.decode(Prefs.getRecentChannels(context))
-        val current = channelGroups.getOrNull(currentGroupIndex)?.defaultChannel
-        val previous = RecentChannels.previous(entries, current?.let { RecentChannels.stableKey(it) })
-            ?: return false
-        val channel = RecentChannels.resolve(listOf(previous), ChannelGrouper.allChannels(channelGroups))
-            .firstOrNull()?.second ?: return false
+        val currentGroupKey = channelGroups.getOrNull(currentGroupIndex)?.key
+        val previous = RecentChannels.previous(entries, currentGroupKey) ?: return false
+        val targetGroupIndex = channelGroups.indexOfFirst { it.key == previous.groupKey }
+        if (targetGroupIndex < 0) return false
         lastChannelSwitchAt = now
-        playChannel(channel)
+        playGroupVariant(targetGroupIndex, previous.variantIndex)
         infoBannerOpen = true
         return true
     }
@@ -1040,6 +1068,7 @@ fun VideoPlayerScreen(
 
     DisposableEffect(player) {
         setOnPlayLastChannel { playLastChannel() }
+        setRecentChannelsOpenController { open -> recentChannelsOpen = open }
         setOnNumberJump { number ->
             val groups = channelGroupsState.value
             if (number !in 1..groups.size) false else {
@@ -1066,6 +1095,7 @@ fun VideoPlayerScreen(
             setOnChannelStep(null)
             setOnNumberJump(null)
             setOnPlayLastChannel(null)
+            setRecentChannelsOpenController(null)
         }
     }
 
@@ -1144,17 +1174,15 @@ fun VideoPlayerScreen(
         // t133: recent channels resolved against the current playlist (missing ids are skipped).
         val recentResolved = remember(recentTick, channelGroups, currentGroupIndex) {
             val entries = RecentChannels.decode(Prefs.getRecentChannels(context))
-            val numbers = buildMap {
-                channelGroups.forEachIndexed { i, g -> g.variants.forEach { put(it.channel.url, i + 1) } }
-            }
-            val currentUrl = channelGroups.getOrNull(currentGroupIndex)?.defaultChannel?.url
-            RecentChannels.resolve(entries, ChannelGrouper.allChannels(channelGroups)).map { (e, ch) ->
+            val currentGroupKey = channelGroups.getOrNull(currentGroupIndex)?.key
+            RecentChannels.resolve(entries, channelGroups).map { (_, group, ch) ->
+                val groupIndex = channelGroups.indexOfFirst { it.key == group.key }
                 RecentChannelUi(
-                    title = ch.title,
-                    number = numbers[ch.url] ?: e.number,
-                    logoUrl = ch.logoUrl,
-                    selected = ch.url == currentUrl,
-                ) to ch
+                    title = group.displayTitle,
+                    number = groupIndex + 1,
+                    logoUrl = group.logoUrl ?: ch.logoUrl,
+                    selected = group.key == currentGroupKey,
+                ) to (group to ch)
             }
         }
         val recentItems = recentResolved.map { it.first }
@@ -1229,13 +1257,24 @@ fun VideoPlayerScreen(
             visible = recentChannelsOpen,
             items = recentItems,
             onSelect = { index ->
-                recentResolved.getOrNull(index)?.let { (_, ch) ->
-                    recentChannelsOpen = false
-                    sidebarController.closeDrawer()
-                    playChannel(ch)
+                recentResolved.getOrNull(index)?.let { (_, pair) ->
+                    val group = pair.first
+                    val channel = pair.second
+                    val groupIndex = channelGroups.indexOfFirst { it.key == group.key }
+                    val variantIndex = group.variants.indexOfFirst { it.channel.url == channel.url }
+                        .let { if (it >= 0) it else 0 }
+                    if (groupIndex >= 0) {
+                        recentChannelsOpen = false
+                        sidebarController.closeDrawer()
+                        playGroupVariant(groupIndex, variantIndex)
+                    }
                 }
             },
             onClear = {
+                // t141: kill the debounced write first, otherwise a pending zap re-creates the list.
+                recentWriteJob?.cancel()
+                recentWriteJob = null
+                pendingRecentEncoded = null
                 Prefs.clearRecentChannels(context)
                 recentTick++
                 android.widget.Toast.makeText(context, "已清空最近观看", android.widget.Toast.LENGTH_SHORT).show()
