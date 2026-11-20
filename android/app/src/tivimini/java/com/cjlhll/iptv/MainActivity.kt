@@ -205,7 +205,10 @@ fun MainScreen() {
                     putExtra("PLAYLIST_FILE_NAME", PlaylistCache.fileNameForSource(url))
                     addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK)
                 })
-                BackgroundSourceUpdater.scheduleRefresh(context, delayMs=3000L)
+                // t182 (EPG-SOURCE-SAVE-01): one entry point — the scheduler refreshes both sources,
+            // records last-success/failure and emits a single result event. The old
+            // scheduleRefresh() path bypassed it and could double-run the EPG.
+            AutoUpdateScheduler.onSourceChanged(context)
                 (context as? android.app.Activity)?.finish()
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e

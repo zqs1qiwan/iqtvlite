@@ -1280,8 +1280,9 @@ fun VideoPlayerScreen(
         SettingsDrawer(
             visible = settingsDrawerOpen,
             onSourceConfigClick = {
-                // t176 (STARTUP-RESET-01): the source may change, so allow a new startup pass.
-                AutoUpdateScheduler.resetStartupFlag(context)
+                // t182 (STARTUP-RESET-02): NO reset here — opening (and possibly cancelling) the
+                // config screen must not trigger a refresh. The reset happens in
+                // AutoUpdateScheduler.onSourceChanged() once the user actually saved.
                 val intent = Intent(context, MainActivity::class.java)
                 context.startActivity(intent)
             },
@@ -1372,9 +1373,11 @@ fun VideoPlayerScreen(
                 AutoUpdateScheduler.refreshNow(context, playlist = true, epg = false)
             },
             onRefreshEpgNow = {
+                // t182 (EPG-MANUAL-01): ONE path only — raise the manual flag, the pump in the EPG
+                // effect consumes it once and calls refreshNow. Calling refreshNow here as well made
+                // the EPG download twice (two Toasts, last-update advanced twice).
                 android.widget.Toast.makeText(context, "正在刷新 EPG…", android.widget.Toast.LENGTH_SHORT).show()
                 shouldRefreshEpg.value = true
-                AutoUpdateScheduler.refreshNow(context, playlist = false, epg = true)
             },
             onToggleLogoPrefetch = { enabled ->
                 logoPrefetchEnabled = enabled

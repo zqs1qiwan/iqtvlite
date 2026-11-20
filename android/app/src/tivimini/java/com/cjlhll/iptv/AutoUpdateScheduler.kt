@@ -60,6 +60,37 @@ object AutoUpdateScheduler {
         }
     }
 
+    /**
+     * t182 (EPG-SOURCE-SAVE-01 / STARTUP-RESET-02): the ONLY thing a saved source must do.
+     *
+     * Called after the user actually saved a new playlist/EPG source (not when opening the config
+     * screen, so a cancel changes nothing). It re-opens the startup gate and refreshes both sources
+     * through this scheduler, so the EPG never takes a second, unsynchronised path
+     * (`BackgroundSourceUpdater.refreshAll`) and the last-success/failure bookkeeping stays in one
+     * place.
+     */
+    fun onSourceChanged(context: Context) {
+        val appContext = context.applicationContext
+        startupDone = false
+        scope.launch {
+            mutex.withLock {
+                val live = Prefs.getLiveSource(appContext)
+                if (live.isNotBlank()) {
+                    val ok = runCatching { BackgroundSourceUpdater.refreshPlaylistUrgent(appContext) }
+                        .getOrDefault(false)
+                    onPlaylistResult(appContext, ok)
+                }
+                val epg = Prefs.getEpgSource(appContext)
+                if (epg.isNotBlank()) {
+                    val data = runCatching { BackgroundSourceUpdater.refreshEpg(appContext, epg) }.getOrNull()
+                    onEpgResult(appContext, data != null)
+                }
+            }
+            startupDone = true
+            _events.tryEmit("源已更新")
+        }
+    }
+
     /** Manual refresh — bypasses the interval AND the failure backoff (user asked for it). */
     fun refreshNow(context: Context, playlist: Boolean, epg: Boolean) {
         val appContext = context.applicationContext
