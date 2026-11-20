@@ -52,6 +52,26 @@ Not done (honest deferral): leaf-level `derivedStateOf` focus reads / limiting v
 - Cold start + startup CPU spike (no deferral now), video dropped 0, channel keys, TIV/SR, hardware decode.
 - New icon/banner/splash/display name "IQTV Lite"/"IQTV Lite 验证版" visible.
 
-## F. CI receipt
+## F. CI receipt (run81, 44665902878)
 
-_(filled after the fresh r27 dual-ABI CI run completes)_
+- Source commit [8e2e064eac5eec7bdbc12457ce40a18b7cd02b18](https://github.com/zqs1qiwan/iqtvlite/commit/8e2e064eac5eec7bdbc12457ce40a18b7cd02b18), branch integration/tivimini-baseline. Ordinary push only; main/tags untouched; this doc is a docs-only follow-up commit.
+- [APK CI run 44665902878](https://github.com/zqs1qiwan/iqtvlite/actions/runs/44665902878), run81, workflow_dispatch with isolated_test_package=true: **successful**. Fresh CARGO_TARGET_DIR, NDK r27 27.0.12077973, cargo-ndk arm64-v8a+armeabi-v7a at API24; both-ABI JNI + "Shared class/method/field runtime contract passed". Cloud JVM **27 tests 0 failures** (incl DrawerKeysTest 4); lint 0 errors / 64 warnings / 5 hints.
+
+| Deliverable | Actual bytes | SHA256 |
+|---|---:|---|
+| [Application debug/app-debug.apk](https://github.com/zqs1qiwan/iqtvlite/actions/runs/44665902878/artifacts/14597069105) |10,404,860| `5b0fdce6c9134ef5da7410351504c41c3fba2fd94c77e07de8c42ef0c59e089f` |
+| [Test androidTest/debug/app-debug-androidTest.apk](https://github.com/zqs1qiwan/iqtvlite/actions/runs/44665902878/artifacts/14597069105) |502,955| `5e8674dae7034ae5e13a447ae76cce7c830b9742f86f76732b15377ed5c4482e` |
+
+- [Paired artifact 14597069105](https://github.com/zqs1qiwan/iqtvlite/actions/runs/44665902878/artifacts/14597069105) named iqtvlite-test-apk, zip digest `sha256:bfe8562761c8d252a6e6f18a9ef3a79e115da43209c72487dd958a1806ca351e`,8,886,054B, retention90 days, expiry2027-02-18 03:10:30 UTC. [Reports artifact 14597753107](https://github.com/zqs1qiwan/iqtvlite/actions/runs/44665902878/artifacts/14597753107) named iqtvlite-android-reports, `sha256:230e31afb5acb1bccf43b190d047b6caa2155077bd1c4407f44dcf007ae8c79a`,3,248,253B. Actions artifacts, not a public Release.
+- Both APKs signer SHA256 `34a031e525ee6f970dbe7048e23d87aede792b1183383f36603d55681e5df90a` (Android Debug, fresh runner cert; differs from prior runs; no stable cross-run upgrade guarantee).
+- Main applicationId tv.iqtvlite.app.validation; **application-label "IQTV Lite 验证版"**; versionCode10081, versionName2.2.0-tivimini-8e2e064e-validation; min24,target35,compile36; native-code 'arm64-v8a' 'armeabi-v7a'; icon resolves to `res/mipmap-anydpi-v26/ic_launcher.xml`; `res/drawable-nodpi/tv_banner.png` + `res/drawable-nodpi/splash_mark.png` + `res/drawable/splash_background.xml` packaged.
+- instrumentation-contract.json: app_sha256/test_sha256 equal the table hashes; missing_types/methods/fields all empty; keep regenerated = 210 roots identical.
+- Size: main APK **10,404,860 B** — far under the 30,000,000 B budget. The drop vs CI10080 is resource-shrink dropping the now-unreferenced legacy banner/logo bitmaps after switching `android:banner` to the brand `tv_banner`; no ABI/feature was removed.
+- **Device verification is acceptance2's work on this exact pair**: repeated drawer open/close + browse on a real source (incl. a group named "全部" / duplicate EPG start+end) must not crash; `scripts/sidebar_jank_probe.sh` gfxinfo vs CI10078 baseline; cold start/CPU/video-dropped-0/channel keys/TIV/SR; new icon/banner/splash/name. This receipt does not claim smoothness.
+
+To reproduce:
+
+```sh
+gh run download 44665902878 -R zqs1qiwan/iqtvlite -n iqtvlite-test-apk -D downloaded-apks
+gh run download 44665902878 -R zqs1qiwan/iqtvlite -n iqtvlite-android-reports -D downloaded-reports
+```
