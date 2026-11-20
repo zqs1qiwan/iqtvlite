@@ -7,7 +7,10 @@ from pathlib import Path
 from zipfile import ZipFile
 
 path = Path(sys.argv[1])
-max_bytes = 14454072  # floor(13,140,066 * 1.10), same universal optimized-test ABI set.
+# Budget raised to 30,000,000 B by explicit user decision 2026-11-20 ("最高30MB、性能与运行速度最高优先").
+# This authorizes the zero-copy SurfaceView base (and future FFmpeg MP2) size headroom; it is NOT a
+# silent relaxation. Kept: dual-ABI/JNI/keep checks and true-byte reporting below; no ABI/feature removed.
+max_bytes = 30000000
 assert path.stat().st_size <= max_bytes, f'APK size {path.stat().st_size} exceeds {max_bytes}; report variant/dependency/resource deltas'
 required = [b'Java_tv_iqtvlite_app_RustBridge_' + name for name in [b'version', b'parseM3u', b'stableId', b'parseXmltvFile']]
 report = {'apk': path.name, 'bytes': path.stat().st_size, 'sha256': hashlib.sha256(path.read_bytes()).hexdigest(), 'native': []}

@@ -112,6 +112,7 @@ class PlayerActivity : ComponentActivity() {
     private var lastBackPressTime: Long = 0
     private var lastBackPressTimeCatchup: Long = 0
 
+    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -119,7 +120,33 @@ class PlayerActivity : ComponentActivity() {
         val videoTitle = intent.getStringExtra("VIDEO_TITLE") ?: "Live"
         val playlistFileName = intent.getStringExtra("PLAYLIST_FILE_NAME") ?: Prefs.getPlaylistFileName(this)
 
-        setContent {
+        // Zero-copy rendering base (t38): a native FrameLayout hosts a PlayerView (SurfaceView,
+        // zero-copy) as the bottom layer and a transparent ComposeView on top for ALL UI overlays.
+        // The video stays on its own compositor layer, so UI jank no longer drags the video and there
+        // is no per-frame GPU copy (vs TextureView). GUARD (learned from the t30 grey screen): the
+        // SurfaceView must remain a DIRECT child of the content FrameLayout with the ComposeView
+        // transparent above it, and no opaque layer may cover its bounds.
+        val rootLayout = android.widget.FrameLayout(this).apply { setBackgroundColor(android.graphics.Color.BLACK) }
+        val videoView = androidx.media3.ui.PlayerView(this).apply {
+            useController = false
+            setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
+            setKeepContentOnPlayerReset(true)
+            setShutterBackgroundColor(android.graphics.Color.TRANSPARENT)
+            keepScreenOn = true
+            isFocusable = false
+            isFocusableInTouchMode = false
+            descendantFocusability = android.view.ViewGroup.FOCUS_BLOCK_DESCENDANTS
+        }
+        rootLayout.addView(videoView, android.widget.FrameLayout.LayoutParams(
+            android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.MATCH_PARENT))
+        val composeOverlay = androidx.compose.ui.platform.ComposeView(this).apply {
+            setBackgroundColor(android.graphics.Color.TRANSPARENT)
+        }
+        rootLayout.addView(composeOverlay, android.widget.FrameLayout.LayoutParams(
+            android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.MATCH_PARENT))
+        setContentView(rootLayout)
+
+        composeOverlay.setContent {
             val colorScheme = darkColorScheme(
                 primary = ComposeColor(0xFFBDBDBD),
                 onPrimary = ComposeColor.Black,
@@ -134,12 +161,11 @@ class PlayerActivity : ComponentActivity() {
             )
 
             MaterialTheme(colorScheme = colorScheme) {
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    shape = androidx.compose.ui.graphics.RectangleShape
-                ) {
-                    Box(Modifier.fillMaxSize()) {
+                // Transparent root: this ComposeView must never paint an opaque full-screen layer,
+                // otherwise it would cover the SurfaceView behind it (t30 grey-screen regression).
+                Box(Modifier.fillMaxSize()) {
                     VideoPlayerScreen(
+                        playerView = videoView,
                         url = videoUrl,
                         title = videoTitle,
                         playlistFileName = playlistFileName,
@@ -162,7 +188,6 @@ class PlayerActivity : ComponentActivity() {
                         finish()
                     }
                     if (digits.isNotEmpty()) Text(digits, modifier = Modifier.align(Alignment.TopEnd).padding(48.dp).background(ComposeColor.Black.copy(alpha=.8f)).padding(20.dp), style = MaterialTheme.typography.headlineLarge)
-                    }
                 }
             }
         }
@@ -311,6 +336,7 @@ class PlayerActivity : ComponentActivity() {
 @Composable
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class, androidx.media3.common.util.ExperimentalApi::class)
 fun VideoPlayerScreen(
+    playerView: PlayerView,
     url: String,
     title: String,
     playlistFileName: String?,
@@ -411,10 +437,11 @@ fun VideoPlayerScreen(
 
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
-                // Faster cold-start/zap: start playback after ~0.8s buffered (was 1.5s) and at a
-                // lower playback threshold (0.3s, was 0.5s). Keep a generous 6s max buffer and 1.0s
-                // after-rebuffer so long-play/live stays stable on the weak v7a box.
-                800,
+                // Faster cold-start/zap than 1500/6000/500/1000, but within Media3 constraints:
+                // minBufferMs(1000) >= bufferForPlayback(300) and >= bufferForPlaybackAfterRebuffer(1000).
+                // The earlier 800/6000/300/1000 was INVALID (800 < afterRebuffer 1000) and crashed at
+                // PlayerActivity start (USAB2-01 / CI10077). Never set minBufferMs below afterRebuffer.
+                1_000,
                 6_000,
                 300,
                 1_000
@@ -442,8 +469,9 @@ fun VideoPlayerScreen(
         val req = catchupRequest
         val request = if (req == null) MediaPlaybackRequest(selectedLiveNow())
             else PlaybackIntent.catchup(ChannelGrouper.allChannels(channelGroups), req, playbackIntent.request)
-        if (request == null) { newPlayer.release(); return }
+        if (request == null) { newPlayer.release(); playerView.player = null; return }
         catchupRetryCount = 0
+        playerView.player = newPlayer
         prepareRequest(newPlayer, request)
         player = newPlayer
     }
@@ -452,6 +480,7 @@ fun VideoPlayerScreen(
         sourceSelectGeneration += 1
         sourceSelectJob?.cancel()
         playbackIntent.suspendPlayer()
+        playerView.player = null
         player?.let { StreamPlayback.release(it) }
         player = null
     }
@@ -964,40 +993,15 @@ fun VideoPlayerScreen(
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        if (player != null) {
-            Box(modifier = Modifier.fillMaxSize()) {
-                AndroidView(
-                    modifier = Modifier.fillMaxSize(),
-                    factory = {
-                        // TextureView host (see res/layout/player_texture_view.xml): a SurfaceView
-                        // inside Compose renders in a separate layer behind the window and stays
-                        // hidden (grey) until exit, so use surface_type=texture_view.
-                        (android.view.LayoutInflater.from(it)
-                            .inflate(tv.iqtvlite.app.R.layout.player_texture_view, null) as PlayerView).apply {
-                            this.player = player
-                            useController = false
-                            setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
-                            setKeepContentOnPlayerReset(true)
-                            setShutterBackgroundColor(Color.TRANSPARENT)
-                            keepScreenOn = true
-                            isFocusable = false
-                            isFocusableInTouchMode = false
-                            descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
-                        }
-                    },
-                    update = {
-                        it.player = player
-                    }
-                )
-
-                ChannelSwitchOverlay(
-                    controller = channelSwitch,
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(24.dp)
-                )
-            }
-        }
+        // Video is rendered by the native PlayerView(SurfaceView) BELOW this transparent ComposeView
+        // (owned by the Activity). Compose only draws overlays here — no AndroidView / PlayerView in
+        // the Compose tree — so the SurfaceView layer is never occluded (no t30 grey-screen regression).
+        ChannelSwitchOverlay(
+            controller = channelSwitch,
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(24.dp)
+        )
 
         PlayerDrawer(
             visible = drawerOpen,
