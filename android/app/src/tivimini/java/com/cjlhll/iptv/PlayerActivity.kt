@@ -255,16 +255,18 @@ class PlayerActivity : ComponentActivity() {
             if (sidebarController.value.drawerOpen) {
                 when (event.keyCode) {
                     KeyEvent.KEYCODE_DPAD_LEFT -> when (sidebarController.value.activeColumn) {
-                        DrawerColumn.Channels -> { sidebarController.setShowGroups(true); nativeSidebar?.focusGroups(); return true }
-                        DrawerColumn.Groups -> { sidebarController.setShowGroups(false); nativeSidebar?.focusChannels(); return true }
+                        DrawerColumn.Channels -> { sidebarController.setShowGroups(true); nativeSidebar?.clearPosition(DrawerColumn.Groups); nativeSidebar?.focusGroups(); return true }
+                        DrawerColumn.Groups -> { sidebarController.setShowGroups(false); nativeSidebar?.clearPosition(DrawerColumn.Groups); nativeSidebar?.focusChannels(); return true }
                         DrawerColumn.Programs -> { nativeSidebar?.focusChannels(); return true }
-                        DrawerColumn.Dates -> { sidebarController.setShowDates(false); nativeSidebar?.focusPrograms(); return true }
+                        DrawerColumn.Dates -> { sidebarController.setShowDates(false); nativeSidebar?.clearPosition(DrawerColumn.Dates); nativeSidebar?.focusPrograms(); return true }
                         else -> {}
                     }
                     KeyEvent.KEYCODE_DPAD_RIGHT -> when (sidebarController.value.activeColumn) {
-                        DrawerColumn.Groups -> { nativeSidebar?.focusChannels(); return true }
+                        // SIDEBAR3-01: hide the groups overlay BEFORE focusing channels, otherwise the
+                        // 0..151dp overlay keeps covering the focused channel row.
+                        DrawerColumn.Groups -> { sidebarController.setShowGroups(false); nativeSidebar?.clearPosition(DrawerColumn.Groups); nativeSidebar?.focusChannels(); return true }
                         DrawerColumn.Channels -> { nativeSidebar?.focusPrograms(); return true }
-                        DrawerColumn.Programs -> { sidebarController.setShowDates(true); nativeSidebar?.focusDates(); return true }
+                        DrawerColumn.Programs -> { sidebarController.setShowDates(true); nativeSidebar?.clearPosition(DrawerColumn.Dates); nativeSidebar?.focusDates(); return true }
                         else -> {}
                     }
                 }

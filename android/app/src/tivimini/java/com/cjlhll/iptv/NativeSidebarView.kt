@@ -14,6 +14,7 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import androidx.appcompat.widget.AppCompatTextView
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -27,6 +28,22 @@ private const val COLOR_MUTED = 0xFFA9B4C7.toInt()
 private const val COLOR_BLUE = 0xFF4EA8FF.toInt()
 private const val COLOR_AMBER = 0xFFF5A524.toInt()
 private const val FOCUS_BG = 0x14FFFFFF
+
+/** Focus-aware weight without an adapter rebind (SIDEBAR3-02). */
+private class FocusWeightTextView(ctx: Context) : AppCompatTextView(ctx) {
+    private val normalTypeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+    private val focusedTypeface = Typeface.create("sans-serif", Typeface.BOLD)
+
+    init {
+        typeface = normalTypeface
+    }
+
+    override fun drawableStateChanged() {
+        super.drawableStateChanged()
+        val want = if (drawableState.contains(android.R.attr.state_focused)) focusedTypeface else normalTypeface
+        if (typeface !== want) typeface = want
+    }
+}
 
 private data class SidebarRow(
     val text: String,
@@ -80,10 +97,9 @@ private class RowAdapter(
         }
         val accent = View(ctx).apply { background = accentSelector() }
         root.addView(accent, FrameLayout.LayoutParams(dp(ctx, 2), ViewGroup.LayoutParams.MATCH_PARENT, Gravity.START))
-        val primary = TextView(ctx).apply {
+        val primary = FocusWeightTextView(ctx).apply {
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
             setTextColor(textColorSelector())
-            setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL))
             isDuplicateParentStateEnabled = true
             maxLines = 1
             ellipsize = android.text.TextUtils.TruncateAt.END
@@ -94,7 +110,8 @@ private class RowAdapter(
         })
         val secondary = TextView(ctx).apply {
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
-            setTextColor(textColorSelector())
+            // SIDEBAR3-03: secondary stays muted on focus (distinct from the primary).
+            setTextColor(COLOR_MUTED)
             isDuplicateParentStateEnabled = true
             maxLines = 1
             ellipsize = android.text.TextUtils.TruncateAt.END
@@ -178,6 +195,32 @@ class NativeSidebarView(
     private var lastState: SidebarState = controller.value
     private var lastSignature: Any? = null
     private val lastPositions = HashMap<DrawerColumn, Int>()
+    private val programRefresh = Runnable { renderProgramsOnly() }
+    // SIDEBAR3-04: refresh the NOW/next text periodically while the drawer is visible.
+    private val nowTick = object : Runnable {
+        override fun run() {
+            renderProgramsOnly()
+            channelsAdapter.submit(buildChannelRows(lastState))
+            handler.postDelayed(this, 60_000L)
+        }
+    }
+
+    override fun onVisibilityChanged(changedView: View, visibility: Int) {
+        super.onVisibilityChanged(changedView, visibility)
+        handler.removeCallbacks(nowTick)
+        if (visibility == View.VISIBLE) handler.postDelayed(nowTick, 60_000L)
+    }
+
+    override fun onDetachedFromWindow() {
+        super.onDetachedFromWindow()
+        handler.removeCallbacks(nowTick)
+        handler.removeCallbacks(programRefresh)
+    }
+
+    /** SIDEBAR3-07: overlay toggles must not reuse a stale position for that column. */
+    fun clearPosition(column: DrawerColumn) {
+        lastPositions.remove(column)
+    }
 
     init {
         setBackgroundColor(Color.TRANSPARENT)
@@ -294,8 +337,8 @@ class NativeSidebarView(
         if (column == DrawerColumn.Channels && row.url != null) {
             controller.focusChannel(row.url)
             // 350ms debounce before recomputing the program column (off-main formatting, local invalidate).
-            handler.removeCallbacksAndMessages(null)
-            handler.postDelayed({ renderProgramsOnly() }, 350L)
+            handler.removeCallbacks(programRefresh)
+            handler.postDelayed(programRefresh, 350L)
         }
     }
 
