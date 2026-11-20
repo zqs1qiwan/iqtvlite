@@ -66,7 +66,7 @@ private class RowAdapter(
         diff.dispatchUpdatesTo(this)
     }
 
-    class H(val root: FrameLayout, val accent: View, val arrow: TextView, val primary: TextView, val secondary: TextView) :
+    class H(val root: FrameLayout, val accent: View, val primary: TextView, val secondary: TextView) :
         RecyclerView.ViewHolder(root)
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): H {
@@ -75,30 +75,27 @@ private class RowAdapter(
             layoutParams = RecyclerView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, rowHeightPx)
             isFocusable = true
             isFocusableInTouchMode = true
-            setBackgroundColor(Color.TRANSPARENT)
+            // Focus background via a state-list drawable: no per-focus setBackground/allocation/rebind.
+            background = stateDrawable(FOCUS_BG, Color.TRANSPARENT)
         }
-        val accent = View(ctx).apply { setBackgroundColor(COLOR_BLUE) }
+        val accent = View(ctx).apply { background = accentSelector() }
         root.addView(accent, FrameLayout.LayoutParams(dp(ctx, 2), ViewGroup.LayoutParams.MATCH_PARENT, Gravity.START))
-        val arrow = TextView(ctx).apply {
-            text = "▶"
-            setTextColor(COLOR_BLUE)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 9f)
-            gravity = Gravity.CENTER_VERTICAL
-        }
-        root.addView(arrow, FrameLayout.LayoutParams(dp(ctx, 16), ViewGroup.LayoutParams.MATCH_PARENT, Gravity.START).apply { marginStart = dp(ctx, 4) })
         val primary = TextView(ctx).apply {
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
-            setTextColor(COLOR_MUTED)
+            setTextColor(textColorSelector())
+            setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL))
+            isDuplicateParentStateEnabled = true
             maxLines = 1
             ellipsize = android.text.TextUtils.TruncateAt.END
             gravity = Gravity.CENTER_VERTICAL
         }
         root.addView(primary, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT).apply {
-            marginStart = dp(ctx, 22); marginEnd = dp(ctx, 96)
+            marginStart = dp(ctx, 12); marginEnd = dp(ctx, 96)
         })
         val secondary = TextView(ctx).apply {
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
-            setTextColor(COLOR_MUTED)
+            setTextColor(textColorSelector())
+            isDuplicateParentStateEnabled = true
             maxLines = 1
             ellipsize = android.text.TextUtils.TruncateAt.END
             gravity = Gravity.CENTER_VERTICAL or Gravity.END
@@ -106,32 +103,43 @@ private class RowAdapter(
         root.addView(secondary, FrameLayout.LayoutParams(dp(ctx, 90), ViewGroup.LayoutParams.MATCH_PARENT, Gravity.END).apply {
             marginEnd = dp(ctx, 6)
         })
-        return H(root, accent, arrow, primary, secondary)
+        return H(root, accent, primary, secondary)
     }
 
     override fun getItemCount(): Int = rows.size
 
     override fun onBindViewHolder(holder: H, position: Int) {
         val row = rows[position]
-        val root = holder.root
-        holder.primary.text = row.text
+        // Preformatted text incl. the ▶ marker — no per-frame formatting.
+        holder.primary.text = if (row.selected) "▶ ${row.text}" else row.text
         holder.secondary.text = row.secondary.orEmpty()
-        holder.accent.visibility = if (row.selected || row.now) View.VISIBLE else View.INVISIBLE
-        holder.accent.setBackgroundColor(if (row.now) COLOR_AMBER else COLOR_BLUE)
-        holder.arrow.visibility = if (row.selected) View.VISIBLE else View.INVISIBLE
-        applyFocus(holder, false)
-        root.onFocusChangeListener = View.OnFocusChangeListener { _, hasFocus ->
-            applyFocus(holder, hasFocus)
+        // Accent bar is a state-list drawable driven by view state (selected = blue, activated = amber).
+        holder.accent.isSelected = row.selected
+        holder.accent.isActivated = row.now
+        holder.root.onFocusChangeListener = View.OnFocusChangeListener { _, hasFocus ->
             if (hasFocus) onFocus(row, holder.bindingAdapterPosition)
         }
-        root.setOnClickListener { onClick(row) }
+        holder.root.setOnClickListener { onClick(row) }
     }
 
-    private fun applyFocus(holder: H, focused: Boolean) {
-        holder.root.background = if (focused) ColorDrawable(FOCUS_BG) else null
-        holder.primary.setTextColor(if (focused) COLOR_INK else COLOR_MUTED)
-        holder.primary.setTypeface(null, if (focused) Typeface.BOLD else Typeface.NORMAL)
-    }
+    private fun stateDrawable(focused: Int, normal: Int): android.graphics.drawable.StateListDrawable =
+        android.graphics.drawable.StateListDrawable().apply {
+            addState(intArrayOf(android.R.attr.state_focused), ColorDrawable(focused))
+            addState(intArrayOf(), ColorDrawable(normal))
+        }
+
+    private fun accentSelector(): android.graphics.drawable.StateListDrawable =
+        android.graphics.drawable.StateListDrawable().apply {
+            addState(intArrayOf(android.R.attr.state_activated), ColorDrawable(COLOR_AMBER))
+            addState(intArrayOf(android.R.attr.state_selected), ColorDrawable(COLOR_BLUE))
+            addState(intArrayOf(), ColorDrawable(Color.TRANSPARENT))
+        }
+
+    private fun textColorSelector(): android.content.res.ColorStateList =
+        android.content.res.ColorStateList(
+            arrayOf(intArrayOf(android.R.attr.state_focused), intArrayOf()),
+            intArrayOf(COLOR_INK, COLOR_MUTED)
+        )
 
     private fun dp(ctx: Context, value: Int): Int =
         (value * ctx.resources.displayMetrics.density).toInt()
@@ -169,24 +177,30 @@ class NativeSidebarView(
 
     private var lastState: SidebarState = controller.value
     private var lastSignature: Any? = null
-    private var pendingInitialFocus = false
     private val lastPositions = HashMap<DrawerColumn, Int>()
 
     init {
         setBackgroundColor(Color.TRANSPARENT)
-        // GAP-01: fixed 633dp base (channels 300 + programs 300 + 33 slack). Groups (151dp) and dates
-        // (120dp) are OVERLAY columns on the left/right; showing/hiding them never shifts the base.
+        // GAP2-01: a 633dp-wide panel anchored to the left holds the base columns AND the overlay
+        // columns. The date overlay is right-aligned to the base right edge (513 = 633-120), so it can
+        // never float over the video on the far right.
+        val panel = FrameLayout(context).apply { setBackgroundColor(Color.TRANSPARENT) }
+        addView(panel, LayoutParams(dp(633), ViewGroup.LayoutParams.MATCH_PARENT, Gravity.START))
         val base = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             setBackgroundColor(0xE6161B22.toInt())
         }
-        addView(base, LayoutParams(dp(633), ViewGroup.LayoutParams.MATCH_PARENT))
+        panel.addView(base, LayoutParams(dp(633), ViewGroup.LayoutParams.MATCH_PARENT))
         base.addView(channelsColumn, LinearLayout.LayoutParams(dp(300), ViewGroup.LayoutParams.MATCH_PARENT))
         base.addView(programsColumn, LinearLayout.LayoutParams(dp(300), ViewGroup.LayoutParams.MATCH_PARENT))
+        groupsColumn.setBackgroundColor(0xE6161B22.toInt())
+        datesColumn.setBackgroundColor(0xE6161B22.toInt())
         groupsColumn.layoutParams = LayoutParams(dp(151), ViewGroup.LayoutParams.MATCH_PARENT, Gravity.START)
-        datesColumn.layoutParams = LayoutParams(dp(120), ViewGroup.LayoutParams.MATCH_PARENT, Gravity.END)
-        addView(groupsColumn)
-        addView(datesColumn)
+        datesColumn.layoutParams = LayoutParams(dp(120), ViewGroup.LayoutParams.MATCH_PARENT, Gravity.START).apply {
+            leftMargin = dp(513)
+        }
+        panel.addView(groupsColumn)
+        panel.addView(datesColumn)
     }
 
     private fun column(title: String, rv: RecyclerView, adapter: RowAdapter): LinearLayout =
@@ -203,6 +217,8 @@ class NativeSidebarView(
             rv.isFocusable = false
             rv.isFocusableInTouchMode = false
             rv.setHasFixedSize(true)
+            rv.itemAnimator = null
+            rv.setItemViewCacheSize(8)
             addView(rv, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         }
 
@@ -216,24 +232,23 @@ class NativeSidebarView(
         )
         if (signature == lastSignature) return
         lastSignature = signature
+        // GAP2-02: structural change (group/date/EPG) invalidates stale browsing positions; focus
+        // restore then resolves channels by focusedChannelUrl and programs from the top.
+        lastPositions.remove(DrawerColumn.Channels)
+        lastPositions.remove(DrawerColumn.Programs)
         val groups = ChannelGrouper.sortedDrawerGroups(state.channelGroups)
         groupsAdapter.submit(groups.map { name ->
             SidebarRow(text = name, selected = name == state.selectedGroup, groupName = name)
         })
         groupsColumn.visibility = if (state.showGroups) View.VISIBLE else View.GONE
 
-        val groupRows = buildChannelRows(state)
-        channelsAdapter.submit(groupRows)
+        channelsAdapter.submit(buildChannelRows(state))
         renderProgramsOnly()
-
-        if (pendingInitialFocus) {
-            pendingInitialFocus = false
-            requestInitialFocus()
-        }
     }
 
     /** Recompute only the program/date columns (used by the 350ms focus debounce). */
-    fun renderProgramsOnly() {        val state = lastState
+    fun renderProgramsOnly() {
+        val state = lastState
         programsAdapter.submit(programsFor(state))
         val dates = datesFor(state)
         datesAdapter.submit(dates.map { date ->
@@ -358,7 +373,17 @@ class NativeSidebarView(
             }
             val pos = target.coerceIn(0, count - 1)
             rv.scrollToPosition(pos)
-            rv.post { rv.findViewHolderForAdapterPosition(pos)?.itemView?.requestFocus() ?: rv.requestFocus() }
+            rv.post {
+                val holder = rv.findViewHolderForAdapterPosition(pos)
+                if (holder != null) {
+                    holder.itemView.requestFocus()
+                } else {
+                    // GAP2-04: retry once after the overlay column has been laid out.
+                    rv.postDelayed({
+                        rv.findViewHolderForAdapterPosition(pos)?.itemView?.requestFocus() ?: rv.requestFocus()
+                    }, 30L)
+                }
+            }
         }, 30L)
     }
 

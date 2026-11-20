@@ -262,6 +262,7 @@ class PlayerActivity : ComponentActivity() {
                         else -> {}
                     }
                     KeyEvent.KEYCODE_DPAD_RIGHT -> when (sidebarController.value.activeColumn) {
+                        DrawerColumn.Groups -> { nativeSidebar?.focusChannels(); return true }
                         DrawerColumn.Channels -> { nativeSidebar?.focusPrograms(); return true }
                         DrawerColumn.Programs -> { sidebarController.setShowDates(true); nativeSidebar?.focusDates(); return true }
                         else -> {}
