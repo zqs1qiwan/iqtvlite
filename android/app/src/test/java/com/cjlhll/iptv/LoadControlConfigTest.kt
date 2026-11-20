@@ -17,9 +17,21 @@ class LoadControlConfigTest {
     fun productionBufferDurationsAreValid() {
         // Must NOT throw. Keep in sync with PlayerActivity.initializePlayer().
         DefaultLoadControl.Builder()
-            .setBufferDurationsMs(1_000, 6_000, 300, 1_000)
+            .setBufferDurationsMs(2_500, 6_000, 500, 2_000)
             .setBackBuffer(0, false)
             .setPrioritizeTimeOverSizeThresholds(true)
+            .build()
+    }
+
+    @Test
+    fun productionMinBufferCoversAfterRebuffer() {
+        // t157: the CPU fix relies on minBufferMs >= bufferForPlaybackAfterRebufferMs. If a future
+        // edit lowers the minimum below the rebuffer threshold, the builder throws (CI10077).
+        val min = 2_500
+        val afterRebuffer = 2_000
+        org.junit.Assert.assertTrue(min >= afterRebuffer)
+        DefaultLoadControl.Builder()
+            .setBufferDurationsMs(min, 6_000, 500, afterRebuffer)
             .build()
     }
 

@@ -494,14 +494,17 @@ fun VideoPlayerScreen(
 
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
-                // Faster cold-start/zap than 1500/6000/500/1000, but within Media3 constraints:
-                // minBufferMs(1000) >= bufferForPlayback(300) and >= bufferForPlaybackAfterRebuffer(1000).
-                // The earlier 800/6000/300/1000 was INVALID (800 < afterRebuffer 1000) and crashed at
-                // PlayerActivity start (USAB2-01 / CI10077). Never set minBufferMs below afterRebuffer.
-                1_000,
+                // t157 (A/B proven): 1000/6000/300/1000 kept the loader awake on a live progressive-TS
+                // feed — Loader 5.0%→16.9%, Playback 11.6%→18.1%, app CPU 31.2%→44.2% (CI10093 vs
+                // CI10101, same channel, 60 s steady state, rebuffers=0).
+                // 2500/6000/500/2000 gives the loader a margin so it fills and then idles.
+                // Constraint kept: minBufferMs(2500) >= bufferForPlayback(500) and
+                // >= bufferForPlaybackAfterRebuffer(2000) — an 800/…/1000 set crashed at start
+                // (USAB2-01 / CI10077), never set minBufferMs below afterRebuffer.
+                2_500,
                 6_000,
-                300,
-                1_000
+                500,
+                2_000
             )
             .setBackBuffer(0, false)
             .setPrioritizeTimeOverSizeThresholds(true)
