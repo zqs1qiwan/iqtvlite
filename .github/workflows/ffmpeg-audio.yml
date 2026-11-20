@@ -1,0 +1,50 @@
+name: Build Media3 FFmpeg Audio Extension
+
+# Manual-only helper that builds the audio-only Media3 FFmpeg decoder AAR (for MP2/MP3/AAC/AC3/...).
+# It is intentionally separate from the apk.yml release path so the stable app build is untouched.
+# When this succeeds, download the artifact and follow docs/AUDIO_MP2_IMPL.md to integrate it.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    env:
+      MEDIA3_TAG: "1.11.1"
+      ANDROID_ABI: "21"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: nttld/setup-ndk@v1
+        id: ndk
+        with:
+          ndk-version: r27
+
+      - name: Install build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build cmake git curl unzip
+
+      - name: Cache FFmpeg source
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/media3/libraries/decoder_ffmpeg/src/main/jni/ffmpeg
+          key: ffmpeg-release-6.0-${{ runner.os }}
+
+      - name: Fetch media3 ${{ env.MEDIA3_TAG }}
+        run: |
+          git clone --depth 1 --branch "$MEDIA3_TAG" https://github.com/androidx/media.git media3
+
+      - name: Build FFmpeg + decoder_ffmpeg AAR
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+        run: |
+          bash scripts/build_media3_ffmpeg_audio.sh "$GITHUB_WORKSPACE/media3" "$ANDROID_NDK_HOME" "$ANDROID_ABI"
+
+      - name: Upload AAR
+        uses: actions/upload-artifact@v4
+        with:
+          name: media3-decoder-ffmpeg-aar
+          path: media3/libraries/decoder_ffmpeg/build/outputs/aar/*.aar
+          if-no-files-found: error
