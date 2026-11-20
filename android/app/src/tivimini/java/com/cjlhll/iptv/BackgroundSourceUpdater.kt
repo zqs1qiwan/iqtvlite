@@ -18,8 +18,11 @@ import okhttp3.Request
 
 object BackgroundSourceUpdater {
     private const val TAG = "SourceRefresh"
-    private const val PLAYLIST_STARTUP_DELAY_MS = 8_000L
-    private const val EPG_STARTUP_DELAY_MS = 12_000L
+    // t50: revert the t42/t46 8s/12s defers — t45 showed it moved the CPU spike into the user-browsing
+    // window. Refresh immediately on IO (independent coroutines); the small EPG stagger only stops the
+    // two parses colliding at t=0.
+    private const val PLAYLIST_STARTUP_DELAY_MS = 0L
+    private const val EPG_STARTUP_DELAY_MS = 1_500L
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val httpClient = NetUtil.ipv4OkHttpClient

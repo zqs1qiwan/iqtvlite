@@ -253,13 +253,13 @@ private fun BannerProgressBar(
             .padding(top = 4.dp)
             .fillMaxWidth()
             .height(3.dp)
-            .background(track, RoundedCornerShape(999.dp))
+            .background(track, RoundedCornerShape(2.dp))
     ) {
         Box(
             modifier = Modifier
                 .fillMaxHeight()
                 .fillMaxWidth(clamped)
-                .background(fill, RoundedCornerShape(999.dp))
+                .background(fill, RoundedCornerShape(2.dp))
         )
     }
 }

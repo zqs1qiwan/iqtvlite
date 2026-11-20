@@ -11,7 +11,7 @@ android {
         applicationId = if (providers.gradleProperty("ISOLATED_TEST_PACKAGE").orNull == "true") "tv.iqtvlite.app.validation" else "tv.iqtvlite.app"
         minSdk = 24
         targetSdk = 35
-        resValue("string", "app_name", if (providers.gradleProperty("ISOLATED_TEST_PACKAGE").orNull == "true") "iqtvlite 验证版" else "iqtvlite")
+        resValue("string", "app_name", if (providers.gradleProperty("ISOLATED_TEST_PACKAGE").orNull == "true") "IQTV Lite 验证版" else "IQTV Lite")
         versionCode = providers.gradleProperty("APP_VERSION_CODE").orNull?.toInt()
             ?: (10000 + (System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1))
         versionName = (providers.gradleProperty("APP_VERSION_NAME").orNull

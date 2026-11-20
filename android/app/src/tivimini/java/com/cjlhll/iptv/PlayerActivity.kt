@@ -148,16 +148,17 @@ class PlayerActivity : ComponentActivity() {
 
         composeOverlay.setContent {
             val colorScheme = darkColorScheme(
-                primary = ComposeColor(0xFFBDBDBD),
+                // IQTV Lite brand palette (docs/BRAND_GUIDELINES.md).
+                primary = ComposeColor(0xFF4EA8FF),
                 onPrimary = ComposeColor.Black,
-                secondary = ComposeColor(0xFF757575),
+                secondary = ComposeColor(0xFFA9B4C7),
                 onSecondary = ComposeColor.Black,
-                tertiary = ComposeColor(0xFF616161),
-                onTertiary = ComposeColor.White,
-                background = ComposeColor(0xFF121212),
-                onBackground = ComposeColor.White,
-                surface = ComposeColor(0xFF1E1E1E),
-                onSurface = ComposeColor.White
+                tertiary = ComposeColor(0xFFF5A524),
+                onTertiary = ComposeColor.Black,
+                background = ComposeColor(0xFF0E1116),
+                onBackground = ComposeColor(0xFFF2F5FA),
+                surface = ComposeColor(0xFF161B22),
+                onSurface = ComposeColor(0xFFF2F5FA)
             )
 
             MaterialTheme(colorScheme = colorScheme) {
@@ -726,9 +727,9 @@ fun VideoPlayerScreen(
                 }
             }
 
-            // t42: defer the first network EPG refresh so its parse CPU spike does not collide with
-            // cold start / the first video frame. The cached EPG above already serves the first screen.
-            delay(8_000L)
+            // t50: revert the t42 8s deferral — t45 showed deferring only moved the parse spike into the
+            // user-browsing window. The cached EPG above already serves the first screen; refresh runs
+            // immediately on IO.
             var lastAttemptTime = System.currentTimeMillis()
             while (true) {
                 val now = System.currentTimeMillis()

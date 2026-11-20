@@ -152,7 +152,7 @@ private fun SettingsItem(
         modifier = Modifier
             .fillMaxWidth()
             .let { m -> if (focusRequester != null) m.focusRequester(focusRequester) else m }
-            .background(bg, RoundedCornerShape(12.dp))
+            .background(bg, RoundedCornerShape(2.dp))
             .onFocusChanged { focused = it.isFocused }
             .focusable()
             .clickable {

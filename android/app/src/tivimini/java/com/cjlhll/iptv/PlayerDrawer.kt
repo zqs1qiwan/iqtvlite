@@ -8,6 +8,8 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.animateScrollBy
@@ -128,7 +130,7 @@ fun PlayerDrawer(
     val context = LocalContext.current
     val container = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f)
     val scrim = Color.Transparent
-    val shape = RoundedCornerShape(topEnd = 18.dp, bottomEnd = 18.dp)
+    val shape = RoundedCornerShape(0.dp)
 
     var showGroups by remember { mutableStateOf(false) }
     var showDates by remember { mutableStateOf(false) }
@@ -930,9 +932,11 @@ private fun DrawerGroupItem(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 3.dp)
+            .heightIn(min = 44.dp)
+            .padding(vertical = 1.dp)
             .let { m -> if (focusRequester != null) m.focusRequester(focusRequester) else m }
-            .background(bg, RoundedCornerShape(12.dp))
+            .background(bg)
+            .then(if (focused) Modifier.border(2.dp, Color(0xFF4EA8FF)) else Modifier)
             .onFocusChanged {
                 if (it.isFocused) onFocused()
                 focused = it.isFocused
@@ -975,9 +979,11 @@ private fun DrawerChannelItem(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 3.dp)
+            .heightIn(min = 44.dp)
+            .padding(vertical = 1.dp)
             .let { m -> if (focusRequester != null) m.focusRequester(focusRequester) else m }
-            .background(bg, RoundedCornerShape(12.dp))
+            .background(bg)
+            .then(if (focused) Modifier.border(2.dp, Color(0xFF4EA8FF)) else Modifier)
             .onFocusChanged {
                 if (it.isFocused) onFocused()
                 focused = it.isFocused
@@ -1048,13 +1054,13 @@ private fun ThinProgressBar(
     Box(
         modifier = modifier
             .height(3.dp)
-            .background(track, RoundedCornerShape(999.dp))
+            .background(track, RoundedCornerShape(2.dp))
     ) {
         Box(
             modifier = Modifier
                 .fillMaxHeight()
                 .fillMaxWidth(clamped)
-                .background(fill, RoundedCornerShape(999.dp))
+                .background(fill, RoundedCornerShape(2.dp))
         )
     }
 }
@@ -1103,9 +1109,11 @@ private fun DrawerDateItem(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 3.dp)
+            .heightIn(min = 44.dp)
+            .padding(vertical = 1.dp)
             .let { m -> if (focusRequester != null) m.focusRequester(focusRequester) else m }
-            .background(bg, RoundedCornerShape(12.dp))
+            .background(bg)
+            .then(if (focused) Modifier.border(2.dp, Color(0xFF4EA8FF)) else Modifier)
             .onFocusChanged {
                 if (it.isFocused) onFocused()
                 focused = it.isFocused
@@ -1151,9 +1159,11 @@ private fun DrawerProgramItem(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 3.dp)
+            .heightIn(min = 44.dp)
+            .padding(vertical = 1.dp)
             .let { m -> if (focusRequester != null) m.focusRequester(focusRequester) else m }
-            .background(bg, RoundedCornerShape(12.dp))
+            .background(bg)
+            .then(if (focused) Modifier.border(2.dp, Color(0xFF4EA8FF)) else Modifier)
             .onFocusChanged {
                 if (it.isFocused) onFocused()
                 focused = it.isFocused
