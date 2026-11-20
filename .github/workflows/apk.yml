@@ -165,5 +165,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: media3-decoder-ffmpeg-aar
-          path: media3/libraries/decoder_ffmpeg/build/outputs/aar/*.aar
+          path: |
+            media3/**/buildout/outputs/aar/*.aar
+            media3/**/build/outputs/aar/*.aar
           if-no-files-found: error

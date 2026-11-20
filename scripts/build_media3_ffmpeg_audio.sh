@@ -41,7 +41,7 @@ pushd "${MEDIA3_DIR}" >/dev/null
 ./gradlew :lib-decoder-ffmpeg:assembleRelease --no-daemon --stacktrace
 popd >/dev/null
 
-AAR="${MEDIA3_DIR}/libraries/decoder_ffmpeg/build/outputs/aar/decoder_ffmpeg-release.aar"
+AAR=$(find "${MEDIA3_DIR}" -path '*decoder_ffmpeg*' -name '*.aar' -print -quit)
 echo "== AAR: ${AAR}"
 ls -l "${AAR}"
 sha256sum "${AAR}"
