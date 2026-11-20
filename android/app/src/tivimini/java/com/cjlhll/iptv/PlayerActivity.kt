@@ -1240,7 +1240,7 @@ private fun CatchupProgressBar(
     val endText = catchupTimeFormatter.format(Instant.ofEpochMilli(endMillis).atZone(zone))
 
     val containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f)
-    val shape = RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp)
+    val shape = RoundedCornerShape(topStart = 0.dp, topEnd = 0.dp)
     val bottomPadding = if (isBottomPaddingNeeded) 20.dp else 4.dp
 
     Box(
