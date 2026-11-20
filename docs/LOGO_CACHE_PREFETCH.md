@@ -48,7 +48,15 @@ Flat UI / no blue focus, zero-copy SurfaceView base, channel keys 166/167, LoadC
 ## 7. Verification
 
 - Local `--no-daemon` `:app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleDebugAndroidTest`: **BUILD SUCCESSFUL**; JVM **37 tests 0 failures**; lint **0 errors**/66 warnings; pair gate missing 0; keep 210 identical; dex contract 7 OK; APK 16,010,355 B ≤ 30 MB.
-- CI pair receipt: _(filled after run completes)_
+- CI pair receipt (run 44789570423, source `013ec891`, **success**, NDK r27, dual ABI/API24, pair gate passed): cloud JVM 37 tests 0 failures; lint 0 errors / 64 warnings.
+
+| Deliverable | Actual bytes | SHA256 |
+|---|---:|---|
+| app-debug.apk |12,945,299| `ef8549e8a58b6164d3eef549097896cad0f359d1ca927c10d8c47589056dc158` |
+| app-debug-androidTest.apk |502,955| `bc23bd2d2c61d3fa7d47596301baa5669143e1eb4905e9ae45ba3175373e949a` |
+
+- Artifacts: pair `14654544643` (`sha256:384b4318fd3a5cb74323b41c5b587c9f9b8fd495c99d4ed3efb5663d102a5126`, zip 10,217,363 B); reports `14654549398` (`sha256:a3811550fe017d0bb97eb91119a375a825804a34585f964e197efe4d92e1feb3`). Signer `960a9c6afad5a83d129f4f7b55001d38cbedf3e03509f616d20e658b9a126bc3`.
+- Version: `tv.iqtvlite.app.validation / 10098 / 2.2.0-tivimini-013ec891-validation`; label "IQTV Lite 验证版"; min24/target35/compile36; dual ABI; contract missing types/methods/fields empty; keep 210 identical. Size 12,945,299 B ≤ 30 MB.
 
 ## 8. Device check (acceptance, not claimed here)
 
