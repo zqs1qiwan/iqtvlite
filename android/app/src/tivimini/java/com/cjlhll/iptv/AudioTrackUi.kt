@@ -1,14 +1,17 @@
 package com.cjlhll.iptv
 
 /**
- * t175 (F4): pure formatting/selection logic for the audio track UI.
+ * t175/t179 (F4): pure formatting/selection logic for the audio track UI.
  *
- * Kept Android-free so the label rules, the auto/manual state and the "no audio" degradation are
- * unit-testable; the Compose dialog and the ExoPlayer wiring only consume these values.
+ * Android-free so the label rules, the auto/manual state, renderer filtering and the "no audio"
+ * degradation are unit-testable; the Compose dialog and the ExoPlayer wiring only consume these.
  */
 object AudioTrackUi {
 
-    /** One audio track as reported by `player.currentTracks` (already flattened). */
+    /**
+     * One audio track as reported by `player.currentTracks`, already filtered to the tracks the
+     * current renderer actually supports.
+     */
     data class Raw(
         val groupIndex: Int,
         val trackIndex: Int,
@@ -17,6 +20,8 @@ object AudioTrackUi {
         val mime: String?,
         val codecs: String?,
         val channels: Int,
+        /** t179 (AUDIO-SUMMARY-01): true when this is the track the player is playing right now. */
+        val selected: Boolean = false,
     )
 
     /** One row of the dialog. The 自动 row is `groupIndex == -1`. */
@@ -34,7 +39,6 @@ object AudioTrackUi {
     fun formatCodec(mime: String?, codecs: String?): String? {
         val c = codecs?.trim()?.takeIf { it.isNotEmpty() }
         if (c != null) {
-            // Media3 reports MP2 as "mp4a.40.2"-style or "mpeg-L2"/"mp2"; keep it short and readable.
             val lower = c.lowercase()
             return when {
                 lower.contains("mpeg-l2") || lower == "mp2" || lower.contains("mpeg2") -> "mpeg-L2"
@@ -60,7 +64,7 @@ object AudioTrackUi {
         }
     }
 
-    /** `2ch` / `6ch` (max 8 reported), null when the count is unknown. */
+    /** `2ch` / `6ch`, null when the count is unknown. */
     fun formatChannels(channels: Int): String? = if (channels > 0) "${channels}ch" else null
 
     /** Language: keep the ISO code readable, drop the useless "und". */
@@ -69,7 +73,7 @@ object AudioTrackUi {
         return if (l.equals("und", ignoreCase = true) || l.equals("unknown", ignoreCase = true)) null else l
     }
 
-    /** `中文 · mpeg-L2 · 2ch` and similar; always non-blank for a real track. */
+    /** `音轨 1 · zh · mpeg-L2 · 2ch`; always non-blank for a real track. */
     fun trackLabel(raw: Raw, ordinal: Int): String {
         val parts = buildList {
             add("音轨 $ordinal")
@@ -81,12 +85,17 @@ object AudioTrackUi {
         return parts.joinToString(" · ")
     }
 
-    /** Rows for the dialog: 自动 first, then every track; [overrideGroup]/[overrideTrack] = -1 → auto. */
+    /**
+     * Rows for the dialog: 自动 first, then every track.
+     * t179 (AUDIO-EMPTY-01): an empty track list yields **no rows**, so the caller shows the
+     * `audio_empty` state instead of a misleading 自动 row.
+     */
     fun buildItems(
         raws: List<Raw>,
         overrideGroup: Int = -1,
         overrideTrack: Int = -1,
     ): List<Item> {
+        if (raws.isEmpty()) return emptyList()
         val manual = overrideGroup >= 0
         val rows = ArrayList<Item>(raws.size + 1)
         rows += Item(-1, -1, AUTO_TEXT, selected = !manual, isAuto = true)
@@ -101,14 +110,22 @@ object AudioTrackUi {
         return rows
     }
 
+    /** The track the player is actually playing (t179: explicit override → selected → first). */
+    fun currentTrack(
+        raws: List<Raw>,
+        overrideGroup: Int = -1,
+        overrideTrack: Int = -1,
+    ): Raw? {
+        if (raws.isEmpty()) return null
+        val byOverride = if (overrideGroup >= 0) {
+            raws.firstOrNull { it.groupIndex == overrideGroup && it.trackIndex == overrideTrack }
+        } else null
+        return byOverride ?: raws.firstOrNull { it.selected } ?: raws.first()
+    }
+
     /** The line shown in the info banner / settings row; null when there is nothing to show. */
     fun summary(raws: List<Raw>, overrideGroup: Int = -1, overrideTrack: Int = -1): String? {
-        if (raws.isEmpty()) return null
-        val current = if (overrideGroup >= 0) {
-            raws.firstOrNull { it.groupIndex == overrideGroup && it.trackIndex == overrideTrack }
-        } else {
-            raws.firstOrNull()
-        } ?: raws.first()
+        val current = currentTrack(raws, overrideGroup, overrideTrack) ?: return null
         val parts = buildList {
             formatLanguage(current.language)?.let(::add)
             formatCodec(current.mime, current.codecs)?.let(::add)
@@ -118,13 +135,33 @@ object AudioTrackUi {
         return parts.takeIf { it.isNotEmpty() }?.joinToString(" · ")
     }
 
-    /** Settings row text: hidden entry when there is nothing selectable. */
+    /** Settings row text: says explicitly when there is nothing to select. */
     fun entryLabel(raws: List<Raw>): String = when {
         raws.isEmpty() -> "音轨选择（无音轨）"
         raws.size == 1 -> "音轨选择（仅 1 条）"
         else -> "音轨选择（${raws.size} 条）"
     }
 
-    /** Only a multi-track channel can be switched meaningfully — single/absent tracks hide the action. */
+    /** Only a multi-track channel can be switched meaningfully. */
     fun canSelect(raws: List<Raw>): Boolean = raws.size > 1
+
+    /**
+     * t179 (AUDIO-RENDERER-01): keep one row per (language, codec, channels) identity, preferring
+     * the track the player selected. This collapses the MediaCodec/FFmpeg duplicates Media3 reports
+     * for the same stream, so the user can never pick the extension renderer for an AAC track.
+     */
+    fun dedupe(tracks: List<Raw>): List<Raw> {
+        val result = ArrayList<Raw>(tracks.size)
+        val seen = HashSet<String>()
+        // selected tracks first, so a duplicate group does not hide the real one
+        tracks.sortedByDescending { it.selected }.forEach { raw ->
+            val key = listOf(
+                formatLanguage(raw.language) ?: "",
+                formatCodec(raw.mime, raw.codecs) ?: "",
+                raw.channels.toString(),
+            ).joinToString("|")
+            if (seen.add(key)) result += raw
+        }
+        return result
+    }
 }

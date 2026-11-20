@@ -52,6 +52,7 @@ import androidx.tv.material3.Text
 fun AudioTrackDialog(
     visible: Boolean,
     items: List<AudioTrackUi.Item>,
+    hasAudio: Boolean = items.isNotEmpty(),
     onSelect: (AudioTrackUi.Item) -> Unit,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
@@ -60,8 +61,8 @@ fun AudioTrackDialog(
     val shape = RoundedCornerShape(0.dp)
     val firstRequester = remember { FocusRequester() }
 
-    LaunchedEffect(visible, items.size) {
-        if (visible && items.isNotEmpty()) firstRequester.requestFocus()
+    LaunchedEffect(visible, items.size, hasAudio) {
+        if (visible && hasAudio && items.isNotEmpty()) firstRequester.requestFocus()
     }
 
     AnimatedVisibility(
@@ -99,7 +100,7 @@ fun AudioTrackDialog(
                 )
                 Spacer(modifier = Modifier.padding(6.dp))
 
-                if (items.isEmpty()) {
+                if (!hasAudio || items.isEmpty()) {
                     Text(
                         text = "当前频道没有可选音轨",
                         style = MaterialTheme.typography.bodyMedium,

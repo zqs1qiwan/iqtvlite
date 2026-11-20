@@ -17,7 +17,8 @@ class AudioTrackUiTest {
         mime: String? = "audio/mpeg-L2",
         codecs: String? = null,
         channels: Int = 2,
-    ) = AudioTrackUi.Raw(group, track, language, label, mime, codecs, channels)
+        selected: Boolean = false,
+    ) = AudioTrackUi.Raw(group, track, language, label, mime, codecs, channels, selected)
 
     @Test
     fun codecNamesAreShortened() {
@@ -106,9 +107,49 @@ class AudioTrackUiTest {
     fun emptyListDegradesGracefully() {
         assertNull(AudioTrackUi.summary(emptyList()))
         assertFalse(AudioTrackUi.canSelect(emptyList()))
-        val items = AudioTrackUi.buildItems(emptyList())
-        assertEquals("only the auto row is offered", 1, items.size)
-        assertTrue(items[0].isAuto)
-        assertTrue(items[0].selected)
+        // t179 (AUDIO-EMPTY-01): no tracks → no rows, so the dialog shows `audio_empty` instead of a
+        // misleading 自动 row that would suggest audio is selectable.
+        assertTrue(AudioTrackUi.buildItems(emptyList()).isEmpty())
+        assertNull(AudioTrackUi.currentTrack(emptyList()))
+    }
+
+    @Test
+    fun summaryFollowsTheSelectedTrackNotJustTheFirstRow() {
+        // t179 (AUDIO-SUMMARY-01): Media3 reports the playing track; the summary must use it even
+        // when it is not the first entry of the list.
+        val raws = listOf(
+            raw(language = "en", channels = 2),
+            raw(track = 1, language = "zh", mime = "audio/mp4a-latm", channels = 2, selected = true),
+        )
+        val summary = AudioTrackUi.summary(raws)
+        assertTrue(summary!!.contains("zh"))
+        assertTrue(summary.contains("aac"))
+        assertEquals(1, AudioTrackUi.currentTrack(raws)!!.trackIndex)
+
+        // an explicit manual override still wins over the reported selection
+        val manual = AudioTrackUi.summary(raws, overrideGroup = 0, overrideTrack = 0)
+        assertTrue(manual!!.contains("en"))
+    }
+
+    @Test
+    fun dedupeCollapsesRendererDuplicatesAndPrefersTheSelectedTrack() {
+        // t179 (AUDIO-RENDERER-01): the same AAC stream is reported once per candidate renderer; the
+        // picker must offer ONE row, and it must be the one the player actually selected.
+        val ffmpegCopy = raw(group = 0, track = 0, language = "zh", mime = "audio/mp4a-latm", channels = 2, selected = false)
+        val codecCopy = raw(group = 1, track = 0, language = "zh", mime = "audio/mp4a-latm", channels = 2, selected = true)
+
+        val deduped = AudioTrackUi.dedupe(listOf(ffmpegCopy, codecCopy))
+
+        assertEquals(1, deduped.size)
+        assertEquals("the selected (MediaCodec) group survives", 1, deduped[0].groupIndex)
+        assertTrue(deduped[0].selected)
+    }
+
+    @Test
+    fun dedupeKeepsGenuinelyDifferentTracks() {
+        val zh = raw(language = "zh", channels = 2)
+        val en = raw(track = 1, language = "en", channels = 2)
+        val zh6 = raw(track = 2, language = "zh", channels = 6)
+        assertEquals(3, AudioTrackUi.dedupe(listOf(zh, en, zh6)).size)
     }
 }

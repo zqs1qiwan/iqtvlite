@@ -123,7 +123,7 @@ fun ChannelInfoBanner(
                         Row {
                             if (codecText.isNotEmpty()) {
                                 TechSpecText(codecText)
-                                if (audioText.isNotEmpty()) {
+                                if (audioText.isNotEmpty() && audioLabel.isNullOrBlank()) {
                                     Text(
                                         text = " | ",
                                         style = MaterialTheme.typography.labelMedium,
@@ -131,7 +131,7 @@ fun ChannelInfoBanner(
                                     )
                                 }
                             }
-                            if (audioText.isNotEmpty()) TechSpecText(audioText)
+                            if (audioText.isNotEmpty() && audioLabel.isNullOrBlank()) TechSpecText(audioText)
                         }
                         // t175: current audio track line; omitted entirely when unknown (no placeholder).
                         if (!audioLabel.isNullOrBlank()) TechSpecText("音轨 " + audioLabel)

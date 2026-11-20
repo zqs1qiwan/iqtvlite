@@ -86,6 +86,7 @@ class PlayerActivity : ComponentActivity() {
     private var onNumberJump: ((Int) -> Boolean)? = null
     private var setPlayLastChannel: (() -> Boolean)? = null
     private var setRecentChannelsOpen: ((Boolean) -> Unit)? = null
+    private var setAudioDialogOpen: ((Boolean) -> Unit)? = null
     private var digits by mutableStateOf("")
     private var numberJob: Job? = null
     private fun submitNumber() {
@@ -109,6 +110,7 @@ class PlayerActivity : ComponentActivity() {
     private var setQualityDialogOpen: ((Boolean) -> Unit)? = null
     private var isQualityDialogOpen: Boolean = false
     private var isRecentChannelsOpen: Boolean = false
+    private var isAudioDialogOpen: Boolean = false
     private var setInfoBannerOpen: ((Boolean) -> Unit)? = null
     private var isInfoBannerOpen: Boolean = false
     private var isCatchupPlayback: Boolean = false
@@ -180,6 +182,8 @@ class PlayerActivity : ComponentActivity() {
                         setOnPlayLastChannel = { setPlayLastChannel = it },
                         setRecentChannelsOpenController = { setRecentChannelsOpen = it },
                         onRecentChannelsOpenChanged = { isRecentChannelsOpen = it },
+                        setAudioDialogOpenController = { setAudioDialogOpen = it },
+                        onAudioDialogOpenChanged = { isAudioDialogOpen = it },
                         onDrawerOpenChanged = { isDrawerOpen = it },
                         onDrawerActiveColumnChanged = { drawerActiveColumn = it },
                         setSettingsDrawerOpenController = { setSettingsDrawerOpen = it },
@@ -235,7 +239,7 @@ class PlayerActivity : ComponentActivity() {
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (event.action == KeyEvent.ACTION_UP && event.keyCode in KeyEvent.KEYCODE_0..KeyEvent.KEYCODE_9) return true
         if (event.action == KeyEvent.ACTION_DOWN) {
-            if (event.keyCode in KeyEvent.KEYCODE_0..KeyEvent.KEYCODE_9 && !isDrawerOpen && !isSettingsDrawerOpen && !isQualityDialogOpen && !isRecentChannelsOpen) {
+            if (event.keyCode in KeyEvent.KEYCODE_0..KeyEvent.KEYCODE_9 && !isDrawerOpen && !isSettingsDrawerOpen && !isQualityDialogOpen && !isRecentChannelsOpen && !isAudioDialogOpen) {
                 if (event.repeatCount == 0) {
                     if (digits.length < 6) digits += (event.keyCode-KeyEvent.KEYCODE_0).toString()
                     numberJob?.cancel()
@@ -253,21 +257,21 @@ class PlayerActivity : ComponentActivity() {
                 KeyEvent.KEYCODE_LAST_CHANNEL, KeyEvent.KEYCODE_MEDIA_PREVIOUS -> {
                     // t141: same guards as every other key — an open overlay must swallow/reject it,
                     // never switch channels underneath (KEYCODE_LAST_CHANNEL is 229 on the remote).
-                    if (isDrawerOpen || isSettingsDrawerOpen || isQualityDialogOpen || isRecentChannelsOpen) {
+                    if (isDrawerOpen || isSettingsDrawerOpen || isQualityDialogOpen || isRecentChannelsOpen || isAudioDialogOpen) {
                         return false
                     }
                     if (event.repeatCount == 0 && setPlayLastChannel?.invoke() == true) return true
                 }
 
                 KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
-                    if (!isDrawerOpen && !isSettingsDrawerOpen && !isQualityDialogOpen && !isRecentChannelsOpen) {
+                    if (!isDrawerOpen && !isSettingsDrawerOpen && !isQualityDialogOpen && !isRecentChannelsOpen && !isAudioDialogOpen) {
                         setInfoBannerOpen?.invoke(true)
                         return true
                     }
                 }
 
                 KeyEvent.KEYCODE_DPAD_LEFT -> {
-                    if (!isDrawerOpen && !isSettingsDrawerOpen && !isQualityDialogOpen && !isRecentChannelsOpen) {
+                    if (!isDrawerOpen && !isSettingsDrawerOpen && !isQualityDialogOpen && !isRecentChannelsOpen && !isAudioDialogOpen) {
                         if (isCatchupPlayback) {
                             val step = calculateSeekStep(event.repeatCount)
                             if (onCatchupSeek?.invoke(-step) == true) return true
@@ -279,7 +283,7 @@ class PlayerActivity : ComponentActivity() {
                 }
 
                 KeyEvent.KEYCODE_DPAD_RIGHT -> {
-                    if (!isDrawerOpen && !isSettingsDrawerOpen && !isQualityDialogOpen && !isRecentChannelsOpen) {
+                    if (!isDrawerOpen && !isSettingsDrawerOpen && !isQualityDialogOpen && !isRecentChannelsOpen && !isAudioDialogOpen) {
                         if (isCatchupPlayback) {
                             val step = calculateSeekStep(event.repeatCount)
                             if (onCatchupSeek?.invoke(step) == true) return true
@@ -291,13 +295,17 @@ class PlayerActivity : ComponentActivity() {
                 }
 
                 KeyEvent.KEYCODE_MENU -> {
-                    if (!isDrawerOpen && !isSettingsDrawerOpen && !isQualityDialogOpen && !isRecentChannelsOpen) {
+                    if (!isDrawerOpen && !isSettingsDrawerOpen && !isQualityDialogOpen && !isRecentChannelsOpen && !isAudioDialogOpen) {
                         setSettingsDrawerOpen?.invoke(true)
                         return true
                     }
                 }
 
                 KeyEvent.KEYCODE_BACK -> {
+                    if (isAudioDialogOpen) {
+                        setAudioDialogOpen?.invoke(false)
+                        return true
+                    }
                     if (isRecentChannelsOpen) {
                         setRecentChannelsOpen?.invoke(false)
                         return true
@@ -343,7 +351,7 @@ class PlayerActivity : ComponentActivity() {
                 }
 
                 KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_CHANNEL_UP, KeyEvent.KEYCODE_PAGE_UP -> {
-                    if (!isDrawerOpen && !isSettingsDrawerOpen && !isQualityDialogOpen && !isRecentChannelsOpen) {
+                    if (!isDrawerOpen && !isSettingsDrawerOpen && !isQualityDialogOpen && !isRecentChannelsOpen && !isAudioDialogOpen) {
                         if (isCatchupPlayback) {
                             setInfoBannerOpen?.invoke(true)
                             return true
@@ -353,7 +361,7 @@ class PlayerActivity : ComponentActivity() {
                 }
 
                 KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_CHANNEL_DOWN, KeyEvent.KEYCODE_PAGE_DOWN -> {
-                    if (!isDrawerOpen && !isSettingsDrawerOpen && !isQualityDialogOpen && !isRecentChannelsOpen) {
+                    if (!isDrawerOpen && !isSettingsDrawerOpen && !isQualityDialogOpen && !isRecentChannelsOpen && !isAudioDialogOpen) {
                         if (isCatchupPlayback) {
                             setInfoBannerOpen?.invoke(true)
                             return true
@@ -381,6 +389,8 @@ fun VideoPlayerScreen(
     setOnPlayLastChannel: ((() -> Boolean)?) -> Unit,
     setRecentChannelsOpenController: (((Boolean) -> Unit)?) -> Unit,
     onRecentChannelsOpenChanged: (Boolean) -> Unit,
+    setAudioDialogOpenController: (((Boolean) -> Unit)?) -> Unit,
+    onAudioDialogOpenChanged: (Boolean) -> Unit,
     onDrawerOpenChanged: (Boolean) -> Unit,
     onDrawerActiveColumnChanged: (DrawerColumn?) -> Unit,
     setSettingsDrawerOpenController: (((Boolean) -> Unit)?) -> Unit,
@@ -436,6 +446,8 @@ fun VideoPlayerScreen(
     var audioOverrideGroup by remember { mutableIntStateOf(-1) }
     var audioOverrideTrack by remember { mutableIntStateOf(-1) }
     var audioDialogOpen by remember { mutableStateOf(false) }
+    // t179 (AUDIO-BACK-01): mirror the audio dialog state so the Activity can guard every key.
+    LaunchedEffect(audioDialogOpen) { onAudioDialogOpenChanged(audioDialogOpen) }
     // t172 (F3): automatic playlist/EPG update policy (persisted; default 启动时).
     var autoUpdatePlaylist by remember { mutableStateOf(Prefs.getAutoUpdatePlaylist(context)) }
     var autoUpdateEpg by remember { mutableStateOf(Prefs.getAutoUpdateEpg(context)) }
@@ -614,26 +626,14 @@ fun VideoPlayerScreen(
 
                 override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
                     videoFormat = p.videoFormat
-                    // t175: flatten the audio groups for the info banner + the picker. Media3
-                    // delivers this on the application looper, so no extra thread hop is needed.
-                    val flattened = ArrayList<AudioTrackUi.Raw>()
-                    tracks.groups.forEachIndexed { groupIndex, group ->
-                        if (group.type != androidx.media3.common.C.TRACK_TYPE_AUDIO) return@forEachIndexed
-                        for (trackIndex in 0 until group.length) {
-                            val format = group.getTrackFormat(trackIndex)
-                            flattened += AudioTrackUi.Raw(
-                                groupIndex = groupIndex,
-                                trackIndex = trackIndex,
-                                language = format.language,
-                                label = format.label,
-                                mime = format.sampleMimeType,
-                                codecs = format.codecs,
-                                channels = format.channelCount,
-                            )
-                        }
-                    }
-                    audioTracks = flattened
-                    // a new item invalidates the manual override
+                    // t179 (AUDIO-OVERRIDE-01): only REFRESH the list here — the override is reset on
+                    // a media-item transition, otherwise applying it would immediately fall back to
+                    // 自动 and lose the ▶ marker.
+                    audioTracks = TracksFlattening.audioTracks(tracks)
+                }
+
+                override fun onMediaItemTransition(mediaItem: androidx.media3.common.MediaItem?, reason: Int) {
+                    // t179: a new channel is the only thing that invalidates a manual selection.
                     audioOverrideGroup = -1
                     audioOverrideTrack = -1
                 }
@@ -948,6 +948,9 @@ fun VideoPlayerScreen(
             val group = tracks.groups.getOrNull(groupIndex) ?: return
             if (group.type != androidx.media3.common.C.TRACK_TYPE_AUDIO) return
             if (trackIndex !in 0 until group.length) return
+            // t179: never let the UI select a track the current renderer rejects (e.g. an AAC track
+            // routed to the FFmpeg extension); the picker only lists supported tracks.
+            if (!group.isTrackSupported(trackIndex)) return
             builder.setOverrideForType(
                 androidx.media3.common.TrackSelectionOverride(group.mediaTrackGroup, trackIndex)
             )
@@ -1145,6 +1148,7 @@ fun VideoPlayerScreen(
     DisposableEffect(player) {
         setOnPlayLastChannel { playLastChannel() }
         setRecentChannelsOpenController { open -> recentChannelsOpen = open }
+        setAudioDialogOpenController { open -> audioDialogOpen = open }
         setOnNumberJump { number ->
             val groups = channelGroupsState.value
             if (number !in 1..groups.size) false else {
@@ -1172,6 +1176,7 @@ fun VideoPlayerScreen(
             setOnNumberJump(null)
             setOnPlayLastChannel(null)
             setRecentChannelsOpenController(null)
+            setAudioDialogOpenController(null)
         }
     }
 
@@ -1332,7 +1337,12 @@ fun VideoPlayerScreen(
             logoLoadEnabled = logoLoadEnabled,
             audioSummary = AudioTrackUi.summary(audioTracks, audioOverrideGroup, audioOverrideTrack),
             audioEntryLabel = AudioTrackUi.entryLabel(audioTracks),
-            onAudioTrackClick = { audioDialogOpen = true },
+            onAudioTrackClick = {
+                // t179 (AUDIO-BACK-01): one overlay at a time — otherwise BACK closes settings first
+                // and the audio dialog would be left on top with the player unguarded.
+                settingsDrawerOpen = false
+                audioDialogOpen = true
+            },
             autoUpdatePlaylistLabel = autoUpdatePlaylist.label,
             autoUpdateEpgLabel = autoUpdateEpg.label,
             lastUpdateSummary = run {
@@ -1391,6 +1401,7 @@ fun VideoPlayerScreen(
         AudioTrackDialog(
             visible = audioDialogOpen,
             items = AudioTrackUi.buildItems(audioTracks, audioOverrideGroup, audioOverrideTrack),
+            hasAudio = audioTracks.isNotEmpty(),
             onSelect = { item ->
                 applyAudioOverride(item.groupIndex, item.trackIndex)
                 audioDialogOpen = false
