@@ -284,10 +284,11 @@ fun PlayerDrawer(
                     .distinct()
                 if (urgentUrls.isNotEmpty()) LogoLoader.prefetch(context, urgentUrls, pxW, pxH)
 
-                // idle filler: first 60 + the selection's own band (covers selected index > 60)
+                // idle filler: the selection's own band FIRST (PREFETCH-02b: a selection past
+                // index 60 must never be pushed out), then the head of the group.
                 val filler = LinkedHashSet<Int>()
-                for (i in 0 until minOf(60, channels.size)) filler.add(i)
                 for (i in (selectedIdx - 60)..(selectedIdx + 8)) if (i in channels.indices) filler.add(i)
+                for (i in 0 until minOf(60, channels.size)) filler.add(i)
                 val fillerUrls = filler.filterNot { it in urgent }
                     .mapNotNull { channels[it].logoUrl?.trim()?.takeIf { u -> u.isNotBlank() } }
                     .distinct()

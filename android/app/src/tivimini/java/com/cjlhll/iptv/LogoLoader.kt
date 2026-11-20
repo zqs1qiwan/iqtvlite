@@ -139,6 +139,22 @@ object LogoLoader {
         return File(dir, "$diskKey.webp")
     }
 
+    /** (lastModified, length) identity of a cache file — ATOMIC-02 delete guard. */
+    internal data class FileIdentity(val lastModified: Long, val length: Long)
+
+    internal fun fileIdentity(file: File): FileIdentity? = try {
+        if (file.exists()) FileIdentity(file.lastModified(), file.length()) else null
+    } catch (_: Exception) {
+        null
+    }
+
+    /** Delete only when the file on disk is still exactly the one we read. */
+    private fun deleteIfIdentity(file: File, identity: FileIdentity?) {
+        if (identity == null) return
+        val now = fileIdentity(file)
+        if (now != null && now == identity) runCatching { file.delete() }
+    }
+
     private fun tryMarkInFlight(key: String): Boolean {
         return synchronized(inFlight) {
             if (inFlight.contains(key)) false else {
@@ -237,6 +253,9 @@ object LogoLoader {
         gen == cacheGeneration.get() && urlGen == urlGenOf(url)
 
     internal fun urlGenerationSizeForTest(): Int = synchronized(urlGeneration) { urlGeneration.size }
+    internal fun identityForTest(file: File): FileIdentity? = fileIdentity(file)
+    internal fun deleteIfIdentityForTest(file: File, identity: FileIdentity?) = deleteIfIdentity(file, identity)
+    internal fun writeBitmapToDiskForTest(file: File, bitmap: Bitmap): Boolean = writeBitmapToDisk(file, bitmap)
     /** Mirrors loadInternal's staleness rule so the rule itself is unit-testable. */
     internal fun isStaleForTest(globalGen: Int, url: String, urlGen: Int): Boolean =
         !shouldPublishForTest(globalGen, url, urlGen)
@@ -279,19 +298,14 @@ object LogoLoader {
         return output
     }
 
+    /**
+     * ATOMIC-02: one unique temp file per write + atomic rename, serialized per key by
+     * [LogoDiskStore]. Never deletes the destination first (that opened a window where a reader saw
+     * no file at all); `renameTo` replaces it in one step.
+     */
     private fun writeBitmapToDisk(file: File, bitmap: Bitmap): Boolean {
-        val tmp = File(file.parentFile, file.name + ".tmp")
-        return try {
-            tmp.outputStream().use { out ->
-                val format = if (Build.VERSION.SDK_INT >= 30) Bitmap.CompressFormat.WEBP_LOSSY else Bitmap.CompressFormat.WEBP
-                bitmap.compress(format, 80, out)
-            }
-            if (file.exists()) file.delete()
-            tmp.renameTo(file)
-        } catch (_: Exception) {
-            try { tmp.delete() } catch (_: Exception) {}
-            false
-        }
+        val format = if (Build.VERSION.SDK_INT >= 30) Bitmap.CompressFormat.WEBP_LOSSY else Bitmap.CompressFormat.WEBP
+        return LogoDiskStore.writeAtomically(file) { out -> bitmap.compress(format, 80, out) }
     }
 
     /** t126: public load with in-flight de-duplication (one network/decode per url+size at a time). */
@@ -338,6 +352,9 @@ object LogoLoader {
         }
 
         if (diskExists) {
+            // ATOMIC-02: capture the file identity *before* decoding, so a stale result can only
+            // delete the exact bytes it read — never a newer file another load just published.
+            val identity = withContext(Dispatchers.IO) { fileIdentity(diskFile) }
             val bitmap = withContext(Dispatchers.Default) {
                 try {
                     BitmapFactory.decodeFile(diskFile.absolutePath)
@@ -349,9 +366,8 @@ object LogoLoader {
             if (bitmap != null) {
                 val imageBitmap = bitmap.asImageBitmap()
                 if (putCachedIfFresh(memoryKey, imageBitmap, gen, uGen, url)) return imageBitmap
-                // stale: drop the disk copy only if it is still the one we read
-                val readAt = diskFile.lastModified()
-                if (diskFile.lastModified() == readAt) runCatching { diskFile.delete() }
+                // stale: remove only if the file is still the one we decoded (identity match)
+                deleteIfIdentity(diskFile, identity)
             }
         }
 
@@ -359,8 +375,10 @@ object LogoLoader {
             // Double check
             getCached(memoryKey)?.let { return@withPermit it }
 
-            val diskExists2 = withContext(Dispatchers.IO) { diskFile.exists() }
-            if (diskExists2) {
+            val identity2 = withContext(Dispatchers.IO) {
+                if (diskFile.exists()) fileIdentity(diskFile) else null
+            }
+            if (identity2 != null) {
                 val bitmap = withContext(Dispatchers.Default) {
                     try {
                         BitmapFactory.decodeFile(diskFile.absolutePath)
@@ -371,8 +389,7 @@ object LogoLoader {
                 if (bitmap != null) {
                     val imageBitmap = bitmap.asImageBitmap()
                     if (putCachedIfFresh(memoryKey, imageBitmap, gen, uGen, url)) return@withPermit imageBitmap
-                    val readAt = diskFile.lastModified()
-                    if (diskFile.lastModified() == readAt) runCatching { diskFile.delete() }
+                    deleteIfIdentity(diskFile, identity2)
                 }
             }
 
@@ -412,16 +429,17 @@ object LogoLoader {
                 // CACHE-02a: if a clear/invalidate happened while downloading, drop this result.
                 if (stale()) return@withPermit null
 
-                val writeStartedAt = System.currentTimeMillis()
-                withContext(Dispatchers.IO) {
-                    writeBitmapToDisk(diskFile, bitmap)
+                val written = withContext(Dispatchers.IO) {
+                    val ok = writeBitmapToDisk(diskFile, bitmap)
                     maybePruneDisk(cacheDir(context))
+                    ok
                 }
 
-                // ATOMIC-01: check + publish under the cache lock; only remove a file we wrote.
+                // ATOMIC-01/ATOMIC-02: check + publish under the cache lock. A stale result leaves
+                // the file alone: another load may own the same key, and clearDisk/prune remove it.
                 val imageBitmap = bitmap.asImageBitmap()
                 if (!putCachedIfFresh(memoryKey, imageBitmap, gen, uGen, url)) {
-                    if (diskFile.lastModified() >= writeStartedAt) runCatching { diskFile.delete() }
+                    if (!written) runCatching { diskFile.delete() }
                     return@withPermit null
                 }
                 imageBitmap
@@ -457,7 +475,9 @@ object LogoLoader {
         batchSize: Int = 4,
         batchGapMs: Long = 220,
     ) {
-        prefetchChunked(context, urls, targetWidthPx, targetHeightPx, concurrency = 2, limit = 60, batchSize = batchSize, batchGapMs = batchGapMs)
+        // PREFETCH-02b: the caller already prioritised the list; truncating at 60 dropped a
+        // selection past index 60. Keep the batch pacing, drop the cap.
+        prefetchChunked(context, urls, targetWidthPx, targetHeightPx, concurrency = 2, limit = Int.MAX_VALUE, batchSize = batchSize, batchGapMs = batchGapMs)
     }
 
     private val prefetchGate = kotlinx.coroutines.sync.Semaphore(2)
@@ -510,17 +530,8 @@ object LogoLoader {
     }
 
     private fun pruneDiskIfNeeded(dir: File) {
-        try {
-            val files = dir.listFiles()?.filter { it.isFile && it.extension == "webp" } ?: return
-            var total = files.sumOf { it.length() }
-            if (total <= MAX_DISK_BYTES) return
-            files.sortedBy { it.lastModified() }.forEach { f ->
-                if (total <= MAX_DISK_BYTES) return
-                val len = f.length()
-                if (runCatching { f.delete() }.getOrDefault(false)) total -= len
-            }
-        } catch (_: Exception) {
-        }
+        LogoDiskStore.prune(dir, MAX_DISK_BYTES)
+        LogoDiskStore.clearTemps(dir)
     }
 }
 
