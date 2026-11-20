@@ -11,6 +11,12 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import java.util.concurrent.atomic.AtomicLong
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import tv.iqtvlite.app.BuildConfig
 import tv.iqtvlite.app.RustBridge
 
@@ -28,7 +34,7 @@ object StreamPlayback {
         else Channel(title=title, url=url)
     }
     fun release(player: ExoPlayer) {
-        sessions.remove(player)?.let { player.removeAnalyticsListener(it) }
+        sessions.remove(player)?.let { it.cancelSummary(); player.removeAnalyticsListener(it) }
         player.release()
     }
     fun prepare(player: ExoPlayer, context: Context, channel: Channel, streamUrl: String = channel.url): PreparedPlayback =
@@ -60,6 +66,10 @@ object StreamPlayback {
     }
 
     private class Metrics(private val player: ExoPlayer) : AnalyticsListener {
+        fun cancelSummary() { audioSummaryJob?.cancel(); audioSummaryJob = null }
+        // t165: one debug summary per session, 60 s after prepare.
+        private var audioSummaryJob: Job? = null
+        private val audioSummaryScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         private var binding: PreparedPlayback? = null
         private var onFailure: (PlaybackFailure) -> Unit = {}
         private val session get() = binding?.mediaId ?: ""
@@ -74,6 +84,19 @@ object StreamPlayback {
             binding = prepared
             onFailure = callback
             preparedAt = SystemClock.elapsedRealtime()
+            // t165: debug-only audio cost counters (default off; see AudioCostCounters).
+            AudioCostCounters.enabled = BuildConfig.DEBUG && Log.isLoggable("IQTV-AUDIO", Log.DEBUG)
+            audioSummaryJob?.cancel()
+            audioSummaryJob = null
+            if (AudioCostCounters.enabled) {
+                AudioCostCounters.reset()
+                val session = prepared.mediaId
+                audioSummaryJob = audioSummaryScope.launch {
+                    delay(60_000)
+                    if (player.currentMediaItem?.mediaId != session) return@launch
+                    Log.i("IQTV-AUDIO", AudioCostCounters.format(AudioCostCounters.sample()))
+                }
+            }
             firstFrame = false
             bufferStart = 0L; bufferingMs = 0L; rebufferCount = 0; droppedFrames = 0
             emit("prepare", "at=$preparedAt")
@@ -106,12 +129,21 @@ object StreamPlayback {
             emit("audio_tracks", "groups=$audioGroups ${audioContext()}")
         }
         override fun onAudioEnabled(eventTime: AnalyticsListener.EventTime, decoderCounters: androidx.media3.exoplayer.DecoderCounters) {
+            if (matches(eventTime)) AudioCostCounters.onActiveChanged(true)
             if (observe(eventTime)) emit("audio_enabled", audioContext())
         }
         override fun onAudioDisabled(eventTime: AnalyticsListener.EventTime, decoderCounters: androidx.media3.exoplayer.DecoderCounters) {
+            if (matches(eventTime)) {
+                AudioCostCounters.onActiveChanged(false)
+                AudioCostCounters.onCounters(
+                    decoderCounters.renderedOutputBufferCount.toLong(),
+                    decoderCounters.skippedOutputBufferCount.toLong(),
+                )
+            }
             if (observe(eventTime)) emit("audio_disabled", "rendered=${decoderCounters.renderedOutputBufferCount} skipped=${decoderCounters.skippedOutputBufferCount}")
         }
         override fun onAudioDecoderInitialized(eventTime: AnalyticsListener.EventTime, decoderName: String, initializedTimestampMs: Long, initializationDurationMs: Long) {
+            if (matches(eventTime)) AudioCostCounters.onDecoder(AudioDiagnosticFields.name(decoderName))
             if (observe(eventTime)) emit("audio_decoder", "name=${AudioDiagnosticFields.name(decoderName)} init_ms=$initializationDurationMs")
         }
         override fun onAudioDecoderReleased(eventTime: AnalyticsListener.EventTime, decoderName: String) {
@@ -127,13 +159,33 @@ object StreamPlayback {
             if (observe(eventTime)) emit("audio_session", "id=$audioSessionId")
         }
         override fun onAudioSinkError(eventTime: AnalyticsListener.EventTime, audioSinkError: Exception) {
+            if (matches(eventTime)) AudioCostCounters.onRetry()
             if (observe(eventTime)) emit("audio_sink_error", "type=${AudioDiagnosticFields.name(audioSinkError.javaClass.simpleName)}")
         }
         override fun onAudioCodecError(eventTime: AnalyticsListener.EventTime, audioCodecError: Exception) {
+            if (matches(eventTime)) AudioCostCounters.onRetry()
             if (observe(eventTime)) emit("audio_codec_error", "type=${AudioDiagnosticFields.name(audioCodecError.javaClass.simpleName)}")
         }
         override fun onAudioTrackInitialized(eventTime: AnalyticsListener.EventTime, audioTrackConfig: androidx.media3.exoplayer.audio.AudioSink.AudioTrackConfig) {
+            if (matches(eventTime)) {
+                AudioCostCounters.onTrack(
+                    encoding = audioTrackConfig.encoding.toString(),
+                    sampleRate = audioTrackConfig.sampleRate,
+                    bufferBytes = audioTrackConfig.bufferSize,
+                )
+            }
             if (observe(eventTime)) emit("audio_track_initialized", audioTrack(audioTrackConfig))
+        }
+
+        // t165: buffer underrun = the sink starved (the CPU-relevant failure mode for MP2).
+        override fun onAudioUnderrun(
+            eventTime: AnalyticsListener.EventTime,
+            bufferSize: Int,
+            bufferSizeMs: Long,
+            elapsedSinceLastFeedMs: Long,
+        ) {
+            if (matches(eventTime)) AudioCostCounters.onUnderrun()
+            if (observe(eventTime)) emit("audio_underrun", "buffer=$bufferSize ms=$bufferSizeMs since_feed=$elapsedSinceLastFeedMs")
         }
         override fun onAudioTrackReleased(eventTime: AnalyticsListener.EventTime, audioTrackConfig: androidx.media3.exoplayer.audio.AudioSink.AudioTrackConfig) {
             if (observe(eventTime)) emit("audio_track_released", audioTrack(audioTrackConfig))
