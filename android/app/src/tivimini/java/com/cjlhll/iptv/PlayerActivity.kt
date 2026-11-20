@@ -23,6 +23,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
@@ -1098,9 +1099,14 @@ fun VideoPlayerScreen(
         }
 
         var logoCacheTick by remember { mutableIntStateOf(0) }
-        val logoCacheSummary = remember(settingsDrawerOpen, logoCacheTick) {
-            val s = LogoLoader.stats(context)
-            "内存 ${s.memoryEntries} 条 · 磁盘 ${s.diskFiles} 个 / ${s.diskBytes / 1024} KB"
+        // CACHE-01: stats does disk IO on Dispatchers.IO inside LogoLoader; only compute when settings shown.
+        val logoCacheSummary by produceState(initialValue = "", settingsDrawerOpen, logoCacheTick) {
+            value = if (settingsDrawerOpen) {
+                val s = LogoLoader.stats(context)
+                "内存 ${s.memoryEntries} 条 · 磁盘 ${s.diskFiles} 个 / ${s.diskBytes / 1024} KB"
+            } else {
+                ""
+            }
         }
         SettingsDrawer(
             visible = settingsDrawerOpen,
@@ -1135,6 +1141,7 @@ fun VideoPlayerScreen(
             onRefreshLogos = {
                 val pxW = with(density) { 64.dp.roundToPx() }
                 val pxH = with(density) { 40.dp.roundToPx() }
+                android.widget.Toast.makeText(context, "正在刷新当前组台标…", android.widget.Toast.LENGTH_SHORT).show()
                 scope.launch {
                     LogoLoader.refreshGroup(context, filteredChannels, pxW, pxH)
                     logoCacheTick++
@@ -1142,9 +1149,12 @@ fun VideoPlayerScreen(
                 }
             },
             onClearLogoCache = {
-                LogoLoader.clearAll(context)
-                logoCacheTick++
-                android.widget.Toast.makeText(context, "台标缓存已清理", android.widget.Toast.LENGTH_SHORT).show()
+                android.widget.Toast.makeText(context, "正在清理台标缓存…", android.widget.Toast.LENGTH_SHORT).show()
+                scope.launch {
+                    LogoLoader.clearAll(context)
+                    logoCacheTick++
+                    android.widget.Toast.makeText(context, "台标缓存已清理", android.widget.Toast.LENGTH_SHORT).show()
+                }
             },
             logoCacheSummary = logoCacheSummary,
             onClose = { settingsDrawerOpen = false }

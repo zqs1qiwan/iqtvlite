@@ -53,7 +53,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import kotlinx.coroutines.delay
+
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import androidx.compose.foundation.lazy.LazyColumn
@@ -133,24 +133,6 @@ fun PlayerDrawer(
     val scrim = Color.Transparent
     val shape = RoundedCornerShape(0.dp)
     val prefetchDensity = LocalDensity.current
-
-    // t126: prefetch logos for the visible window + next ~60 of the current group on open / group change.
-    // Runs in IO (LogoLoader.prefetch) with the same 3-way semaphore, after a tiny delay so the drawer
-    // scroll/first-frame is not blocked. Cached hits are skipped, so repeat opens are instant.
-    LaunchedEffect(visible, selectedGroup) {
-        if (!visible) return@LaunchedEffect
-        val pxW = with(prefetchDensity) { 64.dp.roundToPx() }
-        val pxH = with(prefetchDensity) { 40.dp.roundToPx() }
-        val urls = channels.asSequence()
-            .mapNotNull { it.logoUrl?.trim()?.takeIf { u -> u.isNotBlank() } }
-            .distinct()
-            .take(60)
-            .toList()
-        if (urls.isNotEmpty()) {
-            delay(180)
-            LogoLoader.prefetch(context, urls, pxW, pxH)
-        }
-    }
 
     var showGroups by remember { mutableStateOf(false) }
     var showDates by remember { mutableStateOf(false) }
@@ -278,6 +260,30 @@ fun PlayerDrawer(
 
     val programListState = rememberLazyListState()
     val dateListState = rememberLazyListState()
+
+    // t126/t130 PREFETCH-01: prefetch = visible window + selected/current index ±8 + first 60, de-duped.
+    // snapshotFlow makes it incremental on scroll (debounced 200ms); keys include channels/selectedChannelUrl
+    // so a current channel at index >= 60 or after scrolling is never missed. All work happens in
+    // LogoLoader.prefetch on IO; closing the drawer cancels this effect (collectLatest).
+    LaunchedEffect(visible, selectedGroup, channels, selectedChannelUrl) {
+        if (!visible) return@LaunchedEffect
+        val pxW = with(prefetchDensity) { 64.dp.roundToPx() }
+        val pxH = with(prefetchDensity) { 40.dp.roundToPx() }
+        snapshotFlow { channelListState.layoutInfo.visibleItemsInfo.map { it.index } }
+            .collectLatest { visibleIdx ->
+                delay(200)
+                val selectedIdx = channels.indexOfFirst { it.url == selectedChannelUrl }
+                    .let { if (it >= 0) it else channelListState.firstVisibleItemIndex }
+                val indices = LinkedHashSet<Int>()
+                visibleIdx.forEach { if (it in channels.indices) indices.add(it) }
+                for (i in (selectedIdx - 8)..(selectedIdx + 8)) if (i in channels.indices) indices.add(i)
+                for (i in 0 until minOf(60, channels.size)) indices.add(i)
+                val urls = indices.sorted()
+                    .mapNotNull { channels[it].logoUrl?.trim()?.takeIf { u -> u.isNotBlank() } }
+                    .distinct()
+                if (urls.isNotEmpty()) LogoLoader.prefetch(context, urls, pxW, pxH)
+            }
+    }
 
     LaunchedEffect(visible) {
         if (!visible) {

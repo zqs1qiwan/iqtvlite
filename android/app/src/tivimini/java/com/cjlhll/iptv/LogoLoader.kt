@@ -29,8 +29,14 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.withPermit
@@ -49,6 +55,8 @@ object LogoLoader {
     private const val MAX_ENTRIES = 96
     private var client: OkHttpClient? = null
     private val semaphore = kotlinx.coroutines.sync.Semaphore(3) // 限制并发数，防止UI卡顿
+    private const val MAX_DISK_BYTES = 32L * 1024 * 1024
+    @Volatile private var cacheGeneration = 0
 
     private val inFlight = HashSet<String>()
 
@@ -121,10 +129,10 @@ object LogoLoader {
         synchronized(inFlight) { inFlight.remove(key) }
     }
 
-    // t126: cache management API for the settings entry + prefetch refresh.
+    // t130: cache management API — all disk work on Dispatchers.IO (never the main thread).
     data class LogoStats(val memoryEntries: Int, val diskFiles: Int, val diskBytes: Long)
 
-    fun stats(context: Context): LogoStats {
+    suspend fun stats(context: Context): LogoStats = withContext(Dispatchers.IO) {
         val mem = synchronized(cache) { cache.size }
         val dir = cacheDir(context)
         val files = try {
@@ -132,47 +140,57 @@ object LogoLoader {
         } catch (_: Exception) {
             emptyList()
         }
-        return LogoStats(mem, files.size, files.sumOf { it.length() })
+        LogoStats(mem, files.size, files.sumOf { it.length() })
     }
 
     fun clearMemory() {
+        cacheGeneration++
         synchronized(cache) { cache.clear() }
     }
 
-    fun clearDisk(context: Context) {
+    suspend fun clearDisk(context: Context) = withContext(Dispatchers.IO) {
+        cacheGeneration++
         try {
             cacheDir(context).listFiles()?.forEach { runCatching { it.delete() } }
         } catch (_: Exception) {
         }
     }
 
-    fun clearAll(context: Context) {
+    suspend fun clearAll(context: Context) {
         clearMemory()
         clearDisk(context)
     }
 
     /** Drop both memory + disk entries for one logo url (all target sizes). */
-    fun invalidate(context: Context, url: String) {
+    suspend fun invalidate(context: Context, url: String) {
         if (url.isBlank()) return
+        cacheGeneration++
         synchronized(cache) {
             cache.keys.filter { it.endsWith("|$url") }.toList().forEach { cache.remove(it) }
         }
         val prefix = sha256Hex(url) + "_"
-        try {
-            cacheDir(context).listFiles()?.filter { it.name.startsWith(prefix) }?.forEach { runCatching { it.delete() } }
-        } catch (_: Exception) {
+        withContext(Dispatchers.IO) {
+            try {
+                cacheDir(context).listFiles()?.filter { it.name.startsWith(prefix) }?.forEach { runCatching { it.delete() } }
+            } catch (_: Exception) {
+            }
         }
     }
 
     /**
-     * t126: force-refresh the given group's logos — invalidate each channel logo url then prefetch them
-     * in the background (bounded by the same 3-way semaphore as normal loads).
+     * t126/t130: force-refresh the given group's logos — invalidate each channel logo url (IO) then
+     * prefetch them in the background (bounded by the same 3-way semaphore as normal loads).
      */
     suspend fun refreshGroup(context: Context, channels: List<Channel>, targetWidthPx: Int, targetHeightPx: Int) {
         val urls = channels.mapNotNull { it.logoUrl?.trim()?.takeIf { u -> u.isNotBlank() } }.distinct()
         urls.forEach { invalidate(context, it) }
         prefetch(context, urls, targetWidthPx, targetHeightPx)
     }
+
+    // --- pure helpers exposed for JVM tests (no Android deps) ---
+    internal fun memoryKeyForTest(url: String, w: Int, h: Int): String = memoryKey(url, w, h)
+    internal fun diskKeyForTest(url: String, w: Int, h: Int): String = diskKey(url, w, h)
+    internal fun sha256ForTest(value: String): String = sha256Hex(value)
 
     private fun sha256Hex(value: String): String {
         val digest = MessageDigest.getInstance("SHA-256").digest(value.toByteArray(Charsets.UTF_8))
@@ -254,6 +272,7 @@ object LogoLoader {
     private suspend fun loadInternal(context: Context, url: String, targetWidthPx: Int, targetHeightPx: Int): ImageBitmap? {
         if (url.isBlank()) return null
         if (targetWidthPx <= 0 || targetHeightPx <= 0) return null
+        val gen = cacheGeneration
 
         val memoryKey = memoryKey(url, targetWidthPx, targetHeightPx)
         getCached(memoryKey)?.let { return it }
@@ -310,6 +329,8 @@ object LogoLoader {
                             if (!response.isSuccessful) return@use null
                             response.body?.bytes()
                         }
+                    } catch (e: CancellationException) {
+                        throw e
                     } catch (e: Exception) {
                         null
                     }
@@ -326,18 +347,26 @@ object LogoLoader {
 
                         val decoded = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, decodeOptions)
                         if (decoded == null) null else scaleToBoxCenter(decoded, targetWidthPx, targetHeightPx)
+                    } catch (e: CancellationException) {
+                        throw e
                     } catch (e: Exception) {
                         null
                     }
                 } ?: return@withPermit null
 
+                // CACHE-02: if a clear/invalidate happened while we were downloading, drop this result.
+                if (gen != cacheGeneration) return@withPermit null
+
                 withContext(Dispatchers.IO) {
                     writeBitmapToDisk(diskFile, bitmap)
+                    pruneDiskIfNeeded(cacheDir(context))
                 }
 
                 val imageBitmap = bitmap.asImageBitmap()
                 putCached(memoryKey, imageBitmap)
                 imageBitmap
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 null
             }
@@ -352,25 +381,28 @@ object LogoLoader {
         if (targetWidthPx <= 0 || targetHeightPx <= 0) return
         if (urls.isEmpty()) return
 
-        withContext(Dispatchers.Default) {
-            for (raw in urls) {
-                val url = raw.trim()
-                if (url.isBlank()) continue
-                val memoryKey = memoryKey(url, targetWidthPx, targetHeightPx)
-                if (getCached(memoryKey) != null) continue
-                val diskKey = diskKey(url, targetWidthPx, targetHeightPx)
-                val diskExists = withContext(Dispatchers.IO) {
-                    val dir = cacheDir(context)
-                    if (!dir.exists()) dir.mkdirs()
-                    cacheFile(dir, diskKey).exists()
+        coroutineScope {
+            urls.asSequence().map { it.trim() }.filter { it.isNotBlank() }.distinct().take(80).toList()
+                .chunked(3)
+                .forEach { chunk ->
+                    currentCoroutineContext().ensureActive()
+                    chunk.map { url -> async { runCatching { load(context, url, targetWidthPx, targetHeightPx) } } }.awaitAll()
                 }
-                if (diskExists) continue
-                // load() now performs its own in-flight de-dup + semaphore.
-                try {
-                    load(context, url, targetWidthPx, targetHeightPx)
-                } catch (_: Exception) {
-                }
+        }
+    }
+
+    /** CACHE-02: keep the disk logo cache under MAX_DISK_BYTES (oldest files first). */
+    private fun pruneDiskIfNeeded(dir: File) {
+        try {
+            val files = dir.listFiles()?.filter { it.isFile && it.extension == "webp" } ?: return
+            var total = files.sumOf { it.length() }
+            if (total <= MAX_DISK_BYTES) return
+            files.sortedBy { it.lastModified() }.forEach { f ->
+                if (total <= MAX_DISK_BYTES) return
+                val len = f.length()
+                if (runCatching { f.delete() }.getOrDefault(false)) total -= len
             }
+        } catch (_: Exception) {
         }
     }
 }
