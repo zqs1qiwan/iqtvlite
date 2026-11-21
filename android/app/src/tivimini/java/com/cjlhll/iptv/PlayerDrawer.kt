@@ -239,46 +239,6 @@ fun PlayerDrawer(
             revealedRows = 0
         }
     }
-    // t39（关键改动）：**不再把 147 行逐帧全部揭示**。
-    // t37 的 50th=40ms 来自“补满 147 行要 72 帧、每帧都重组列表”这 72 个重帧；
-    // 现在只维护一个**工作窗口**（首屏 3 行 → 第 2 帧扩到 选中行+lookahead+一屏），
-    // 之后**随滚动/焦点按需增长**（见 scroll-follow 效果与 onRowFocusedScroll）。
-    // 这样打开只需 2 个"轻"帧，50th 回到 ≤16ms 才有戏；列表行为与"全量揭示"完全一致（LazyColumn 本就只组合可见项）。
-    LaunchedEffect(visible, channels.size, initialScrollIndex) {
-        if (!visible || !PerfPolicy.DRAWER_INCREMENTAL_ROWS) return@LaunchedEffect
-        val started = android.os.SystemClock.elapsedRealtime()
-        revealedRows = PerfPolicy.DRAWER_FIRST_FRAME_ROWS.coerceIn(0, channels.size)
-        PerfTrace.d {
-            "drawer_compose frames=1 rows=${channels.size} ms=0 " +
-                "lastFrameRows=$revealedRows first=${PerfPolicy.DRAWER_FIRST_FRAME_ROWS} step=window"
-        }
-        // 第 2 帧：一次性扩到“选中行 + lookahead + 一屏”，避免长列表深处选中时列表过短被钳。
-        androidx.compose.runtime.withFrameNanos { }
-        val target = (initialScrollIndex + PerfPolicy.DRAWER_LOOKAHEAD_ROWS + PerfPolicy.DRAWER_SCREEN_ROWS)
-            .coerceIn(PerfPolicy.DRAWER_FIRST_FRAME_ROWS, channels.size)
-        if (target > revealedRows) revealedRows = target
-        PerfTrace.d {
-            "drawer_compose frames=2 rows=${channels.size} ms=${android.os.SystemClock.elapsedRealtime() - started} " +
-                "lastFrameRows=$target first=${PerfPolicy.DRAWER_FIRST_FRAME_ROWS} step=window"
-        }
-    }
-
-    // t39：滚动/布局驱动按需增长 —— 只要“最后一个可见项”接近已揭示末尾，就再揭示一个窗口，
-    // 保证向下滚动永远有下一屏（用户感知与全量揭示一致，但不再有 72 个重帧）。
-    LaunchedEffect(visible, channels.size) {
-        if (!visible || !PerfPolicy.DRAWER_INCREMENTAL_ROWS) return@LaunchedEffect
-        snapshotFlow { channelListState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0 }
-            .collect { lastVisible ->
-                if (lastVisible >= revealedRows - PerfPolicy.DRAWER_ROWS_PER_FRAME) {
-                    val next = (lastVisible + PerfPolicy.DRAWER_LOOKAHEAD_ROWS).coerceIn(0, channels.size)
-                    if (next > revealedRows) {
-                        revealedRows = next
-                        PerfTrace.d { "drawer_reveal_grow rows=$revealedRows lastVisible=$lastVisible" }
-                    }
-                }
-            }
-    }
-
     LaunchedEffect(visible) {
         if (visible) {
             perfOpenAt[0] = android.os.SystemClock.elapsedRealtime()
@@ -365,6 +325,47 @@ fun PlayerDrawer(
     val channelListState = rememberLazyListState(
         initialFirstVisibleItemIndex = initialScrollIndex
     )
+
+    // t39（关键改动）：**不再把 147 行逐帧全部揭示**。
+    // t37 的 50th=40ms 来自“补满 147 行要 72 帧、每帧都重组列表”这 72 个重帧；
+    // 现在只维护一个**工作窗口**（首屏 3 行 → 第 2 帧扩到 选中行+lookahead+一屏），
+    // 之后**随滚动/焦点按需增长**（见 scroll-follow 效果与 onRowFocusedScroll）。
+    // 这样打开只需 2 个"轻"帧，50th 回到 ≤16ms 才有戏；列表行为与"全量揭示"完全一致（LazyColumn 本就只组合可见项）。
+    LaunchedEffect(visible, channels.size, initialScrollIndex) {
+        if (!visible || !PerfPolicy.DRAWER_INCREMENTAL_ROWS) return@LaunchedEffect
+        val started = android.os.SystemClock.elapsedRealtime()
+        revealedRows = PerfPolicy.DRAWER_FIRST_FRAME_ROWS.coerceIn(0, channels.size)
+        PerfTrace.d {
+            "drawer_compose frames=1 rows=${channels.size} ms=0 " +
+                "lastFrameRows=$revealedRows first=${PerfPolicy.DRAWER_FIRST_FRAME_ROWS} step=window"
+        }
+        // 第 2 帧：一次性扩到“选中行 + lookahead + 一屏”，避免长列表深处选中时列表过短被钳。
+        androidx.compose.runtime.withFrameNanos { }
+        val target = (initialScrollIndex + PerfPolicy.DRAWER_LOOKAHEAD_ROWS + PerfPolicy.DRAWER_SCREEN_ROWS)
+            .coerceIn(PerfPolicy.DRAWER_FIRST_FRAME_ROWS, channels.size)
+        if (target > revealedRows) revealedRows = target
+        PerfTrace.d {
+            "drawer_compose frames=2 rows=${channels.size} ms=${android.os.SystemClock.elapsedRealtime() - started} " +
+                "lastFrameRows=$target first=${PerfPolicy.DRAWER_FIRST_FRAME_ROWS} step=window"
+        }
+    }
+
+    // t39：滚动/布局驱动按需增长 —— 只要“最后一个可见项”接近已揭示末尾，就再揭示一个窗口，
+    // 保证向下滚动永远有下一屏（用户感知与全量揭示一致，但不再有 72 个重帧）。
+    LaunchedEffect(visible, channels.size) {
+        if (!visible || !PerfPolicy.DRAWER_INCREMENTAL_ROWS) return@LaunchedEffect
+        snapshotFlow { channelListState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0 }
+            .collect { lastVisible ->
+                if (lastVisible >= revealedRows - PerfPolicy.DRAWER_ROWS_PER_FRAME) {
+                    val next = (lastVisible + PerfPolicy.DRAWER_LOOKAHEAD_ROWS).coerceIn(0, channels.size)
+                    if (next > revealedRows) {
+                        revealedRows = next
+                        PerfTrace.d { "drawer_reveal_grow rows=$revealedRows lastVisible=$lastVisible" }
+                    }
+                }
+            }
+    }
+
     // t39：直接由 item 的 onFocusChanged 驱动滚动（不再依赖 focusedChannelUrl 回写是否生效）。
     val drawerScope = rememberCoroutineScope()
     /**
@@ -389,13 +390,14 @@ fun PlayerDrawer(
         }
     }
 
-    // t29（D4）：分帧补行完成后校正一次滚动 —— 首帧只有 10 行时 scrollToItem(选中行) 会被钳住，
-    // 补满后需要把选中行带回可视区（否则长列表深处选中的频道看不到焦点）。
-    LaunchedEffect(visible, revealedRows, channels.size) {
-        if (!visible || revealedRows < channels.size || activeColumn != DrawerColumn.Channels) return@LaunchedEffect
-        val target = focusedChannelUrl ?: selectedChannelUrl
-        val idx = target?.let { channelIndexByUrl[it] } ?: return@LaunchedEffect
-        if (idx !in channelListState.layoutInfo.visibleItemsInfo.map { it.index }) {
+    // t39：打开后把选中行滚进视野（工作窗口第 2 帧已覆盖它；此处只做一次确认）。
+    // 旧实现要求 revealedRows == channels.size（全量揭示）才执行，改成有界窗口后该条件永不成立。
+    LaunchedEffect(visible, channels.size, initialScrollIndex) {
+        if (!visible || activeColumn != DrawerColumn.Channels) return@LaunchedEffect
+        androidx.compose.runtime.withFrameNanos { }
+        androidx.compose.runtime.withFrameNanos { }
+        val idx = initialScrollIndex
+        if (idx > 0 && idx !in channelListState.layoutInfo.visibleItemsInfo.map { it.index }) {
             runCatching { channelListState.scrollToItem((idx - 2).coerceAtLeast(0)) }
         }
     }
