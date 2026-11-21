@@ -52,7 +52,7 @@ Back/Left 逐级返回（二级 → 一级焦点回入口行 → 关抽屉）、
 | `SettingsLogoPage` | 4 | `settings_logo_prefetch` / `settings_logo_load` / **`settings_logo_refresh`（新增）** / `settings_logo_clear` |
 | `SettingsAboutPage` | 1 | `settings_check_update`（静态文本承载应用名/版本名/版本号/包名） |
 
-**零丢失核对**：基线 24 个可操作 tag → 23 个可操作行 + 1 个退役（`settings_epg_source`，与
+**零丢失核对**：基线 24 个可操作 tag = **23 个旧 tag 保留 + 1 个新增**（`settings_logo_refresh`）；其中 `settings_epg_source` 退役并与
 `settings_refresh_epg` 合并，两者都只调 `requestManualEpg()`，见规格 D-S2）。`SettingsZeroLossTest`
 直接读源码逐 tag 断言，避免"模型改了 UI 没落地"。
 
