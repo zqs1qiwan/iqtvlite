@@ -103,3 +103,26 @@ return LogoDiskStore.writeAtomically(file) { out -> bitmap.compress(format, 80, 
 | `scripts/check_logo_webp.py` | 新增静态门禁（禁止 WEBP 编码器回归） |
 | `.github/workflows/apk.yml` | 校验步骤加 `check_logo_webp.py`；`push` 触发加入 `integration/tivimini-baseline` |
 | `docs/LOGO_WEBP_CRASH_FIX.md` | 本文（崩溃栈与修复对照、验收步骤） |
+
+## 8. 交付 receipt（CI 绿）
+
+| 项 | 值 |
+|---|---|
+| 修复提交 | `dfb69f1` fix(logo): write logo cache as PNG (P0 WEBP SIGSEGV)…；`dde661e` fix(ci): default push builds to isolated validation package |
+| CI run（绿） | **#141**，sha `dde661e`，event `push`（推送即自动构建），conclusion `success` |
+| 产物 | `iqtvlite-test-apk`（artifact id 14702980775，10,372,465 B）；`iqtvlite-android-reports`（id 14703070432） |
+| 包 | `tv.iqtvlite.app.validation`，versionCode `10141`，versionName `2.2.0-tivimini-dde661e5-validation` |
+| `app-debug.apk` sha256 | `f7b9931fd86bd34f314c9c7f6e6878a8e914e64c9b861bb3d927b0e070e15722` |
+| `app-debug-androidTest.apk` sha256 | `97b5aeca6a35fcd7ed857f4f83745f29a4bc14769a38cc479e8f01eda99d2bc1` |
+| 签名证书 SHA-256（主包=测试包） | `2dbd4422210439ed5c6bf05ed88f0d6bdb85778215202f93350b892eeaff7fb9`（4 个稳定签名 secrets 尚未配置，故仍是临时 debug keystore，跨 run 会变——见 `docs/CI_STABLE_SIGNING.md`） |
+| 门禁结果 | `BUILD SUCCESSFUL`（`testDebugUnitTest` + `lintDebug` + `assembleDebug` + `assembleDebugAndroidTest` 全部通过）；`check_logo_webp: OK (PNG writes, defensive wrapper, legacy .webp readable, no WEBP encoder)`；instrumentation pair `{"missing_types": 0, "missing_methods": 0, "missing_fields": 0}`；dex contract `Ran 7 tests … OK` |
+
+附：run **#140**（sha `dfb69f1`）在 pair gate 失败，原因不是本次台标改动，而是 push 触发**没有 inputs**，
+构建了非隔离包（`applicationId=tv.iqtvlite.app`），不走 `instrumentation-shared-keep.pro`，R8 收缩后
+test APK 引用缺失（`missing_types=24 / missing_methods=58 / missing_fields=5`，全是 keep 规则覆盖的
+Kotlin/AndroidX/App 符号）。已由 `dde661e` 修：push 事件默认回退 `isolated_test_package=true`
+（`workflow_dispatch` 显式 false 仍生效），run #141 全绿。
+
+设备侧复验（冷启动不闪退 / 首次写 .png / 二次秒显 / 旧 webp 可读 / 写盘失败不崩）按 §5 由 acceptance 执行；
+本任务未执行任何 adb/设备命令。
+
