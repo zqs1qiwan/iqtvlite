@@ -32,6 +32,20 @@ object StreamPlayback {
     // t228 (WATCHDOG-RELEASE-01): the timers must be cancellable, otherwise one can wake up after the
     // player was released and touch it / the old Activity's Context.
     private val watchdogJobs = java.util.WeakHashMap<ExoPlayer, MutableList<Job>>()
+    // t234: the rebuild ladder is per channel key and reset by every user zap.
+    private val rebuildLadder = ZapRebuildPolicy.Ladder()
+    // t234: the Activity installs this so the watchdog can rebuild the player instead of re-preparing it.
+    @Volatile private var rebuildHandler: ((channelKey: String, softVideo: Boolean) -> Unit)? = null
+
+    /** t234: install/clear the player-rebuild callback (PlayerActivity owns player lifecycle). */
+    fun setRebuildHandler(handler: ((String, Boolean) -> Unit)?) {
+        rebuildHandler = handler
+    }
+
+    /** t234: a user zap resets the ladder (rebuild/soft get their one chance again). */
+    fun onUserZap() {
+        rebuildLadder.clear()
+    }
     private val sessions = java.util.WeakHashMap<ExoPlayer, Metrics>()
 
     fun restore(context: Context, url: String, title: String): Channel {
@@ -54,7 +68,17 @@ object StreamPlayback {
     fun prepare(player: ExoPlayer, context: Context, channel: Channel, streamUrl: String = channel.url): PreparedPlayback =
         prepare(player, context, MediaPlaybackRequest(channel, streamUrl), PlaybackIntent())
 
+    /** t234: the 睛彩 rebuild path must replay without re-arming the zap stopwatch. */
+    fun prepareForRebuild(
+        player: ExoPlayer,
+        context: Context,
+        request: MediaPlaybackRequest,
+        intent: PlaybackIntent,
+        onFailure: (PlaybackFailure) -> Unit,
+    ): PreparedPlayback = prepare(player, context, request, intent, zapTracking = false, onFailure = onFailure)
+
     fun prepare(player: ExoPlayer, context: Context, request: MediaPlaybackRequest, intent: PlaybackIntent,
+                zapTracking: Boolean = true,
                 onFailure: (PlaybackFailure) -> Unit = {}): PreparedPlayback {
         val channel = request.channel
         val streamUrl = request.streamUrl
@@ -93,7 +117,7 @@ object StreamPlayback {
         // t204 (ZAP-TIMING-01): the stopwatch is armed at the USER entry (PlayerActivity.playChannel);
         // preparation only records its own timestamp, so the measurement is the real key-to-first-frame
         // latency rather than prepare-to-first-frame.
-        if (android.util.Log.isLoggable("IQTV-ZAP", android.util.Log.DEBUG)) {
+        if (zapTracking && android.util.Log.isLoggable("IQTV-ZAP", android.util.Log.DEBUG)) {
             // t216: the very first autoplay has no user zap; arm it here so cold start also produces a
             // ZAP line. A user entry has already armed the clock, so this is a no-op then.
             ZapTrace.armIfUnarmed(
@@ -103,7 +127,7 @@ object StreamPlayback {
         }
         // t225/t228: arm BEFORE prepare — a fast first frame must never arrive un-armed (ARM-01).
         armWatchdog(player, context, channelId, experiment)
-        ZapTrace.onPrepare(android.os.SystemClock.elapsedRealtime())
+        if (zapTracking) ZapTrace.onPrepare(android.os.SystemClock.elapsedRealtime())
         player.prepare()
         player.play()
         return prepared
@@ -126,46 +150,50 @@ object StreamPlayback {
                 watchdog.cancel()
                 return@launch
             }
-            when (watchdog.onTimeout(gen)) {
-                FirstFrameWatchdogPolicy.Action.RETRY -> {
-                    if (Log.isLoggable(WATCHDOG_TAG, Log.DEBUG)) {
-                        Log.d(WATCHDOG_TAG, FirstFrameWatchdogPolicy.retryLine("$channelId", watchdog.retriesUsed()))
+            // t234: one escalation per player instance. The ladder decides rebuild → soft → give up;
+            // re-preparing the SAME player is useless here because the video decoder was never created.
+            watchdog.cancel()
+            val key = "$channelId"
+            val stage = rebuildLadder.stageFor(key)
+            when (ZapRebuildPolicy.actionFor(stage)) {
+                ZapRebuildPolicy.Action.REBUILD, ZapRebuildPolicy.Action.SOFT -> {
+                    val soft = ZapRebuildPolicy.actionFor(stage) == ZapRebuildPolicy.Action.SOFT
+                    rebuildLadder.advance(key)
+                    if (Log.isLoggable(JingcaiExperiment.TAG, Log.DEBUG)) {
+                        Log.d(
+                            JingcaiExperiment.TAG,
+                            ZapRebuildPolicy.logLine(
+                                if (soft) ZapRebuildPolicy.Action.SOFT else ZapRebuildPolicy.Action.REBUILD,
+                                key
+                            )
+                        )
                     }
-                    try {
-                        // Re-prepare the SAME media item: one retry, no new media source, no zap re-arm.
-                        player.seekToDefaultPosition()
-                        player.prepare()
-                        player.play()
-                    } catch (e: Exception) {
-                        // a failed retry must never crash playback
-                    }
-                    val retryJob = watchdogScope.launch(Dispatchers.Main) {
-                        delay(watchdog.timeoutMillis())
-                        if (!watchdog.isCurrent(gen)) return@launch
-                        if (player.playWhenReady &&
-                            watchdog.onTimeout(gen) == FirstFrameWatchdogPolicy.Action.GIVE_UP
-                        ) {
-                            // t231: one diagnostic line per failed channel (DEBUG gated).
-                            if (BuildConfig.DEBUG && Log.isLoggable(JingcaiExperiment.TAG, Log.DEBUG)) {
-                                sessions[player]?.let { m ->
-                                    Log.d(JingcaiExperiment.TAG, m.diagnosticLine(experiment))
-                                }
-                            }
-                            android.widget.Toast.makeText(
-                                context,
-                                FirstFrameWatchdogPolicy.GIVE_UP_MESSAGE,
-                                android.widget.Toast.LENGTH_LONG
-                            ).show()
+                    val handler = rebuildHandler
+                    if (handler != null) {
+                        // Activity releases this player and builds a fresh one (a new MediaCodec attempt).
+                        handler(key, soft)
+                    } else {
+                        // No Activity hook (should not happen in the app): keep the old cheap retry.
+                        try {
+                            player.seekToDefaultPosition()
+                            player.prepare()
+                            player.play()
+                        } catch (e: Exception) {
+                            // never crash playback
                         }
                     }
-                    watchdogJobs.getOrPut(player) { ArrayList() }.add(retryJob)
                 }
-                FirstFrameWatchdogPolicy.Action.GIVE_UP -> android.widget.Toast.makeText(
-                    context,
-                    FirstFrameWatchdogPolicy.GIVE_UP_MESSAGE,
-                    android.widget.Toast.LENGTH_LONG
-                ).show()
-                FirstFrameWatchdogPolicy.Action.IGNORE -> Unit
+                ZapRebuildPolicy.Action.GIVE_UP -> {
+                    // t231: one diagnostic line per failed channel (DEBUG gated).
+                    if (BuildConfig.DEBUG && Log.isLoggable(JingcaiExperiment.TAG, Log.DEBUG)) {
+                        sessions[player]?.let { m -> Log.d(JingcaiExperiment.TAG, m.diagnosticLine(experiment)) }
+                    }
+                    android.widget.Toast.makeText(
+                        context,
+                        FirstFrameWatchdogPolicy.GIVE_UP_MESSAGE,
+                        android.widget.Toast.LENGTH_LONG
+                    ).show()
+                }
             }
         }
         watchdogJobs.getOrPut(player) { ArrayList() }.add(job)

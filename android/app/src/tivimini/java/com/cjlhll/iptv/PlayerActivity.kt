@@ -481,6 +481,9 @@ fun VideoPlayerScreen(
     val lifecycleOwner = LocalLifecycleOwner.current
 
     var player by remember { mutableStateOf<ExoPlayer?>(null) }
+    // t234: the last prepared request (replayed by the rebuild ladder) and its debounce flag.
+    val rebuildState = remember { arrayOfNulls<MediaPlaybackRequest>(1) }
+    val rebuildBusy = remember { booleanArrayOf(false) }
 
     val sidebarState by sidebarController.state.collectAsState()
     val drawerOpen = sidebarState.drawerOpen
@@ -595,8 +598,14 @@ fun VideoPlayerScreen(
                 referrer=(context as? Activity)?.intent?.getStringExtra("VIDEO_REFERRER") ?: restored.referrer) }
     }
     fun liveSelection() = PlaylistSelection(channelGroups, currentGroupIndex, selectedLiveNow())
-    fun prepareRequest(p: ExoPlayer, request: MediaPlaybackRequest) =
-        StreamPlayback.prepare(p, context, request, playbackIntent) { playbackErrorEvents.trySend(it) }
+    fun prepareRequest(p: ExoPlayer, request: MediaPlaybackRequest): PreparedPlayback {
+        rebuildState[0] = request
+        return StreamPlayback.prepare(
+            p, context, request, playbackIntent,
+            onFailure = { playbackErrorEvents.trySend(it) },
+        )
+    }
+
 
     val allChannels = remember(channelGroups) {
         ChannelGrouper.allChannels(channelGroups)
@@ -618,7 +627,7 @@ fun VideoPlayerScreen(
         heavyWorkEnabled = true
     }
 
-    fun initializePlayer() {
+    fun initializePlayer(softVideoOverride: Boolean = false, prepareNow: Boolean = true) {
         if (player != null) return
 
         val loadControl = DefaultLoadControl.Builder()
@@ -648,7 +657,9 @@ fun VideoPlayerScreen(
             )
         }
 
-        val renderersFactory = DefaultRenderersFactory(context)
+        // t234: only the 睛彩 soft-fallback step prepends the FFmpeg video renderer; every other build
+        // (including the first rebuild step) keeps the exact hardware-only path.
+        val renderersFactory = JingcaiRenderersFactory(context, softVideo = softVideoOverride)
             .setEnableDecoderFallback(true)
             // t117: use the FFmpeg audio extension ONLY as a fallback when the platform decoder
             // can't decode the track (e.g. MP2 / audio-mpeg-L2). ON (not PREFER) keeps AVC/AAC on
@@ -668,6 +679,12 @@ fun VideoPlayerScreen(
                 setWakeMode(C.WAKE_MODE_NETWORK)
             }
 
+        // t234: the rebuild path prepares the recorded request itself (no zap re-arm, no 2nd ZAP line).
+        if (!prepareNow) {
+            playerView.player = newPlayer
+            player = newPlayer
+            return
+        }
         val req = catchupRequest
         val request = if (req == null) MediaPlaybackRequest(selectedLiveNow())
             else PlaybackIntent.catchup(ChannelGrouper.allChannels(channelGroups), req, playbackIntent.request)
@@ -685,6 +702,28 @@ fun VideoPlayerScreen(
         playerView.player = null
         player?.let { StreamPlayback.release(it) }
         player = null
+    }
+
+    /**
+     * t234: the 睛彩 rebuild path. The old player is released and a fresh one is built (a new MediaCodec
+     * attempt), then the SAME channel is replayed **without** re-arming the zap stopwatch, so no second
+     * `IQTV-ZAP` line appears. The last ladder step builds it with the FFmpeg video renderer.
+     */
+    fun rebuildPlayer(softVideo: Boolean) {
+        if (rebuildBusy[0]) return           // t234 debounce: one rebuild at a time
+        val request = rebuildState[0] ?: return
+        rebuildBusy[0] = true
+        try {
+            releasePlayer()
+            initializePlayer(softVideoOverride = softVideo, prepareNow = false)
+            val fresh = player ?: return
+            StreamPlayback.prepareForRebuild(
+                fresh, context, request, playbackIntent,
+                onFailure = { playbackErrorEvents.trySend(it) },
+            )
+        } finally {
+            rebuildBusy[0] = false
+        }
     }
 
     DisposableEffect(lifecycleOwner) {
@@ -1182,10 +1221,17 @@ fun VideoPlayerScreen(
     /**
      * 切台：按源列表顺序探测，第一个能连上的就用；都失败则仍播第一个。
      */
+    DisposableEffect(Unit) {
+        StreamPlayback.setRebuildHandler { _, soft -> rebuildPlayer(soft) }
+        onDispose { StreamPlayback.setRebuildHandler(null) }
+    }
+
     fun playGroupAuto(groupIndex: Int, armZap: Boolean = true) {
         // t218/t220: a real zap always wins — drop any warm in flight so it cannot compete.
         ZapPreconnect.cancel()
         MulticastPrewarm.cancel()
+        // t234: a user zap gives the new selection a fresh rebuild/soft chance.
+        StreamPlayback.onUserZap()
         // t211 (ZAP-NESTED-01): arm ONCE per user selection, with the GROUP key — the fallback probe
         // may switch through selectedIndex 0/1/2, and all those variants share this key, so the probe
         // time stays inside the measurement instead of being reset away.
