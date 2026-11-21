@@ -69,8 +69,6 @@ private const val SETTINGS_LIST_TAG = "settings_list"
 fun SettingsDrawer(
     visible: Boolean,
     onSourceConfigClick: () -> Unit,
-    // t3: 旧「更新EPG」与「立即刷新 EPG」合并为一行（同一动作 requestManualEpg），参数名保留兼容。
-    onEpgSettingsClick: () -> Unit,
     qualityMenuEnabled: Boolean = false,
     onQualityMenuClick: () -> Unit = {},
     onCheckUpdateClick: () -> Unit,

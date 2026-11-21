@@ -92,7 +92,8 @@
          └ 检查更新                                [settings_check_update]
 ```
 
-一级 **正好 6 行**；二级每页 **≤ 6 个可聚焦行**（`playback` 5、`remote` 6、`audio` 1、`data` 6、`logo` 4、`about` 1），720dp 高屏无需滚动即可全见；滚动能力保留给更小屏/更长文案/未来扩展。
+一级 **正好 6 行**；二级每页 **≤ 6 个可聚焦行**（`playback` 5、`remote` 6、`audio` 1、`data` 6、`logo` 4、`about` 1）。
+720dp 高屏上各页通常无需滚动即可全见；**例外（t16/F3 实测口径修正）**：`playback` 页保留 4 段完整帮助后约 **680dp > 672dp 可用高，末尾可能需滚动 1 行** —— 功能与可达性不受影响（`verticalScroll` + `BringIntoViewRequester` 保留）。滚动能力亦保留给更小屏/更长文案/未来扩展。
 
 ---
 

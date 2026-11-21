@@ -121,7 +121,11 @@ object SettingsIA {
     /** 已合并退役的 tag（D-S2：与「立即刷新 EPG」是同一动作，只调 requestManualEpg）。 */
     val RETIRED_TAGS: Set<String> = setOf("settings_epg_source")
 
-    /** 旧版 24 个可操作 tag（迁移矩阵行号 1..24，零丢失基线）。 */
+    /**
+     * 迁移矩阵的基线行（**23 个旧 tag + 1 个新增 `settings_logo_refresh`，共 24 个**；
+     * 其中 `settings_epg_source` 已退役，见 [RETIRED_TAGS]）。名字沿用 LEGACY 是为了保留
+     * 零丢失审计的可追溯性；不要误以为“24 个全是旧 tag”（t16/F4 修正注释）。
+     */
     val LEGACY_ACTION_TAGS: List<String> = listOf(
         "settings_source_config",
         "settings_epg_source",

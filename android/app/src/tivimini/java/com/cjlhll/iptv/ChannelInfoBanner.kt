@@ -92,18 +92,49 @@ fun ChannelInfoBanner(
     val focusManager = LocalFocusManager.current
     val requesters = remember(recentCount) { List(recentCount) { FocusRequester() } }
 
-    // 进入聚焦时把焦点交给对应小卡；只有在“曾经聚焦过”时才清焦点——
-    // 否则卡片隐藏（打开抽屉/设置）时会把焦点从覆盖层上抢走。
+    // t16（F1）：聚合“最近观看条里到底有没有节点真的持有焦点”。
+    // 旧实现只在获得焦点时回调 onFocusedChanged(true)，从不回调 false → Activity 的
+    // isInfoCardFocused 镜像可能长期为 true；一旦节点被后台刷新/换源重建或窗口焦点被抢，
+    // 守卫会继续吞 DPAD/OK/BACK，BACK 落到系统 finish() 退出播放器。
+    var stripFocusIndex by remember { mutableStateOf(-1) }
     var wasFocused by remember { mutableStateOf(false) }
-    LaunchedEffect(state, focusIndex, recentCount) {
-        if (focused && recentCount > 0) {
-            val target = requesters.getOrNull(focusIndex.coerceIn(0, recentCount - 1))
-            runCatching { target?.requestFocus() }
-            wasFocused = true
-        } else if (wasFocused) {
-            runCatching { focusManager.clearFocus(force = true) }
-            wasFocused = false
+    var lastState by remember { mutableStateOf(state) }
+
+    // F1/F2 状态机：自愈 + 只在“用户主动退聚焦”时清焦点。
+    LaunchedEffect(state, focusIndex, recentCount, stripFocusIndex) {
+        when (InfoCardPolicy.focusRecoveryAction(state, recentCount)) {
+            InfoCardPolicy.FocusRecovery.EXIT_FOCUS -> {
+                // FOCUSED 但 0 条 → 绝不允许存在；退回 IDLE（Activity 镜像随之为 false）。
+                wasFocused = false
+                onExitFocus()
+            }
+            InfoCardPolicy.FocusRecovery.REQUEST_FOCUS -> {
+                // 进入/保持聚焦，以及“节点被重建/焦点被抢”后的自愈重试。
+                if (stripFocusIndex < 0) {
+                    val target = requesters.getOrNull(focusIndex.coerceIn(0, recentCount - 1))
+                    runCatching { target?.requestFocus() }
+                }
+                wasFocused = true
+            }
+            InfoCardPolicy.FocusRecovery.NONE -> {
+                // F2：只有 FOCUSED→IDLE（用户主动退聚焦）才 clearFocus；
+                // FOCUSED→HIDDEN（覆盖层/计时器）不清——否则会清掉设置抽屉刚拿到的焦点。
+                if (InfoCardPolicy.shouldClearFocusOnTransition(lastState, state) && wasFocused) {
+                    runCatching { focusManager.clearFocus(force = true) }
+                }
+                wasFocused = false
+            }
         }
+        lastState = state
+    }
+
+    // 镜像同步：条内有节点聚焦才算“聚焦”。
+    LaunchedEffect(stripFocusIndex) {
+        onFocusedChanged(InfoCardPolicy.aggregateNodeFocus(stripFocusIndex))
+    }
+    // 兜底：卡片隐藏时镜像一律为 false（覆盖层接管键盘）。
+    LaunchedEffect(state) {
+        if (state == InfoCardPolicy.State.HIDDEN) onFocusedChanged(false)
     }
 
     val techLine = InfoCardPolicy.techLine(
@@ -248,7 +279,10 @@ fun ChannelInfoBanner(
                         onMoveFocus = onMoveFocus,
                         onSwitchRecent = onSwitchRecent,
                         onExitFocus = onExitFocus,
-                        onFocusedChanged = onFocusedChanged,
+                        onCardFocusChanged = { index, isFocused ->
+                            if (isFocused) stripFocusIndex = index
+                            else if (stripFocusIndex == index) stripFocusIndex = -1
+                        },
                     )
                     Spacer(modifier = Modifier.height(24.dp))
                 } else {
@@ -308,7 +342,7 @@ private fun RecentStrip(
     onMoveFocus: (Int) -> Unit,
     onSwitchRecent: (Int) -> Unit,
     onExitFocus: () -> Unit,
-    onFocusedChanged: (Boolean) -> Unit,
+    onCardFocusChanged: (Int, Boolean) -> Unit,
 ) {
     Row(
         modifier = Modifier
@@ -326,7 +360,7 @@ private fun RecentStrip(
                     .focusRequester(requesters[index])
                     .onFocusChanged {
                         isFocused = it.isFocused
-                        if (it.isFocused) onFocusedChanged(true)
+                        onCardFocusChanged(index, it.isFocused)
                     }
                     .onPreviewKeyEvent { event ->
                         if (!focused || event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false

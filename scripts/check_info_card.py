@@ -122,6 +122,32 @@ def main() -> int:
     if "val ok: Ok = Ok.CONFIRM" not in habits:
         problems.append("RemoteHabits.kt: DEFAULT.ok must be Ok.CONFIRM")
 
+    # 6) t16（F1/F2）focus-loss self-healing contract — these must never regress:
+    #    - the banner drives the Activity mirror from the REAL node focus (not from `state`);
+    #    - FOCUSED with 0 recent items self-heals to IDLE (no "FOCUSED without a focus node");
+    #    - clearFocus only on FOCUSED->IDLE (never on HIDDEN, which would steal the drawer focus);
+    #    - the Activity BACK fallback closes the card instead of letting the system finish().
+    if "InfoCardPolicy.focusRecoveryAction" not in banner:
+        problems.append("ChannelInfoBanner.kt: F1 focus-recovery state machine missing")
+    if "InfoCardPolicy.aggregateNodeFocus" not in banner:
+        problems.append("ChannelInfoBanner.kt: F1 node-focus aggregation missing")
+    if "onFocusedChanged(false)" not in banner:
+        problems.append("ChannelInfoBanner.kt: F1 must be able to push onFocusedChanged(false)")
+    if "InfoCardPolicy.shouldClearFocusOnTransition" not in banner:
+        problems.append("ChannelInfoBanner.kt: F2 clearFocus transition guard missing")
+    if re.search(r"fun focusRecoveryAction\(state: State, recentCount: Int\)", policy) is None:
+        problems.append("InfoCardPolicy.kt: focusRecoveryAction(state, recentCount) missing")
+    if "fun shouldClearFocusOnTransition(" not in policy or "fun aggregateNodeFocus(" not in policy:
+        problems.append("InfoCardPolicy.kt: F1/F2 pure helpers missing")
+    # Activity: BACK fallback inside the info-card focus guard
+    if not re.search(r"super\.dispatchKeyEvent\(event\)\)\s*return true", activity):
+        problems.append("PlayerActivity.kt: info-card guard must first hand the key to Compose")
+    if re.search(r"setInfoBannerOpen\?\.invoke\(false\)\s*\n\s*return true", activity) is None:
+        problems.append("PlayerActivity.kt: F1 BACK fallback (close card instead of finish) missing")
+    # The mirror must no longer be derived from the state enum inside the SideEffect.
+    if re.search(r"onInfoCardFocusedChanged\(infoCardState == InfoCardPolicy\.State\.FOCUSED\)", activity):
+        problems.append("PlayerActivity.kt: F1 mirror must not be derived from state (node focus only)")
+
     if problems:
         for p in problems:
             print(f"check_info_card: FAIL {p}")

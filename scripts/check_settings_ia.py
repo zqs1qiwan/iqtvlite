@@ -120,10 +120,27 @@ def main() -> int:
     if '"settings_logo_refresh"' not in drawer_code:
         problems.append("SettingsDrawer.kt: new tag settings_logo_refresh missing")
 
-    # 4) root tags never inside page rows
-    page_items = re.findall(r'"settings_(?!root_)([a-z_]+)"', drawer_code)
-    if any(item.startswith("root_") for item in page_items):
-        problems.append("SettingsDrawer.kt: root tags leaked into page rows")
+    # 4) root tags live only in SettingsRootPage (t16/F5: the old assertion was a tautology —
+    #    a negative lookahead already excluded "root_", so `startswith("root_")` never fired).
+    page_names = ["Playback", "Remote", "Audio", "Data", "Logo", "About"]
+    m_root = re.search(r"private fun SettingsRootPage\(", drawer_code)
+    if not m_root:
+        problems.append("SettingsDrawer.kt: SettingsRootPage missing")
+    else:
+        root_tail = drawer_code[m_root.start():]
+        if "ROOT_TITLE_TAG" not in root_tail:
+            problems.append("SettingsDrawer.kt: SettingsRootPage must carry ROOT_TITLE_TAG")
+        if "entry.tag" not in root_tail:
+            problems.append("SettingsDrawer.kt: SettingsRootPage must bind rows via SettingsRootEntry.tag")
+    for name in page_names:
+        m = re.search(r"private fun Settings%sPage\(" % name, drawer_code)
+        if not m:
+            problems.append("SettingsDrawer.kt: Settings%sPage missing" % name)
+            continue
+        nxt = drawer_code.find("@Composable", m.end())
+        body = drawer_code[m.end(): nxt if nxt != -1 else len(drawer_code)]
+        if "ROOT_TITLE_TAG" in body or "rootTag(" in body:
+            problems.append("SettingsDrawer.kt: root tag leaked into Settings%sPage" % name)
 
     # 5) list tag literal + no LazyColumn
     if '"settings_list"' not in drawer_code:

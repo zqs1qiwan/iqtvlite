@@ -23,6 +23,34 @@ object InfoCardPolicy {
         NONE, SHOW, FOCUS_IN, MOVE_LEFT, MOVE_RIGHT, SWITCH, UNFOCUS, HIDE, TIMER_EXPIRED,
     }
 
+    /** t16（F1）：聚焦态自愈动作。 */
+    enum class FocusRecovery { NONE, REQUEST_FOCUS, EXIT_FOCUS }
+
+    /**
+     * t16（F1，high）：**FOCUSED 但最近观看为 0** 的状态绝不允许存在——
+     * 此时 Compose 内已无焦点节点，而 Activity 的 `isInfoCardFocused` 守卫还会继续吞
+     * DPAD/OK/BACK（BACK 会落到系统 `finish()` 退出播放器）。所以：
+     * - FOCUSED + 0 条 → 自愈退回 IDLE（EXIT_FOCUS）；
+     * - FOCUSED + 有条 → 请求（或重试）小卡焦点（REQUEST_FOCUS，焦点被抢/节点重建后自愈）；
+     * - 其它状态 → 不动作。
+     */
+    fun focusRecoveryAction(state: State, recentCount: Int): FocusRecovery = when {
+        state != State.FOCUSED -> FocusRecovery.NONE
+        recentCount <= 0 -> FocusRecovery.EXIT_FOCUS
+        else -> FocusRecovery.REQUEST_FOCUS
+    }
+
+    /** t16（F1）：镜像 `isInfoCardFocused` 必须来自“条内是否真的持有焦点”，而不是 state。 */
+    fun aggregateNodeFocus(stripFocusIndex: Int): Boolean = stripFocusIndex >= 0
+
+    /**
+     * t16（F2，medium）：**只有用户主动退聚焦（FOCUSED→IDLE）才允许 clearFocus**。
+     * `FOCUSED→HIDDEN`（覆盖层打开）绝不能清——`LocalFocusManager` 属于整个 ComposeView，
+     * `clearFocus(force = true)` 会把设置抽屉刚拿到的焦点一起清掉（MENU→设置后 DOWN 不动）。
+     */
+    fun shouldClearFocusOnTransition(oldState: State, newState: State): Boolean =
+        oldState == State.FOCUSED && newState == State.IDLE
+
     /** 卡片是否可见：HIDDEN 时只有快进/快退浮层会把卡片带回来（回看进度行）。 */
     fun isVisible(state: State, seekOverlayVisible: Boolean): Boolean =
         state != State.HIDDEN || seekOverlayVisible
@@ -51,7 +79,9 @@ object InfoCardPolicy {
         return target.coerceIn(0, count - 1)
     }
 
-    /** 外部换台（数字/166-167/上一台/抽屉选台/音轨切换）→ 丢弃焦点。 */
+    /** 外部换台（数字/166-167/上一台/抽屉选台/音轨切换）→ 丢弃焦点。
+     *  t16（F4）：生产代码已不再直接调用（状态迁移统一在 PlayerActivity 里做），保留是给
+     *  `InfoCardPolicyTest` 校验「外部换台必须退聚焦」这条不变量，勿删。 */
     fun onExternalZap(state: State): State = when (state) {
         State.FOCUSED -> State.IDLE
         else -> state

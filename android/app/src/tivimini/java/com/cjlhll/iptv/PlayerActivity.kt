@@ -309,7 +309,18 @@ class PlayerActivity : ComponentActivity() {
                 KeyEvent.KEYCODE_NUMPAD_ENTER, KeyEvent.KEYCODE_BACK -> true
                 else -> false
             }
-            if (isInfoCardFocused && infoCardKey) return super.dispatchKeyEvent(event)
+            if (isInfoCardFocused && infoCardKey) {
+                // t16（F1）：先交 Compose 焦点节点消费。
+                if (super.dispatchKeyEvent(event)) return true
+                // 焦点节点已不在（后台播放列表刷新/换源清空最近观看，或窗口焦点被抢）：
+                // 镜像立刻自愈为 false，BACK 只关卡片，绝不让事件落到系统默认 finish() 退出播放器。
+                isInfoCardFocused = false
+                if (event.keyCode == KeyEvent.KEYCODE_BACK) {
+                    setInfoBannerOpen?.invoke(false)
+                    return true
+                }
+                // 其它方向键/OK：不 return，继续走下面的既有分支（原语义）。
+            }
             when (event.keyCode) {
                 // t133: last channel — only while no overlay is open; repeats are debounced inside.
                 KeyEvent.KEYCODE_LAST_CHANNEL, KeyEvent.KEYCODE_MEDIA_PREVIOUS -> {
@@ -900,9 +911,10 @@ fun VideoPlayerScreen(
     }
 
     // t4 (INFO_CARD_V2 §3.3)：可见性镜像用 SideEffect（每次重组都推），计时交给 InfoCardPolicy。
+    // t16（F1）：**聚焦镜像不再由 state 推导**（state 仍是 FOCUSED 但 Compose 可能已无焦点节点），
+    // 改由 ChannelInfoBanner 聚合“条内是否真有节点持有焦点”后回调 onInfoCardFocusedChanged。
     SideEffect {
         onInfoBannerOpenChanged(infoCardState != InfoCardPolicy.State.HIDDEN)
-        onInfoCardFocusedChanged(infoCardState == InfoCardPolicy.State.FOCUSED)
     }
 
     // 自动隐藏：IDLE 3000ms；FOCUSED 不隐藏（autoHideMs = null）；换台/计时重开都会重启本 effect。
@@ -1655,11 +1667,8 @@ fun VideoPlayerScreen(
                 val intent = Intent(context, MainActivity::class.java)
                 context.startActivity(intent)
             },
-            onEpgSettingsClick = {
-                settingsDrawerOpen = false
-                android.widget.Toast.makeText(context, "开始更新EPG...", android.widget.Toast.LENGTH_SHORT).show()
-                requestManualEpg()
-            },
+            // t16（F4）：删除死参数 onEpgSettingsClick —— 合并行已由 onRefreshEpgNow 承载
+            // （同一 requestManualEpg），旧 lambda（Toast + requestManualEpg）永不执行。
             qualityMenuEnabled = playingGroup?.variants?.size?.let { it > 1 } == true,
             onQualityMenuClick = {
                 settingsDrawerOpen = false
