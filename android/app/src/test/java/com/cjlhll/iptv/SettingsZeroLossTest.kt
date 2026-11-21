@@ -27,7 +27,7 @@ class SettingsZeroLossTest {
 
     private fun read(name: String): String = File(sourceDir(), name).readText(Charsets.UTF_8)
 
-    /** 去掉 // 与 /* *\/ 注释：注释里可以写"不引入 LazyColumn"这类说明，但代码里不能真的用。 */
+    // 去掉行注释与块注释：注释里可以写“不引入 LazyColumn”这类说明，但代码里不能真的用。
     private fun code(name: String): String {
         val out = StringBuilder()
         var inBlock = false
