@@ -139,8 +139,8 @@ def main() -> int:
         problems.append("PlayerDrawer.kt: row content must be clipped (t48 residue guard)")
     if 'key("row_focused_$index")' not in drawer_code:
         problems.append("PlayerDrawer.kt: focused subtitle subtree must be keyed (t48 residue guard)")
-    if "const val DRAWER_OPEN_WINDOW_ROWS = 18" not in policy:
-        problems.append("PerfPolicy.kt: DRAWER_OPEN_WINDOW_ROWS must be 18 (t48)")
+    if "const val DRAWER_OPEN_WINDOW_ROWS = 28" not in policy:
+        problems.append("PerfPolicy.kt: DRAWER_OPEN_WINDOW_ROWS must be 28 (t52 final)")
     if "openTarget" not in drawer_code:
         problems.append("PlayerDrawer.kt: bounded open window (openTarget) missing (t42)")
     # the channel row must not carry the EPG subtitle / marquee / progress bar any more

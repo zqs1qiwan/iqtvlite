@@ -64,11 +64,12 @@ object PerfPolicy {
     const val DRAWER_SCREEN_ROWS = 12
 
     /**
-     * t48：打开时的工作窗口行数（28 → **18**）。t47 实测巨帧 3 个、50th 53ms；
-     * 首屏目标从 28 行降到 18 行，分帧帧数 13→9，预期巨帧 3→2。
-     * 回退：改回 `DRAWER_LOOKAHEAD_ROWS + DRAWER_SCREEN_ROWS`（=28）。
+     * 打开时的工作窗口行数。**最终值 28**（t52 回退）：
+     * - t47（=28）：巨帧 3、50th 53ms —— 当前最佳；
+     * - t48/t50（=18）：实测**更差**（巨帧 3→4、50th 53→85–89ms、Draw 2.5→16.5ms），故回退。
+     * 说明：窗口越小 → 单帧帧数虽少，但每帧累积的重组/测量在弱机上反而更贵，28 是实测拐点。
      */
-    const val DRAWER_OPEN_WINDOW_ROWS = 18
+    const val DRAWER_OPEN_WINDOW_ROWS = 28
 
     /**
      * t44：**只在聚焦行**显示节目副标题 + 2dp 进度（信息不减法的折中）。

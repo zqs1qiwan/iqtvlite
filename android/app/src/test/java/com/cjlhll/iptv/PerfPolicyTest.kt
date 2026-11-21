@@ -115,7 +115,7 @@ class PerfPolicyTest {
         // t39：焦点前跳用的 lookahead 一次多揭示若干行（保证连续 DOWN 不撞末尾）
         assertEquals(16, PerfPolicy.DRAWER_LOOKAHEAD_ROWS)
         assertEquals(12, PerfPolicy.DRAWER_SCREEN_ROWS)
-        assertEquals("t48：首屏窗口 28→18", 18, PerfPolicy.DRAWER_OPEN_WINDOW_ROWS)
+        assertEquals("t52 最终：首屏窗口回退 18→28（t47 最佳）", 28, PerfPolicy.DRAWER_OPEN_WINDOW_ROWS)
     }
 
     @Test
