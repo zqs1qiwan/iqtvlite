@@ -13,7 +13,9 @@ class RemoteHabitsTest {
     @Test
     fun defaultsKeepTheShippedBehaviour() {
         assertEquals(RemoteHabits.UpDown.CHANNEL_STEP, defaults.upDown)
-        assertEquals(RemoteHabits.Ok.OPEN_DRAWER, defaults.ok)
+        // t4 (INFO_CARD_V2 D-C1 / cap·R1)：OK 默认从「打开频道列表」改为「显示信息卡」。
+        assertEquals(RemoteHabits.Ok.CONFIRM, defaults.ok)
+        assertEquals("显示信息卡", RemoteHabits.Ok.CONFIRM.label)
         assertEquals(RemoteHabits.Back.CLOSE_OVERLAY, defaults.back)
         assertEquals(RemoteHabits.Digits.DIRECT, defaults.digits)
         assertTrue(defaults.channelKeysEnabled)
@@ -23,9 +25,16 @@ class RemoteHabitsTest {
     fun unknownOrMissingValuesFallBackToDefaults() {
         assertEquals(RemoteHabits.UpDown.CHANNEL_STEP, RemoteHabits.parseUpDown(null))
         assertEquals(RemoteHabits.UpDown.CHANNEL_STEP, RemoteHabits.parseUpDown("garbage"))
-        assertEquals(RemoteHabits.Ok.OPEN_DRAWER, RemoteHabits.parseOk(null))
+        assertEquals(RemoteHabits.Ok.CONFIRM, RemoteHabits.parseOk(null))
         assertEquals(RemoteHabits.Back.CLOSE_OVERLAY, RemoteHabits.parseBack(""))
         assertEquals(RemoteHabits.Digits.DIRECT, RemoteHabits.parseDigits("x"))
+    }
+
+    @Test
+    fun storedOkChoiceStillWinsOverTheNewDefault() {
+        // 只有「从未写入过」的用户才用新默认；已存 OPEN_DRAWER 的老用户原样保留（cap·R1）。
+        assertEquals(RemoteHabits.Ok.OPEN_DRAWER, RemoteHabits.parseOk("OPEN_DRAWER"))
+        assertEquals(RemoteHabits.Ok.CONFIRM, RemoteHabits.parseOk("CONFIRM"))
     }
 
     @Test
@@ -62,9 +71,10 @@ class RemoteHabitsTest {
 
     @Test
     fun okHabitMapsToTheRightAction() {
-        assertEquals(RemoteHabits.OkAction.OPEN_DRAWER, RemoteHabits.onOk(defaults, overlayOpen = false))
-        val confirm = defaults.copy(ok = RemoteHabits.Ok.CONFIRM)
-        assertEquals(RemoteHabits.OkAction.SHOW_INFO, RemoteHabits.onOk(confirm, overlayOpen = false))
+        // t4：新默认是“显示信息卡”；旧选择「打开频道列表」仍然有效（一行回退也依赖这点）。
+        assertEquals(RemoteHabits.OkAction.SHOW_INFO, RemoteHabits.onOk(defaults, overlayOpen = false))
+        val drawer = defaults.copy(ok = RemoteHabits.Ok.OPEN_DRAWER)
+        assertEquals(RemoteHabits.OkAction.OPEN_DRAWER, RemoteHabits.onOk(drawer, overlayOpen = false))
     }
 
     @Test
@@ -92,10 +102,18 @@ class RemoteHabitsTest {
                     RemoteHabits.OkAction.SHOW_INFO
             )
         }
-        // live TV keeps the configured habit
+        // live TV keeps the configured habit (t4：默认已是「显示信息卡」；旧选择仍生效)
+        assertEquals(
+            RemoteHabits.OkAction.SHOW_INFO,
+            RemoteHabits.onOk(defaults, overlayOpen = false, catchupPlayback = false)
+        )
         assertEquals(
             RemoteHabits.OkAction.OPEN_DRAWER,
-            RemoteHabits.onOk(defaults, overlayOpen = false, catchupPlayback = false)
+            RemoteHabits.onOk(
+                defaults.copy(ok = RemoteHabits.Ok.OPEN_DRAWER),
+                overlayOpen = false,
+                catchupPlayback = false
+            )
         )
         // and an overlay still wins over catch-up
         assertEquals(

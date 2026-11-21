@@ -119,6 +119,11 @@ class PlayerActivity : ComponentActivity() {
     private var remote = RemoteHabits.DEFAULT
     private var setInfoBannerOpen: ((Boolean) -> Unit)? = null
     private var isInfoBannerOpen: Boolean = false
+    // t4 (INFO_CARD_V2 §4.2-1/2)：卡片聚焦是独立于“可见”的正交状态——
+    // BACK 在 IDLE 一次关卡片，在 FOCUSED 只退聚焦，混用一个 Boolean 会双触发。
+    private var setInfoCardOk: (() -> Boolean)? = null
+    private var setInfoCardFocused: ((Boolean) -> Unit)? = null
+    private var isInfoCardFocused: Boolean = false
     private var isCatchupPlayback: Boolean = false
     private var onCatchupSeek: ((Long) -> Boolean)? = null
     private var onReturnToLive: (() -> Boolean)? = null
@@ -207,6 +212,8 @@ class PlayerActivity : ComponentActivity() {
                         onQualityDialogOpenChanged = { isQualityDialogOpen = it },
                         setInfoBannerOpenController = { setInfoBannerOpen = it },
                         onInfoBannerOpenChanged = { isInfoBannerOpen = it },
+                        setInfoCardOkController = { setInfoCardOk = it },
+                        onInfoCardFocusedChanged = { isInfoCardFocused = it },
                         setOnCatchupSeek = { onCatchupSeek = it },
                         setOnReturnToLive = { onReturnToLive = it },
                         onCatchupPlaybackChanged = { isCatchupPlayback = it }
@@ -289,6 +296,17 @@ class PlayerActivity : ComponentActivity() {
                 if (event.keyCode in listOf(KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER)) { submitNumber(); return true }
                 numberJob?.cancel(); digits = ""
             }
+            // t4 (INFO_CARD_V2 §4.2-2)：卡片聚焦时，方向键/OK/BACK 交给 Compose 焦点节点消费
+            // （卡片退聚焦、左右移动、OK 切台）。数字键、166/167、上一台、MENU、音量仍走既有分支。
+            // 必须放在数字 OSD 分支之后：数字 OSD 的 BACK 清空/OK 提交要优先。
+            val infoCardKey = when (event.keyCode) {
+                KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN,
+                KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT,
+                KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER,
+                KeyEvent.KEYCODE_NUMPAD_ENTER, KeyEvent.KEYCODE_BACK -> true
+                else -> false
+            }
+            if (isInfoCardFocused && infoCardKey) return super.dispatchKeyEvent(event)
             when (event.keyCode) {
                 // t133: last channel — only while no overlay is open; repeats are debounced inside.
                 KeyEvent.KEYCODE_LAST_CHANNEL, KeyEvent.KEYCODE_MEDIA_PREVIOUS -> {
@@ -302,6 +320,12 @@ class PlayerActivity : ComponentActivity() {
 
                 KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
                     if (!isDrawerOpen && !isSettingsDrawerOpen && !isQualityDialogOpen && !isRecentChannelsOpen && !isAudioDialogOpen) {
+                        // t4 (INFO_CARD_V2 D-C2)：两段式 OK —— 卡片已可见且习惯是“显示信息卡”时，
+                        // 先问 Compose 能否进入最近观看聚焦；不能（条为空/回看/快进）则只重新计时。
+                        // 遮罩优先不变：本分支只在所有覆盖层关闭时才会执行。
+                        if (isInfoBannerOpen && remote.ok == RemoteHabits.Ok.CONFIRM &&
+                            setInfoCardOk?.invoke() == true
+                        ) return true
                         // t186 (F1): the OK habit decides between opening the list and confirming.
                         when (RemoteHabits.onOk(remote, overlayOpen = false, catchupPlayback = isCatchupPlayback)) {
                             RemoteHabits.OkAction.OPEN_DRAWER -> sidebarController.openDrawer()
@@ -471,6 +495,9 @@ fun VideoPlayerScreen(
     onQualityDialogOpenChanged: (Boolean) -> Unit,
     setInfoBannerOpenController: (((Boolean) -> Unit)?) -> Unit,
     onInfoBannerOpenChanged: (Boolean) -> Unit,
+    // t4: 第二段 OK（IDLE→FOCUSED）与“焦点在卡片内”的镜像。
+    setInfoCardOkController: (((() -> Boolean)?) -> Unit),
+    onInfoCardFocusedChanged: (Boolean) -> Unit,
     setOnCatchupSeek: (((Long) -> Boolean)?) -> Unit,
     setOnReturnToLive: ((() -> Boolean)?) -> Unit,
     onCatchupPlaybackChanged: (Boolean) -> Unit,
@@ -549,7 +576,24 @@ fun VideoPlayerScreen(
     var autoUpdateEpg by remember { mutableStateOf(Prefs.getAutoUpdateEpg(context)) }
     var autoUpdateTick by remember { mutableIntStateOf(0) }
     var qualityDialogGroupIndex by remember { mutableIntStateOf(-1) }
-    var infoBannerOpen by remember { mutableStateOf(false) }
+    // t4 (INFO_CARD_V2)：卡片三态 + 焦点索引 + 计时重开 tick（取代旧 Boolean infoBannerOpen）。
+    var infoCardState by remember { mutableStateOf(InfoCardPolicy.State.HIDDEN) }
+    var infoCardFocusIndex by remember { mutableIntStateOf(0) }
+    var infoCardTimerTick by remember { mutableIntStateOf(0) }
+
+    fun logInfoCard(message: String) {
+        if (android.util.Log.isLoggable("IQTV-INFOCARD", android.util.Log.DEBUG)) {
+            android.util.Log.d("IQTV-INFOCARD", message)
+        }
+    }
+
+    // t4：进入 IDLE 并重新计时（换台/上一台/数字跳台/音轨切换/回看 UP-DOWN 共用）。
+    fun showInfoCard() {
+        infoCardState = InfoCardPolicy.State.IDLE
+        infoCardFocusIndex = 0
+        infoCardTimerTick++
+        logInfoCard("show state=IDLE recent=${recentEntries.size}")
+    }
     val channelSwitch = rememberChannelSwitchController()
     val playbackErrorEvents = remember { kotlinx.coroutines.channels.Channel<PlaybackFailure>(kotlinx.coroutines.channels.Channel.BUFFERED) }
     val playbackIntent = remember { PlaybackIntent() }
@@ -814,7 +858,12 @@ fun VideoPlayerScreen(
     DisposableEffect(Unit) {
         setSettingsDrawerOpenController { settingsDrawerOpen = it }
         setQualityDialogOpenController { qualityDialogOpen = it }
-        setInfoBannerOpenController { infoBannerOpen = it }
+        setInfoBannerOpenController { open ->
+            // t4：Activity 侧的旧入口（OK 习惯 SHOW_INFO / 回看 UP-DOWN）仍然只表达“显示卡片”。
+            infoCardState = if (open) InfoCardPolicy.State.IDLE else InfoCardPolicy.State.HIDDEN
+            if (!open) infoCardFocusIndex = 0
+            infoCardTimerTick++
+        }
         onDispose {
             setSettingsDrawerOpenController(null)
             setQualityDialogOpenController(null)
@@ -841,11 +890,37 @@ fun VideoPlayerScreen(
         }
     }
 
-    LaunchedEffect(infoBannerOpen, currentGroupIndex, currentVariantIndex) {
-        onInfoBannerOpenChanged(infoBannerOpen)
-        if (infoBannerOpen) {
-            delay(5000)
-            infoBannerOpen = false
+    // t4 (INFO_CARD_V2 §3.3)：可见性镜像用 SideEffect（每次重组都推），计时交给 InfoCardPolicy。
+    SideEffect {
+        onInfoBannerOpenChanged(infoCardState != InfoCardPolicy.State.HIDDEN)
+        onInfoCardFocusedChanged(infoCardState == InfoCardPolicy.State.FOCUSED)
+    }
+
+    // 自动隐藏：IDLE 3000ms；FOCUSED 不隐藏（autoHideMs = null）；换台/计时重开都会重启本 effect。
+    LaunchedEffect(infoCardState, infoCardTimerTick, currentGroupIndex, currentVariantIndex) {
+        val hideMs = InfoCardPolicy.autoHideMs(infoCardState) ?: return@LaunchedEffect
+        delay(hideMs)
+        if (infoCardState == InfoCardPolicy.State.IDLE) {
+            infoCardState = InfoCardPolicy.State.HIDDEN
+            infoCardFocusIndex = 0
+            logInfoCard("hide reason=timer")
+        }
+    }
+
+    // 覆盖层（抽屉/设置/线路/音轨/最近观看）打开 → 卡片立即隐藏，避免叠层（§4.2-5）。
+    LaunchedEffect(drawerOpen, settingsDrawerOpen, qualityDialogOpen, recentChannelsOpen, audioDialogOpen) {
+        if (drawerOpen || settingsDrawerOpen || qualityDialogOpen || recentChannelsOpen || audioDialogOpen) {
+            if (infoCardState != InfoCardPolicy.State.HIDDEN) logInfoCard("hide reason=overlay")
+            infoCardState = InfoCardPolicy.State.HIDDEN
+            infoCardFocusIndex = 0
+        }
+    }
+
+    // 快进/快退浮层：卡片本体仍显示（回看进度行），但收起最近观看条并退出聚焦。
+    LaunchedEffect(isSeekOverlayVisible) {
+        if (isSeekOverlayVisible && infoCardState == InfoCardPolicy.State.FOCUSED) {
+            infoCardState = InfoCardPolicy.State.IDLE
+            infoCardFocusIndex = 0
         }
     }
 
@@ -1322,7 +1397,7 @@ fun VideoPlayerScreen(
         if (target.variantIndex !in target.group.variants.indices) return false
         lastChannelSwitchAt = now
         playGroupVariant(target.groupIndex, target.variantIndex, armZap = true)
-        infoBannerOpen = true
+        showInfoCard()
         return true
     }
 
@@ -1384,7 +1459,7 @@ fun VideoPlayerScreen(
             val groups = channelGroupsState.value
             if (number !in 1..groups.size) false else {
                 playGroupAutoState.value(number-1)
-                infoBannerOpen = true
+                showInfoCard()
                 true
             }
         }
@@ -1398,7 +1473,7 @@ fun VideoPlayerScreen(
             val current = currentGroupIndexState.value
             val nextGroupIndex = ((current + direction) % size + size) % size
             playGroupAutoState.value(nextGroupIndex)
-            infoBannerOpen = true
+            showInfoCard()
             true
         }
 
@@ -1492,10 +1567,56 @@ fun VideoPlayerScreen(
                     number = resolved.groupIndex + 1,
                     logoUrl = resolved.group.logoUrl ?: resolved.channel.logoUrl,
                     selected = resolved.group.key == currentGroupKey,
+                    // t4：切台用索引（信息卡小卡与最近观看对话框共用，避免按 url 二次解析）。
+                    groupIndex = resolved.groupIndex,
+                    variantIndex = resolved.variantIndex,
                 ) to (resolved.group to resolved.channel)
             }
         }
         val recentItems = recentResolved.map { it.first }
+        // t4 (INFO_CARD_V2 §5.1)：卡片底部只放「非当前台、最多 6 张、最新在前」——
+        // 排除当前台后连续 OK 才能在 A↔B 之间快跳（D-C3）。
+        val cardRecentItems = remember(recentResolved, currentGroupIndex) {
+            InfoCardPolicy.cardRecentItems(recentItems) { it.selected }
+        }
+
+        // t4 (§5.2)：统一切台助手（对话框与卡片共用同一份解析）。
+        fun switchToRecent(item: RecentChannelUi): Boolean {
+            if (item.groupIndex !in channelGroups.indices) return false
+            val group = channelGroups[item.groupIndex]
+            if (group.variants.isEmpty()) return false
+            val variant = item.variantIndex.takeIf { it in group.variants.indices } ?: 0
+            sidebarController.closeDrawer()
+            playGroupVariant(item.groupIndex, variant, armZap = true)
+            return true
+        }
+
+        // t4 (INFO_CARD_V2 §3.6 / D-C2)：第二段 OK —— IDLE→FOCUSED；条为空/回看/快进只重新计时。
+        DisposableEffect(cardRecentItems, catchupRequest, isSeekOverlayVisible) {
+            val handler: () -> Boolean = {
+                if (infoCardState == InfoCardPolicy.State.IDLE) {
+                    val canFocus = InfoCardPolicy.canFocusRecent(
+                        recentCount = cardRecentItems.size,
+                        catchup = catchupRequest != null,
+                        seekOverlayVisible = isSeekOverlayVisible,
+                    )
+                    if (canFocus) {
+                        infoCardFocusIndex = 0
+                        infoCardState = InfoCardPolicy.State.FOCUSED
+                        logInfoCard("focus index=0")
+                    } else {
+                        infoCardTimerTick++
+                    }
+                    true
+                } else {
+                    false
+                }
+            }
+            setInfoCardOkController(handler)
+            onDispose { setInfoCardOkController(null) }
+        }
+
+        // 焦点清理由 ChannelInfoBanner 自己负责（只在“曾聚焦过”时清，避免抢覆盖层焦点）。
         // t176: the settings row count must reflect the stored list immediately (a clear leaves
         // recentEntries empty in the same frame, while the resolved list depends on the playlist).
         val recentCount = recentEntries.size
@@ -1729,7 +1850,7 @@ fun VideoPlayerScreen(
             onSelect = { item ->
                 applyAudioOverride(item.groupIndex, item.trackIndex)
                 audioDialogOpen = false
-                infoBannerOpen = true
+                showInfoCard()
             },
             onClose = { audioDialogOpen = false }
         )
@@ -1738,17 +1859,9 @@ fun VideoPlayerScreen(
             visible = recentChannelsOpen,
             items = recentItems,
             onSelect = { index ->
-                recentResolved.getOrNull(index)?.let { (_, pair) ->
-                    val group = pair.first
-                    val channel = pair.second
-                    val groupIndex = channelGroups.indexOfFirst { it.key == group.key }
-                    val variantIndex = group.variants.indexOfFirst { it.channel.url == channel.url }
-                        .let { if (it >= 0) it else 0 }
-                    if (groupIndex >= 0) {
-                        setRecentOpen(false)
-                        sidebarController.closeDrawer()
-                        playGroupVariant(groupIndex, variantIndex, armZap = true)
-                    }
+                // t4：与信息卡小卡共用同一个切台助手（索引已在 RecentChannelUi 里解析好）。
+                recentItems.getOrNull(index)?.let { item ->
+                    if (switchToRecent(item)) setRecentOpen(false)
                 }
             },
             onClear = {
@@ -1841,7 +1954,8 @@ fun VideoPlayerScreen(
                 }
 
                 ChannelInfoBanner(
-                    visible = infoBannerOpen || isSeekOverlayVisible,
+                    state = infoCardState,
+                    seekOverlayVisible = isSeekOverlayVisible,
                     channel = bannerChannel,
                     programTitle = displayTitle,
                     programProgress = displayProgress,
@@ -1849,6 +1963,34 @@ fun VideoPlayerScreen(
                     videoFormat = videoFormat,
                     audioLabel = AudioTrackUi.summary(audioTracks, audioOverrideGroup, audioOverrideTrack),
                     catchupConfiguration = catchupConfig,
+                    recentCards = cardRecentItems,
+                    focusIndex = infoCardFocusIndex,
+                    onMoveFocus = { delta ->
+                        // clamp 0..n-1，首尾不环绕（InfoCardPolicy.nextFocusIndex）。
+                        infoCardFocusIndex = InfoCardPolicy.nextFocusIndex(
+                            current = infoCardFocusIndex,
+                            count = cardRecentItems.size,
+                            delta = delta,
+                        )
+                        logInfoCard("move index=$infoCardFocusIndex")
+                    },
+                    onSwitchRecent = { index ->
+                        cardRecentItems.getOrNull(index)?.let { item ->
+                            logInfoCard("switch idx=$index group=${item.number} ${item.title}")
+                            if (switchToRecent(item)) {
+                                // §5.2：切台后保持 FOCUSED，焦点回到第一张（刚离开的台）。
+                                infoCardFocusIndex = 0
+                            }
+                        }
+                    },
+                    onExitFocus = {
+                        infoCardFocusIndex = 0
+                        infoCardState = InfoCardPolicy.State.IDLE
+                        infoCardTimerTick++
+                    },
+                    onFocusedChanged = { focused ->
+                        onInfoCardFocusedChanged(focused)
+                    },
                     animate = true,
                     modifier = Modifier.fillMaxWidth()
                 )

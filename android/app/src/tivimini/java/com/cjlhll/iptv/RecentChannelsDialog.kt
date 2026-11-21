@@ -51,6 +51,10 @@ data class RecentChannelUi(
     val number: Int,
     val logoUrl: String?,
     val selected: Boolean,
+    // t4 (INFO_CARD_V2 §5.1)：信息卡底部小卡直接按索引切台，避免再按 url 二次解析。
+    // 默认值保证既有调用点（对话框）零改动。
+    val groupIndex: Int = -1,
+    val variantIndex: Int = 0,
 )
 
 /**

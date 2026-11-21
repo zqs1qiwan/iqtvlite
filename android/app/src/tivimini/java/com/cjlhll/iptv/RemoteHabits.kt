@@ -17,7 +17,9 @@ object RemoteHabits {
 
     enum class Ok(val label: String) {
         OPEN_DRAWER("打开频道列表"),
-        CONFIRM("确认"),
+        // t4 (INFO_CARD_V2 D-C1 / cap·R1)：枚举名不变（已存偏好继续可解析），只改 label；
+        // 频道列表仍由 LEFT 一键打开，设置由 RIGHT 一键打开。
+        CONFIRM("显示信息卡"),
     }
 
     enum class Back(val label: String) {
@@ -32,7 +34,7 @@ object RemoteHabits {
 
     data class Settings(
         val upDown: UpDown = UpDown.CHANNEL_STEP,
-        val ok: Ok = Ok.OPEN_DRAWER,
+        val ok: Ok = Ok.CONFIRM,
         val back: Back = Back.CLOSE_OVERLAY,
         val digits: Digits = Digits.DIRECT,
         val channelKeysEnabled: Boolean = true,
@@ -41,10 +43,12 @@ object RemoteHabits {
     /**
      * t186/t193 (DEFAULT-01): the shipped defaults. Documented in docs/REMOTE_HABITS_SETTINGS*.md:
      *  - 上下键 = 换台
-     *  - OK键   = 打开频道列表 (在回看中例外：显示信息条，见 [onOk])
+     *  - OK键   = 显示信息卡 (t4/D-C1；回看中同样是显示信息条，见 [onOk])
      *  - Back键 = 关闭抽屉 (双按退出)
      *  - 数字键 = 直接跳台
      *  - 频道键 166/167 = 启用
+     *
+     * 一行回退：`ok = Ok.OPEN_DRAWER`（枚举名不变，Prefs 无需迁移）。
      */
     val DEFAULT = Settings()
 

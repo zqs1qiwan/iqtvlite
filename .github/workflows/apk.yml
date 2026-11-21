@@ -142,6 +142,8 @@ jobs:
           python3 scripts/verify_apk.py "$APK"
           # t11 (P0): 台标写盘必须走 PNG，禁止 WEBP 编码器（本机 Skia SIGSEGV）。
           python3 scripts/check_logo_webp.py
+          # t4: 信息卡 v2 结构/焦点/默认值门禁。
+          python3 scripts/check_info_card.py
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs "$APK"
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep -E 'package:|native-code:|sdkVersion|targetSdkVersion|application-label:'
           TEST_APK=android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
