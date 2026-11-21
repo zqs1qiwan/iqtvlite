@@ -502,6 +502,8 @@ fun VideoPlayerScreen(
     var audioOverrideGroup by remember { mutableIntStateOf(-1) }
     var audioOverrideTrack by remember { mutableIntStateOf(-1) }
     var audioDialogOpen by remember { mutableStateOf(false) }
+    // t197 (B): EPG cache is loaded only after the first frame is on screen.
+    var firstFrameRendered by remember { mutableStateOf(false) }
     // t179 (AUDIO-BACK-01): mirror the audio dialog state so the Activity can guard every key.
     // t187 (BACK-03): SideEffect pushes the state on every recomposition instead of relying on a
     // LaunchedEffect keyed only by the value (which could be skipped while settling).
@@ -600,10 +602,11 @@ fun VideoPlayerScreen(
                 // Constraint kept: minBufferMs(2500) >= bufferForPlayback(500) and
                 // >= bufferForPlaybackAfterRebuffer(2000) — an 800/…/1000 set crashed at start
                 // (USAB2-01 / CI10077), never set minBufferMs below afterRebuffer.
-                2_500,
-                6_000,
-                500,
-                2_000
+                // t197: numbers live in LoadControlTuning so an A/B arm is one constant.
+                LoadControlTuning.minBufferMs(),
+                LoadControlTuning.maxBufferMs(),
+                LoadControlTuning.playbackBufferMinMs(),
+                LoadControlTuning.playbackBufferAfterRebufferMs()
             )
             .setBackBuffer(0, false)
             .setPrioritizeTimeOverSizeThresholds(true)
@@ -684,6 +687,16 @@ fun VideoPlayerScreen(
 
                 override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
                     videoFormat = p.videoFormat
+                }
+
+                override fun onRenderedFirstFrame() {
+                    val now = android.os.SystemClock.elapsedRealtime()
+                    ZapTrace.onFirstFrame(now)
+                    // t197 (B): the EPG cache may only be read once the first frame is on screen.
+                    firstFrameRendered = true
+                    if (android.util.Log.isLoggable(ZAP_TAG, android.util.Log.DEBUG)) {
+                        ZapTrace.summaryLine()?.let { android.util.Log.d(ZAP_TAG, it) }
+                    }
                 }
 
                 override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
@@ -892,10 +905,19 @@ fun VideoPlayerScreen(
         }
     }
 
-    LaunchedEffect(Unit) {
+    // t197 (B): cold start was dominated by pulling the playlist AND parsing the EPG before the
+    // first frame. The EPG cache read now waits for `onRenderedFirstFrame`, so the first screen and
+    // the first frame no longer compete with the XMLTV parse. The background-updated collector below
+    // still runs from the start (it is a cold Flow with no work until data arrives).
+    LaunchedEffect(firstFrameRendered) {
+        if (!ColdStartPolicy.mayLoadEpgCache(firstFrameRendered)) return@LaunchedEffect
         val epgSource = Prefs.getEpgSource(context)
         if (epgSource.isNotBlank()) {
+            val t0 = System.currentTimeMillis()
             val cachedEpg = EpgRepository.load(context, epgSource, forceRefresh = false)
+            if (android.util.Log.isLoggable(ZAP_TAG, android.util.Log.DEBUG)) {
+                android.util.Log.d(ZAP_TAG, "epgCache=${System.currentTimeMillis() - t0}ms")
+            }
             if (cachedEpg != null) {
                 epgData = cachedEpg
                 Log.i(epgLoadTag, "cache loaded. programs=${cachedEpg.programsByChannelId.size}")
@@ -1771,3 +1793,6 @@ private fun clearAudioOverride(player: androidx.media3.common.Player) {
         .clearOverridesOfType(androidx.media3.common.C.TRACK_TYPE_AUDIO)
         .build()
 }
+
+/** t197: one debug tag for the TTFF stopwatch (`adb shell setprop log.tag.IQTV-ZAP DEBUG`). */
+private const val ZAP_TAG = "IQTV-ZAP"
