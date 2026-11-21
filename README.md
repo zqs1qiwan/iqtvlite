@@ -1,39 +1,50 @@
-# IPTV（Android TV）
+# iqtv — Android TV IPTV Player
 
-一个基于 Jetpack Compose for TV 开发的深色风格电视端 IPTV 播放器。
+这是本次接手开发的可运行项目目录，基于 tivimini 源码与 Jetpack Compose for TV。包名暂为 `com.cjlhll.iptv`，保留手机扫码推源与局域网配置。
 
-## 功能特点
+## 项目状态
 
-*   **直播播放**：支持通过 URL 加载 `m3u/m3u8` 直播源，流畅播放。
-*   **节目单 (EPG)**：支持加载 XMLTV 格式的节目单，在频道列表中展示当前及后续节目信息。
-*   **回看/时移**：支持节目回看功能（需直播源支持），不错过精彩内容。
-*   **便捷配置**：
-    *   **手机推送**：在电视端生成二维码，手机扫码或访问局域网地址，即可直接推送直播源与 EPG 地址，无需遥控器输入繁琐链接。
-    *   **历史记录**：自动记忆上次播放的频道。
-*   **遥控器交互**：专为电视遥控器设计的交互体验，操作简单直观。
+- 项目路径：`/opt/data/projects/iqtv`
+- 源码基线：tivimini，原始仓库 `https://github.com/cjlhll/tivimini`
+- 本目录包含当前未提交工作副本、测试资源、设计资料和真机验证证据。
+- 尚未发布 Release；构建状态、待办与实际真机结果见 [`HANDOFF.md`](HANDOFF.md)。
 
-## 使用指南
+## 文档入口
 
-### 1. 首次配置
-首次启动将进入“源配置”页面：
-*   **直播源**：输入 `m3u` 列表地址。
-*   **EPG 源**（可选）：输入 XMLTV 地址。
+- [PRD 与验收标准](docs/PRD.md)
+- [开发交接与当前状态](HANDOFF.md)
+- [文档、设计资料和证据索引](docs/README.md)
+- [Android 开发规范](AGENTS.md)
 
-### 2. 手机推送配置
-在“源配置”页面，系统会启动局域网服务并显示二维码及 IP 地址。
-使用手机（连接同一局域网）扫描二维码或浏览器访问该地址，即可在手机上粘贴源地址并一键推送到电视。
+## 测试资源
 
-### 3. 遥控器操作
-*   **方向键 上/下**：切换频道
-*   **方向键 左**：打开频道/节目列表
-*   **方向键 右 / 菜单键**：打开设置/源配置
-*   **确认键 (Center/Enter)**：显示当前频道信息
-*   **返回键**：关闭菜单/退出应用
+- `testdata/iptv-test.m3u`：2026-11-18 从测试端点下载的 M3U 快照（156 条）。
+- `app/src/main/res/`：应用图标、banner、频道 logo 占位及主题资源。
+- `screenshot/`：原 tivimini UI 截图。
+- `docs/evidence/2026-11-18/`：本次真机配置、频道数字跳转和播放器截图。
+- `e.xml`：原仓库 XMLTV 样例。
 
-## 预览
+测试源地址只用于开发验证；二维码/手机推送配置必须保留，默认地址不可硬编码成单源限制。
 
-| | | |
-|:---:|:---:|:---:|
-| <img src="./screenshot/Screenshot_20260211_090032.png" width="300" /> | <img src="./screenshot/Screenshot_20260211_090058.png" width="300" /> | <img src="./screenshot/Screenshot_20260211_090121.png" width="300" /> |
-| <img src="./screenshot/Screenshot_20260211_090131.png" width="300" /> | <img src="./screenshot/Screenshot_20260211_090143.png" width="300" /> | <img src="./screenshot/Screenshot_20260211_090200.png" width="300" /> |
-| <img src="./screenshot/Screenshot_20260211_090222.png" width="300" /> | <img src="./screenshot/Screenshot_20260211_090309.png" width="300" /> |
+## 构建与测试
+
+```bash
+export JAVA_HOME=/opt/data/rea-tvbox/tools/jdk-17.0.20.1+1
+export PATH="$JAVA_HOME/bin:$PATH"
+export ANDROID_HOME=/opt/data/cache/android
+export ANDROID_SDK_ROOT=/opt/data/cache/android
+export GRADLE_OPTS="-Dhttp.proxyHost=192.168.2.1 -Dhttp.proxyPort=7890 -Dhttps.proxyHost=192.168.2.1 -Dhttps.proxyPort=7890"
+
+./gradlew :app:assembleDebug --no-daemon
+./gradlew :app:testDebugUnitTest --no-daemon
+```
+
+项目副本的单测和 debug 构建均通过；`artifacts/iqtv-debug-2026-11-18.apk` 与当前归档源码对应。该 APK 尚未安装到目标机做最终回归；不要把当前 debug 包称为 Release。
+
+## 目录说明
+
+- `app/`：Android 应用源码、资源、测试及签名配置。
+- `docs/`：PRD、架构/页面/解析设计、归档资料和验证截图。
+- `testdata/`：播放列表测试快照。
+- `gradle/`：Gradle wrapper 与版本目录。
+- `HANDOFF.md`：工作区差异、实测证据、失败项和建议接手顺序。

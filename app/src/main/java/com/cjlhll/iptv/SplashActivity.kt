@@ -14,23 +14,27 @@ class SplashActivity : ComponentActivity() {
         val liveSource = Prefs.getLiveSource(this)
         val (lastUrl, lastTitle) = Prefs.getLastChannel(this)
         val playlistFileName = Prefs.getPlaylistFileName(this)
+        val restoreLast = AppSettings.isRestoreLastChannel(this)
 
-        if (liveSource.isNotBlank() && !lastUrl.isNullOrBlank()) {
-            // Configured and has history -> Go to Player directly
+        val hasPlayableConfig = liveSource.isNotBlank() &&
+            (!playlistFileName.isNullOrBlank() || !lastUrl.isNullOrBlank())
+
+        if (hasPlayableConfig) {
+            // 已配置 → 进入播放器。恢复开关决定起始频道，由 PlayerActivity 处理缓存/首台。
             val intent = Intent(this, PlayerActivity::class.java).apply {
-                putExtra("VIDEO_URL", lastUrl)
-                putExtra("VIDEO_TITLE", lastTitle ?: "Live")
+                if (restoreLast && !lastUrl.isNullOrBlank()) {
+                    putExtra("VIDEO_URL", lastUrl)
+                    putExtra("VIDEO_TITLE", lastTitle ?: "Live")
+                }
                 if (!playlistFileName.isNullOrBlank()) {
                     putExtra("PLAYLIST_FILE_NAME", playlistFileName)
                 }
             }
             startActivity(intent)
         } else {
-            // Not configured or no history -> Go to Config
-            val intent = Intent(this, MainActivity::class.java)
-            startActivity(intent)
+            // 未配置或无可播放缓存 → 源配置
+            startActivity(Intent(this, MainActivity::class.java))
         }
-        
         finish()
     }
 

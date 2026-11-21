@@ -353,16 +353,17 @@ fun ChannelLogo(
         if (loaded != null) fallbackJob.cancel()
     }
 
-    val shape = RoundedCornerShape(10.dp)
+    val shape = RoundedCornerShape(4.dp)
     val bg = MaterialTheme.colorScheme.surfaceVariant
 
     if (loaded != null) {
+        // 成功台标保留原始透明边缘与比例，不做圆角裁切（A13）。
         Image(
             bitmap = loaded!!,
             contentDescription = fallbackTitle,
+            contentScale = androidx.compose.ui.layout.ContentScale.Fit,
             modifier = modifier
                 .onSizeChanged { if (width == null || height == null) sizePx = it }
-                .clip(shape)
         )
     } else {
         Box(
@@ -373,8 +374,9 @@ fun ChannelLogo(
             contentAlignment = Alignment.Center
         ) {
             if (showFallbackText) {
+                // 无台标时使用中性占位，不用频道名首字母伪装成已下载台标。
                 Text(
-                    text = fallbackTitle.take(1),
+                    text = "TV",
                     maxLines = 1,
                     overflow = TextOverflow.Clip,
                     modifier = Modifier

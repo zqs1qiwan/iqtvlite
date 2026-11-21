@@ -10,7 +10,7 @@ import java.util.Locale
 
 class SourceConfigLanServer(
     private val appContext: Context,
-    private val onPush: (liveSource: String, epgSource: String) -> Unit,
+    private val onPush: (liveSource: String?, epgSource: String?) -> Unit,
 ) {
     data class Info(
         val ip: String,
@@ -65,7 +65,7 @@ class SourceConfigLanServer(
     private class InternalServer(
         port: Int,
         private val html: String,
-        private val onPush: (liveSource: String, epgSource: String) -> Unit,
+        private val onPush: (liveSource: String?, epgSource: String?) -> Unit,
     ) : NanoHTTPD(port) {
 
         override fun serve(session: IHTTPSession): Response {
@@ -86,8 +86,9 @@ class SourceConfigLanServer(
 
                 session.method == Method.POST && path == "/api/push" -> {
                     val payload = parsePayload(session)
-                    val live = payload.optString("liveSource", "")
-                    val epg = payload.optString("epgSource", "")
+                    // 区分“字段缺失”（null，保留草稿）与“显式空字符串”（清空）（D15）
+                    val live = if (payload.has("liveSource")) payload.optString("liveSource", "") else null
+                    val epg = if (payload.has("epgSource")) payload.optString("epgSource", "") else null
                     onPush(live, epg)
                     val body = JSONObject(mapOf("ok" to true)).toString()
                     cors(newFixedLengthResponse(Response.Status.OK, "application/json; charset=utf-8", body))

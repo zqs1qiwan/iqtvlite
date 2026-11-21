@@ -44,6 +44,7 @@ data class SourceVariantUi(
     val label: String,
     val latencyMs: Int?,
     val probing: Boolean = false,
+    val probed: Boolean = false,
     val selected: Boolean
 )
 

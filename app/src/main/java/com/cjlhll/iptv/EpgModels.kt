@@ -128,6 +128,26 @@ data class EpgData(
         return null
     }
 
+    /** 当前节目之后的下一个节目（用于信息条“接下来”）。 */
+    fun nextProgram(channel: Channel, nowMillis: Long): EpgProgram? {
+        val channelId = resolveChannelId(channel) ?: return null
+        val programs = programsByChannelId[channelId] ?: return null
+        if (programs.isEmpty()) return null
+        val current = nowProgram(channel, nowMillis)
+        val currentIndex = if (current != null) programs.indexOf(current) else -1
+        if (currentIndex >= 0) {
+            return programs.getOrNull(currentIndex + 1)
+        }
+        // 无正在播出的节目时，返回下一个将要开始的节目
+        return programs.firstOrNull { it.startMillis > nowMillis }
+    }
+
+    /** 该频道是否有任何节目数据（区别于“尚未配置 EPG”）。 */
+    fun hasProgramsFor(channel: Channel): Boolean {
+        val channelId = resolveChannelId(channel) ?: return false
+        return !programsByChannelId[channelId].isNullOrEmpty()
+    }
+
     companion object {
         private const val NOT_FOUND = "\u0000"
     }
@@ -135,6 +155,7 @@ data class EpgData(
 
 data class NowProgramUi(
     val title: String,
-    val progress: Float?
+    val progress: Float?,
+    val nextTitle: String? = null,
 )
 

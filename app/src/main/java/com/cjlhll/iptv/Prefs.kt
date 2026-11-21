@@ -11,6 +11,7 @@ object Prefs {
     private const val KEY_LAST_CHANNEL_TITLE = "last_channel_title"
     private const val KEY_PLAYLIST_FILE_NAME = "playlist_file_name"
     private const val KEY_LAST_EPG_UPDATE_TIME = "last_epg_update_time"
+    private const val KEY_SOURCE_VERSION = "source_version"
 
     private fun getPrefs(context: Context): SharedPreferences {
         return context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
@@ -60,5 +61,20 @@ object Prefs {
 
     fun setPlaylistFileName(context: Context, fileName: String) {
         getPrefs(context).edit().putString(KEY_PLAYLIST_FILE_NAME, fileName).apply()
+    }
+
+    /** 单 Editor 原子提交源元组（live/epg/playlist 指针），避免三次 apply 的中间态（R03 边界）。 */
+    fun setSourceConfig(context: Context, live: String, epg: String, fileName: String) {
+        getPrefs(context).edit()
+            .putString(KEY_LIVE_SOURCE, live)
+            .putString(KEY_EPG_SOURCE, epg)
+            .putString(KEY_PLAYLIST_FILE_NAME, fileName)
+            .apply()
+    }
+
+    fun getSourceVersion(context: Context): Long = getPrefs(context).getLong(KEY_SOURCE_VERSION, 0L)
+
+    fun setSourceVersion(context: Context, version: Long) {
+        getPrefs(context).edit().putLong(KEY_SOURCE_VERSION, version).apply()
     }
 }

@@ -16,6 +16,12 @@ data class ChannelGroup(
     val defaultChannel: Channel get() = variants[defaultVariantIndex].channel
 }
 
+/** 带全局展示编号的频道（编号在分组过滤后保持不变）。 */
+data class NumberedChannel(
+    val channel: Channel,
+    val number: Int,
+)
+
 object ChannelGrouper {
     private val cctvKeyRegex = Regex("""cctv\d{1,2}\+?""")
     private val cctvInferRegex = Regex("""(?i)cctv[\s\-]?(\d{1,2}\+?|4k?)""")
@@ -188,6 +194,53 @@ object ChannelGrouper {
                 logoUrl = group.logoUrl ?: channel.logoUrl,
             )
         }
+    }
+
+    /**
+     * 全局展示编号：合并后的频道顺序，从 1 起。同组多线路共用一个号，
+     * 分组过滤不会重新编号（A04/A05）。
+     */
+    fun numberedDisplayChannels(groups: List<ChannelGroup>): List<NumberedChannel> {
+        return groups.mapIndexed { index, group ->
+            NumberedChannel(
+                channel = group.defaultChannel.copy(
+                    title = EpgNormalize.displayName(group.displayTitle),
+                    logoUrl = group.logoUrl ?: group.defaultChannel.logoUrl,
+                ),
+                number = index + 1,
+            )
+        }
+    }
+
+    /** url -> 全局编号（含全部线路变体，便于信息条/数字跳台/节目列表共享同一号）。 */
+    fun globalNumberByUrl(groups: List<ChannelGroup>): Map<String, Int> {
+        val map = HashMap<String, Int>(groups.size * 2)
+        groups.forEachIndexed { index, group ->
+            group.variants.forEach { variant -> map[variant.channel.url] = index + 1 }
+        }
+        return map
+    }
+
+    /** 按分组名过滤后的展示频道，保留全局编号；"全部" 返回全部。 */
+    fun numberedDisplayChannelsForGroup(
+        groups: List<ChannelGroup>,
+        groupName: String,
+    ): List<NumberedChannel> {
+        val all = numberedDisplayChannels(groups)
+        if (groupName == "全部") return all
+        return groups.mapIndexedNotNull { index, group ->
+            if (displayGroupName(group) == groupName) all.getOrNull(index) else null
+        }
+    }
+
+    /** 该分组在合并列表中的全局编号（从 1 起）。 */
+    fun globalNumberOfGroup(groups: List<ChannelGroup>, groupIndex: Int): Int =
+        if (groupIndex in groups.indices) groupIndex + 1 else 0
+
+    /** 根据全局编号查找分组下标（0 基）。 */
+    fun groupIndexForNumber(groups: List<ChannelGroup>, number: Int): Int? {
+        val idx = number - 1
+        return if (idx in groups.indices) idx else null
     }
 
     fun allChannels(groups: List<ChannelGroup>): List<Channel> {

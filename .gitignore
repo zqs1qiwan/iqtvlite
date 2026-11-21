@@ -13,3 +13,14 @@
 .externalNativeBuild
 .cxx
 local.properties
+# build outputs / local artifacts
+app/build/
+build/
+artifacts/
+*.log
+hs_err_pid*.log
+.agent-teams/
+local/
+reconstruction/
+tivimate.apk
+docs/evidence/
