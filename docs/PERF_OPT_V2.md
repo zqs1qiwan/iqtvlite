@@ -177,4 +177,15 @@ adb shell dumpsys meminfo tv.iqtvlite.app.validation | grep -E 'TOTAL PSS|Java H
 
 ## 7. 交付 receipt
 
-见本文件末尾提交后在 t7 任务里追加：commit 链、CI run 号、versionCode、app/test sha256、artifact id。
+| 项 | 值 |
+|---|---|
+| 提交 | `9db1a30`（`perf(drawer): bound marquee + defer/cap logo prefetch; defer EPG cache after first frame (t7)`） |
+| CI run（绿） | **#151**，sha `9db1a30`，event `push`，conclusion `success` |
+| 构建 | `BUILD SUCCESSFUL in 3m 18s`；`:app:testDebugUnitTest`（含新增 `PerfPolicyTest` 9 例）+ `:app:lintDebug` + `assembleDebug` + `assembleDebugAndroidTest` |
+| 包 | `tv.iqtvlite.app.validation`，versionCode **10151**，versionName `2.2.0-tivimini-9db1a308-validation` |
+| `app-debug.apk` sha256 | `94ef2fa97080ff5998225936f69084f76a1bd936b3da99be3f9158f7d65fa25a` |
+| `app-debug-androidTest.apk` sha256 | `5b775023dd78ba8c653ea88b7af94aa3b307da66d4bf2a81daf141056e8515ac` |
+| 门禁 | `check_logo_webp: OK`、`check_info_card: OK`、`check_settings_ia: OK`、`check_settings_scroll: OK`、**`check_perf_policy: OK`**、pair gate `{"missing_types":0,"missing_methods":0,"missing_fields":0}` |
+| 产物 | `iqtvlite-test-apk`（artifact id 14705933391，10,435,427 B）；`iqtvlite-android-reports`（id 14705898468） |
+
+> 设备侧 A/B（§5）由 acceptance(t9) 在此包上执行并回填 §0 表格；本任务未执行任何 adb/设备命令。
