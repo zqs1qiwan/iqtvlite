@@ -29,8 +29,9 @@ class PerfPolicyTest {
         // t29（D4）：不再延迟——从第 0 帧起分帧增量组合，首屏 10 行、每帧 +3 行。
         assertEquals("去掉 120ms 延迟，从第 0 帧开始", 0L, PerfPolicy.DRAWER_DEFER_CONTENT_MS)
         assertTrue(PerfPolicy.DRAWER_INCREMENTAL_ROWS)
-        assertEquals(10, PerfPolicy.DRAWER_FIRST_FRAME_ROWS)
-        assertEquals(3, PerfPolicy.DRAWER_ROWS_PER_FRAME)
+        assertEquals("t33：首帧 10→6", 6, PerfPolicy.DRAWER_FIRST_FRAME_ROWS)
+        assertEquals("t33：每帧 3→2", 2, PerfPolicy.DRAWER_ROWS_PER_FRAME)
+        assertEquals("t33：固定行高", 56, PerfPolicy.DRAWER_ROW_HEIGHT_DP)
         assertEquals("D1：不额外预组合（严格可见区）", 0, PerfPolicy.DRAWER_OVERSCAN_ITEMS)
     }
 
@@ -99,20 +100,32 @@ class PerfPolicyTest {
 
     @Test
     fun revealedRowsGrowPerFrameAndStopAtTotal() {
-        // 首帧：0 → 10（首屏一屏可见行）
-        assertEquals(10, PerfPolicy.nextRevealedRows(0, 147))
-        // 之后每帧 +3
-        assertEquals(13, PerfPolicy.nextRevealedRows(10, 147))
-        assertEquals(16, PerfPolicy.nextRevealedRows(13, 147))
-        // 到顶后钳住，不会越界（LazyColumn subList 依赖这一点）
-        assertEquals(147, PerfPolicy.nextRevealedRows(145, 147))
+        // 首帧：0 → 6（t33 首屏更轻）
+        assertEquals(6, PerfPolicy.nextRevealedRows(0, 147))
+        // 之后每帧 +2
+        assertEquals(8, PerfPolicy.nextRevealedRows(6, 147))
+        assertEquals(10, PerfPolicy.nextRevealedRows(8, 147))
+        // 到顶后钳住
+        assertEquals(147, PerfPolicy.nextRevealedRows(146, 147))
         assertEquals(147, PerfPolicy.nextRevealedRows(147, 147))
-        // 空列表/小列表
+        // 空/小列表
         assertEquals(0, PerfPolicy.nextRevealedRows(0, 0))
         assertEquals(5, PerfPolicy.nextRevealedRows(0, 5))
-        assertEquals(5, PerfPolicy.nextRevealedRows(3, 5))
-        // 首帧就够（total < 10）
-        assertEquals(8, PerfPolicy.nextRevealedRows(0, 8))
+        assertEquals(5, PerfPolicy.nextRevealedRows(4, 5))
+        assertEquals(3, PerfPolicy.nextRevealedRows(0, 3))
+    }
+
+    @Test
+    fun revealAcceleratesToAvoidThe2_7sWorstCase() {
+        // 正常节奏：+2/帧
+        assertEquals(8, PerfPolicy.nextRevealedRows(6, 147, elapsedMs = 0L))
+        // 已耗时 >=600ms：加速到 +6/帧
+        assertEquals(12, PerfPolicy.nextRevealedRows(6, 147, elapsedMs = PerfPolicy.DRAWER_REVEAL_FAST_MS))
+        // 已耗时 >=1200ms：再加速到 +12/帧，保证极端情况下不拖到 2.7s
+        assertEquals(18, PerfPolicy.nextRevealedRows(6, 147, elapsedMs = PerfPolicy.DRAWER_REVEAL_FASTER_MS))
+        // 首帧不受 elapsed 影响，也不会超过 total
+        assertEquals(6, PerfPolicy.nextRevealedRows(0, 147, elapsedMs = 5_000L))
+        assertEquals(147, PerfPolicy.nextRevealedRows(140, 147, elapsedMs = 5_000L))
     }
 
     @Test

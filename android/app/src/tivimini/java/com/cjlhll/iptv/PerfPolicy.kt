@@ -44,11 +44,20 @@ object PerfPolicy {
      */
     const val DRAWER_INCREMENTAL_ROWS = true
 
-    /** 首帧先组合多少行（≈一屏可见行数，保证不出现"空面板"）。 */
-    const val DRAWER_FIRST_FRAME_ROWS = 10
+    /** 首帧先组合多少行（t33：10→6，让打开首帧更轻；仍保证"有内容"而不是空面板）。 */
+    const val DRAWER_FIRST_FRAME_ROWS = 6
 
-    /** 之后每帧追加多少行（2–3 行/帧，单帧工作量远低于 16ms 预算）。 */
-    const val DRAWER_ROWS_PER_FRAME = 3
+    /** 之后每帧追加多少行（t33：3→2，把单帧成本再压一半）。 */
+    const val DRAWER_ROWS_PER_FRAME = 2
+
+    /** 超时加速：揭示开始后超过这些毫秒就加大每帧步长，避免极端情况拖到 2.7s。 */
+    const val DRAWER_REVEAL_FAST_MS = 600L
+    const val DRAWER_REVEAL_FASTER_MS = 1_200L
+    const val DRAWER_ROWS_PER_FRAME_FAST = 6
+    const val DRAWER_ROWS_PER_FRAME_FASTER = 12
+
+    /** 抽屉行固定高度（t33：固定行高 + 未揭示行占位，避免逐行测量/文字重排）。 */
+    const val DRAWER_ROW_HEIGHT_DP = 56
 
     /**
      * 分帧组合的每帧上限保护：一帧内最多再追加这么多"帧"，避免主线程被长循环占住。
@@ -60,10 +69,21 @@ object PerfPolicy {
     const val DRAWER_DEFER_CONTENT_MS = 0L
 
     /** 已就绪行数：首帧给 [DRAWER_FIRST_FRAME_ROWS]，之后每帧 +[DRAWER_ROWS_PER_FRAME]，到 total 为止。 */
-    fun nextRevealedRows(current: Int, total: Int): Int {
+    fun nextRevealedRows(current: Int, total: Int): Int = nextRevealedRows(current, total, elapsedMs = 0L)
+
+    /**
+     * 带超时加速的版本（t33）：正常每帧 [DRAWER_ROWS_PER_FRAME] 行；揭示已耗时 >600ms 后
+     * 加速到 6 行/帧、>1200ms 加速到 12 行/帧，保证极端情况下不会拖到 2.7s（t30 观测到的风险）。
+     */
+    fun nextRevealedRows(current: Int, total: Int, elapsedMs: Long): Int {
         if (total <= 0) return 0
-        val start = if (current <= 0) DRAWER_FIRST_FRAME_ROWS else current + DRAWER_ROWS_PER_FRAME
-        return start.coerceIn(0, total)
+        if (current <= 0) return DRAWER_FIRST_FRAME_ROWS.coerceAtMost(total)
+        val step = when {
+            elapsedMs >= DRAWER_REVEAL_FASTER_MS -> DRAWER_ROWS_PER_FRAME_FASTER
+            elapsedMs >= DRAWER_REVEAL_FAST_MS -> DRAWER_ROWS_PER_FRAME_FAST
+            else -> DRAWER_ROWS_PER_FRAME
+        }
+        return (current + step).coerceAtMost(total)
     }
 
     /** t27（D1）：列表 overscan —— 0 表示严格只组合可见区（不给 LazyColumn 额外预组合）。 */

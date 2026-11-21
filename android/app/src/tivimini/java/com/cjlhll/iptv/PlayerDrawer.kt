@@ -222,8 +222,6 @@ fun PlayerDrawer(
     var contentReady by remember { mutableStateOf(PerfPolicy.DRAWER_DEFER_CONTENT_MS <= 0L) }
     var revealedRows by remember { mutableIntStateOf(0) }
     val showContent = visible && contentReady
-    val visibleRows = if (!PerfPolicy.DRAWER_INCREMENTAL_ROWS) channels.size
-    else revealedRows.coerceIn(0, channels.size)
     LaunchedEffect(visible) {
         if (!visible) {
             contentReady = false
@@ -239,20 +237,24 @@ fun PlayerDrawer(
             revealedRows = 0
         }
     }
-    // t29：逐帧把行数补到 total（每帧一次，单帧最多 3 行 → 单帧工作量远低于 16ms）。
-    // 埋点：drawer_compose frames=<补了几帧> rows=<总行数> lastFrameRows=<末帧新增行>。
+    // t29/t33：逐帧把行数补到 total。**每轮迭代只等一帧、只递增一次**（不叠加重组）；
+    // 超过 600ms/1200ms 自动加大步长（6/12 行），避免 t30 观测到的 drawer_open ms=2725 极端情况。
+    // 埋点：drawer_compose frames=.. rows=.. ms=.. lastFrameRows=.. first=.. step=..
     LaunchedEffect(visible, channels.size) {
         if (!visible || !PerfPolicy.DRAWER_INCREMENTAL_ROWS) return@LaunchedEffect
+        val started = android.os.SystemClock.elapsedRealtime()
         var frames = 0
         while (revealedRows < channels.size) {
             val before = revealedRows
             androidx.compose.runtime.withFrameNanos { }
-            revealedRows = PerfPolicy.nextRevealedRows(revealedRows, channels.size)
+            val elapsed = android.os.SystemClock.elapsedRealtime() - started
+            revealedRows = PerfPolicy.nextRevealedRows(before, channels.size, elapsed)
             frames++
             if (frames == 1 || revealedRows >= channels.size) {
                 PerfTrace.d {
-                    "drawer_compose frames=$frames rows=${channels.size} " +
-                        "lastFrameRows=${revealedRows - before} first=${PerfPolicy.DRAWER_FIRST_FRAME_ROWS}"
+                    "drawer_compose frames=$frames rows=${channels.size} ms=$elapsed " +
+                        "lastFrameRows=${revealedRows - before} first=${PerfPolicy.DRAWER_FIRST_FRAME_ROWS} " +
+                        "step=${PerfPolicy.DRAWER_ROWS_PER_FRAME}"
                 }
             }
         }
@@ -263,6 +265,19 @@ fun PlayerDrawer(
             perfOpenAt[0] = android.os.SystemClock.elapsedRealtime()
         }
     }
+    // t33：关闭耗时单独埋点 —— 用来把 framestats 里的巨帧归因到“打开首帧”还是“关闭反向重绘”。
+    val perfCloseAt = remember { longArrayOf(0L) }
+    LaunchedEffect(visible) {
+        if (visible) {
+            perfCloseAt[0] = 0L
+        } else {
+            perfCloseAt[0] = android.os.SystemClock.elapsedRealtime()
+            androidx.compose.runtime.withFrameNanos { }
+            androidx.compose.runtime.withFrameNanos { }
+            PerfTrace.d { "drawer_close ms=${android.os.SystemClock.elapsedRealtime() - perfCloseAt[0]}" }
+        }
+    }
+
     LaunchedEffect(visible, channels.size, selectedChannelUrl) {
         if (!visible) return@LaunchedEffect
         // 等这一帧真正画完（withFrameNanos 返回时本帧已提交）。
@@ -873,12 +888,16 @@ fun PlayerDrawer(
                             modifier = Modifier.fillMaxSize(),
                             state = channelListState
                         ) {
-                            // t29（D4）：只先组合前 visibleRows 行（其余逐帧补），避免单帧大块组合。
+                            // t33：item 数量恒为全量 —— 滚动/焦点/scrollToItem 不受揭示进度影响；
+                            // 未揭示的行只画固定高度占位（无文本测量/无 logo），已揭示的才组合真实行。
                             itemsIndexed(
-                                channels.subList(0, visibleRows.coerceIn(0, channels.size)),
+                                channels,
                                 key = { index, ch -> "${index}:${ch.url}" },
                                 contentType = { _, _ -> "channel" },
                             ) { index, ch ->
+                                if (index >= revealedRows) {
+                                    DrawerPlaceholderRow()
+                                } else {
                                 composedUrls.add(ch.url)
                                 DrawerChannelItem(
                                     channel = ch,
@@ -902,6 +921,7 @@ fun PlayerDrawer(
                                         onSelectChannel(ch)
                                     }
                                 )
+                                }
                             }
                         }
                     }
@@ -1112,6 +1132,16 @@ private fun DrawerGroupItem(
     }
 }
 
+/** t33：未揭示行的固定高度占位（纯粹占位，没有文本测量/图片解码，单帧成本可忽略）。 */
+@Composable
+private fun DrawerPlaceholderRow() {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(PerfPolicy.DRAWER_ROW_HEIGHT_DP.dp)
+    )
+}
+
 @Composable
 private fun DrawerChannelItem(
     channel: Channel,
@@ -1136,6 +1166,8 @@ private fun DrawerChannelItem(
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            // t33：固定行高（避免逐行测量/文字重排；长标题仍单行 ellipsis）
+            .height(PerfPolicy.DRAWER_ROW_HEIGHT_DP.dp)
             .padding(vertical = 3.dp)
             .let { m -> if (focusRequester != null) m.focusRequester(focusRequester) else m }
             .background(bg)
@@ -1148,7 +1180,7 @@ private fun DrawerChannelItem(
                 onClick()
                 focusRequester?.requestFocus()
             }
-            .padding(horizontal = 12.dp, vertical = 10.dp),
+            .padding(horizontal = 12.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         ChannelLogo(

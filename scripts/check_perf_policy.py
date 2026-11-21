@@ -118,15 +118,17 @@ def main() -> int:
         problems.append("PlayerDrawer.kt: missing the 'drawer_open ms=' perf line")
     # t29: per-frame incremental row reveal (no 120ms "empty then burst")
     for token in ("PerfPolicy.DRAWER_INCREMENTAL_ROWS", "PerfPolicy.nextRevealedRows", "revealedRows",
-                  "channels.subList(0, visibleRows"):
+                  "DrawerPlaceholderRow()", "PerfPolicy.DRAWER_ROW_HEIGHT_DP", "drawer_close ms="):
         if token not in drawer_code:
             problems.append("PlayerDrawer.kt: missing incremental reveal token " + token)
     if "drawer_compose frames=" not in drawer_code:
         problems.append("PlayerDrawer.kt: missing drawer_compose probe")
-    if "const val DRAWER_ROWS_PER_FRAME = 3" not in policy:
-        problems.append("PerfPolicy.kt: DRAWER_ROWS_PER_FRAME must be 2..3")
-    if "const val DRAWER_FIRST_FRAME_ROWS = 10" not in policy:
-        problems.append("PerfPolicy.kt: DRAWER_FIRST_FRAME_ROWS must be 10")
+    if "const val DRAWER_ROWS_PER_FRAME = 2" not in policy:
+        problems.append("PerfPolicy.kt: DRAWER_ROWS_PER_FRAME must be 2 (t33)")
+    if "const val DRAWER_FIRST_FRAME_ROWS = 6" not in policy:
+        problems.append("PerfPolicy.kt: DRAWER_FIRST_FRAME_ROWS must be 4..6 (t33)")
+    if "const val DRAWER_ROW_HEIGHT_DP = 56" not in policy:
+        problems.append("PerfPolicy.kt: DRAWER_ROW_HEIGHT_DP must be 56")
 
     if "if (showContent)" not in drawer_code:
         problems.append("PlayerDrawer.kt: drawer list content must be gated by showContent (do not compose when closed)")
