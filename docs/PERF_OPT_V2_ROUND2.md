@@ -108,5 +108,12 @@ adb logcat -d -s IQTV-PERF | grep drawer_open
 
 | 项 | 值 |
 |---|---|
-| 提交 / CI | 见 t20 任务输出（本文件随实现提交，文档定稿补 run 号） |
+| 提交 | `679f961`（perf(drawer) r2: no marquee animation + opaque container + don't compose list when closed; real byte counter + rebuffer diagnostics (t20)） |
+| CI run（绿） | **#156**，sha `679f961`，event `push`，conclusion `success` |
+| 构建 | `BUILD SUCCESSFUL in 3m 26s`；`:app:testDebugUnitTest`（含更新后的 `PerfPolicyTest`）+ `:app:lintDebug` + `assembleDebug` + `assembleDebugAndroidTest` |
+| 包 | `tv.iqtvlite.app.validation`，versionCode **10156**，versionName `2.2.0-tivimini-679f9614-validation` |
+| `app-debug.apk` sha256 | `b8a5272fdf9937bb11063ac4f0b325ca3baccdcfa1af4a06760a8b92a1ec10e8` |
+| `app-debug-androidTest.apk` sha256 | `a0f5becd7f56801368137e340fe30f6de766636bd815777bff012d28eb3937fb` |
+| 门禁 | `check_logo_webp` / `check_info_card` / `check_settings_ia` / `check_settings_scroll` / `check_perf_policy` 全 OK；pair gate `{"missing_types":0,"missing_methods":0,"missing_fields":0}` |
+| 产物 | `iqtvlite-test-apk`（artifact id 14707176935，10,440,945 B ≪30MB） |
 | 未改 | 播放器/零拷贝/台标/自动更新/音轨/信息卡/设置 IA 结构；无 Prefs 迁移 |
