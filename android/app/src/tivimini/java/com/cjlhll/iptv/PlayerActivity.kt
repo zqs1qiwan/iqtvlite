@@ -517,6 +517,8 @@ fun VideoPlayerScreen(
     var playbackBufferMin by remember { mutableStateOf(Prefs.getPlaybackBufferMin(context)) }
     // t218: neighbour pre-connect experiment (default off; opt-in from 播放与显示).
     var zapPreconnectEnabled by remember { mutableStateOf(Prefs.getZapPreconnectEnabled(context)) }
+    // t220: multicast pre-warm experiment (default off).
+    var multicastPrewarmEnabled by remember { mutableStateOf(Prefs.getMulticastPrewarmEnabled(context)) }
     // t193 (REMOTE-INSTANT-01): every habits change reaches the Activity immediately, without any
     // pause/resume cycle — the settings drawer lives in the same Activity.
     SideEffect { onRemoteSettingsChanged(remoteHabits) }
@@ -912,17 +914,28 @@ fun VideoPlayerScreen(
     // t172: start the auto-update policy once and surface its results as Toasts.
     // t218: warm the neighbours only when the user is browsing (drawer open) or the player is idle
     // after a first frame, and only when the experiment is enabled. Failures are silent.
-    LaunchedEffect(zapPreconnectEnabled, drawerOpen, firstFrameRendered, currentGroupIndex) {
-        if (!zapPreconnectEnabled) return@LaunchedEffect
+    LaunchedEffect(zapPreconnectEnabled, multicastPrewarmEnabled, drawerOpen, firstFrameRendered, currentGroupIndex) {
         val urls = channelGroups.map { it.variants.firstOrNull()?.channel?.url ?: "" }
         if (urls.isEmpty()) return@LaunchedEffect
-        ZapPreconnect.warmNeighbours(
-            context = context,
-            urls = urls,
-            currentIndex = currentGroupIndex,
-            drawerOpen = drawerOpen,
-            idle = firstFrameRendered && !drawerOpen,
-        )
+        val idle = firstFrameRendered && !drawerOpen
+        if (zapPreconnectEnabled) {
+            ZapPreconnect.warmNeighbours(
+                context = context,
+                urls = urls,
+                currentIndex = currentGroupIndex,
+                drawerOpen = drawerOpen,
+                idle = idle,
+            )
+        }
+        if (multicastPrewarmEnabled) {
+            MulticastPrewarm.warmNeighbour(
+                context = context,
+                urls = urls,
+                currentIndex = currentGroupIndex,
+                drawerOpen = drawerOpen,
+                idle = idle,
+            )
+        }
     }
 
     LaunchedEffect(Unit) {
@@ -1149,8 +1162,9 @@ fun VideoPlayerScreen(
      * 切台：按源列表顺序探测，第一个能连上的就用；都失败则仍播第一个。
      */
     fun playGroupAuto(groupIndex: Int, armZap: Boolean = true) {
-        // t218: a real zap always wins — drop any warm in flight so it cannot compete.
+        // t218/t220: a real zap always wins — drop any warm in flight so it cannot compete.
         ZapPreconnect.cancel()
+        MulticastPrewarm.cancel()
         // t211 (ZAP-NESTED-01): arm ONCE per user selection, with the GROUP key — the fallback probe
         // may switch through selectedIndex 0/1/2, and all those variants share this key, so the probe
         // time stays inside the measurement instead of being reset away.
@@ -1526,6 +1540,18 @@ fun VideoPlayerScreen(
             audioSelectable = AudioTrackUi.canSelect(audioTracks),
             playbackBufferLabel = LoadControlTuning.tierLabel(playbackBufferMin),
             zapPreconnectEnabled = zapPreconnectEnabled,
+            multicastPrewarmEnabled = multicastPrewarmEnabled,
+            onToggleMulticastPrewarm = {
+                val next = !multicastPrewarmEnabled
+                Prefs.setMulticastPrewarmEnabled(context, next)
+                multicastPrewarmEnabled = next
+                if (!next) MulticastPrewarm.cancel()
+                android.widget.Toast.makeText(
+                    context,
+                    if (next) "已开启组播预热（实验）" else "已关闭组播预热",
+                    android.widget.Toast.LENGTH_SHORT
+                ).show()
+            },
             onToggleZapPreconnect = {
                 val next = !zapPreconnectEnabled
                 Prefs.setZapPreconnectEnabled(context, next)

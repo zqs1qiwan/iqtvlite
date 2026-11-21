@@ -75,6 +75,9 @@ fun SettingsDrawer(
     // t218: neighbour pre-connect experiment (default off)
     zapPreconnectEnabled: Boolean = false,
     onToggleZapPreconnect: () -> Unit = {},
+    // t220: multicast pre-warm experiment (default off)
+    multicastPrewarmEnabled: Boolean = false,
+    onToggleMulticastPrewarm: () -> Unit = {},
     onAudioTrackClick: () -> Unit = {},
     // t186 (F1): remote habits
     remoteUpDownLabel: String = "换台",
@@ -246,6 +249,18 @@ fun SettingsDrawer(
                     )
                     Text(
                         text = "开启后会在列表打开或空闲时预热相邻频道的网络连接（每台约 1 个连接、2 秒上限）。默认关闭；如出现卡顿或占用升高请关回。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(start = 16.dp, top = 2.dp, bottom = 6.dp)
+                    )
+                    SettingsItem(
+                        text = if (multicastPrewarmEnabled) "组播预热（实验）：开" else "组播预热（实验）：关",
+                        focusRequester = null,
+                        tag = "settings_multicast_prewarm",
+                        onClick = onToggleMulticastPrewarm
+                    )
+                    Text(
+                        text = "仅对 rtp/udp 组播源生效：预加入相邻频道的组播组并读取少量首个数据包（上限 3MB / 2.5 秒），用于提前完成组播加入。默认关闭；如内存/稳定性变差请关回。",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(start = 16.dp, top = 2.dp, bottom = 6.dp)

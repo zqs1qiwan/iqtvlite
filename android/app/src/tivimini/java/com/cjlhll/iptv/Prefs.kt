@@ -34,6 +34,8 @@ object Prefs {
     private const val KEY_PLAYBACK_BUFFER_MIN = "playback_buffer_min"
     // t218: neighbour pre-connect experiment (default OFF — opt-in only).
     private const val KEY_ZAP_PRECONNECT = "zap_preconnect_enabled"
+    // t220: multicast pre-warm experiment (default OFF).
+    private const val KEY_MULTICAST_PREWARM = "multicast_prewarm_enabled"
 
     private fun getPrefs(context: Context): SharedPreferences {
         return context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
@@ -200,6 +202,14 @@ object Prefs {
     /** t218: neighbour pre-connect is an opt-in experiment; default OFF keeps behaviour unchanged. */
     fun getZapPreconnectEnabled(context: Context): Boolean =
         getPrefs(context).getBoolean(KEY_ZAP_PRECONNECT, false)
+
+    /** t220: multicast pre-warm is a second opt-in experiment; default OFF. */
+    fun getMulticastPrewarmEnabled(context: Context): Boolean =
+        getPrefs(context).getBoolean(KEY_MULTICAST_PREWARM, false)
+
+    fun setMulticastPrewarmEnabled(context: Context, enabled: Boolean) {
+        getPrefs(context).edit().putBoolean(KEY_MULTICAST_PREWARM, enabled).apply()
+    }
 
     fun setZapPreconnectEnabled(context: Context, enabled: Boolean) {
         getPrefs(context).edit().putBoolean(KEY_ZAP_PRECONNECT, enabled).apply()
