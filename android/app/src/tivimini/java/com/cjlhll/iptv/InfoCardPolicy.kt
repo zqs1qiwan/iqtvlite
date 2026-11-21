@@ -60,8 +60,10 @@ object InfoCardPolicy {
     /**
      * 卡片底部的最近观看条目：排除当前台（D-C3，才能 OK 在 A↔B 之间来回）、最多 [MAX_RECENT]、
      * 顺序保持传入顺序（存储层即“最新在前”）。
+     *
+     * 注意参数顺序：`isCurrent` 放最后，调用点才能用尾随 lambda（`cardRecentItems(items) { it.selected }`）。
      */
-    fun <T> cardRecentItems(items: List<T>, isCurrent: (T) -> Boolean, limit: Int = MAX_RECENT): List<T> {
+    fun <T> cardRecentItems(items: List<T>, limit: Int = MAX_RECENT, isCurrent: (T) -> Boolean): List<T> {
         if (limit <= 0) return emptyList()
         return items.filterNot(isCurrent).take(limit)
     }
