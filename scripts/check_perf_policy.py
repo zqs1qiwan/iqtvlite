@@ -124,7 +124,7 @@ def main() -> int:
             problems.append("PlayerDrawer.kt: missing incremental reveal token " + token)
     if "onRowFocusedScroll" not in drawer_code:
         problems.append("PlayerDrawer.kt: focus-driven scroll follow missing (t39)")
-    if "const val DRAWER_LOOKAHEAD_ROWS = 12" not in policy or "const val DRAWER_SCREEN_ROWS = 12" not in policy:
+    if "const val DRAWER_LOOKAHEAD_ROWS = 16" not in policy or "const val DRAWER_SCREEN_ROWS = 12" not in policy:
         problems.append("PerfPolicy.kt: DRAWER_LOOKAHEAD_ROWS=12 / DRAWER_SCREEN_ROWS=12 required (t56)")
     # t42: lean channel row (logo + number + name only) and bounded open window with step=2
     # t44: subtitle only on the focused row (guarded by `focused`), heavy widgets still banned.
@@ -137,10 +137,15 @@ def main() -> int:
     # t48: subtitle residue guard (clip + keyed subtree) and 18-row open window
     if "clipToBounds()" not in drawer_code:
         problems.append("PlayerDrawer.kt: row content must be clipped (t48 residue guard)")
-    if 'key("row_focused_$index")' not in drawer_code:
-        problems.append("PlayerDrawer.kt: focused subtitle subtree must be keyed (t48 residue guard)")
-    if "const val DRAWER_OPEN_WINDOW_ROWS = 20" not in policy:
+    if 'key("sub_$index")' not in drawer_code:
+        problems.append("PlayerDrawer.kt: subtitle must live in its own keyed node key(\"sub_$index\") (t58 residue fix)")
+    if "const val DRAWER_OPEN_WINDOW_ROWS = 28" not in policy:
         problems.append("PerfPolicy.kt: DRAWER_OPEN_WINDOW_ROWS must be 20 (t56)")
+    # t58: separate cached layers (static background + content + list) to cut fixed per-frame draw cost
+    if drawer_code.count("graphicsLayer()") < 3:
+        problems.append("PlayerDrawer.kt: expected >=3 graphicsLayer() (background/content/list) for t58 layer caching")
+    if "softWrap = false" not in drawer_code:
+        problems.append("PlayerDrawer.kt: subtitle must set softWrap = false (t58 residue fix)")
     if "openTarget" not in drawer_code:
         problems.append("PlayerDrawer.kt: bounded open window (openTarget) missing (t42)")
     # the channel row must not carry the EPG subtitle / marquee / progress bar any more
@@ -162,9 +167,9 @@ def main() -> int:
         problems.append("PlayerDrawer.kt: scroll-driven reveal grow missing (t39)")
     if "drawer_compose frames=" not in drawer_code:
         problems.append("PlayerDrawer.kt: missing drawer_compose probe")
-    if "const val DRAWER_ROWS_PER_FRAME = 1" not in policy:
+    if "const val DRAWER_ROWS_PER_FRAME = 2" not in policy:
         problems.append("PerfPolicy.kt: DRAWER_ROWS_PER_FRAME must be 1 (t56)")
-    if "const val DRAWER_FIRST_FRAME_ROWS = 2" not in policy:
+    if "const val DRAWER_FIRST_FRAME_ROWS = 3" not in policy:
         problems.append("PerfPolicy.kt: DRAWER_FIRST_FRAME_ROWS must be 2 (t56)")
     if "const val DRAWER_ROW_HEIGHT_DP = 56" not in policy:
         problems.append("PerfPolicy.kt: DRAWER_ROW_HEIGHT_DP must be 56")

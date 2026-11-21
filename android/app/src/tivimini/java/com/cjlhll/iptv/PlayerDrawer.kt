@@ -55,6 +55,7 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -911,12 +912,24 @@ fun PlayerDrawer(
         }
 
         Box(modifier = overlayModifier) {
+            // t58（攻固定开销）：把**静态背景**拆成独立 layer —— 只录制一次，之后每帧不再重录；
+            // 内容区再单独一层，列表滚动/揭示只让内容层重录，不牵连背景层。
+            if (visible) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .width(drawerWidth)
+                        .offset(x = drawerOffsetX)
+                        .graphicsLayer()
+                        .background(container)
+                )
+            }
             Box(
                 modifier = Modifier
                     .fillMaxHeight()
                     .width(drawerWidth)
                     .offset(x = drawerOffsetX)
-                    .background(container)
+                    .graphicsLayer()
                     .focusProperties { canFocus = visible }
                     .padding(0.dp)
             ) {
@@ -975,7 +988,8 @@ fun PlayerDrawer(
                             .padding(16.dp),
                     ) {
                         LazyColumn(
-                            modifier = Modifier.fillMaxSize(),
+                            // t58：列表单独一层 —— 滚动/揭示只重录这一层。
+                            modifier = Modifier.fillMaxSize().graphicsLayer(),
                             state = channelListState
                         ) {
                             // t36（回退 t33 的 E3）：只把**已揭示的行**交给列表（subList），
@@ -1286,7 +1300,7 @@ private fun DrawerChannelItem(
         // t48（修残影）：聚焦/非聚焦两种行结构用 `key(...)` 隔开 —— 失焦时整棵副标题子树**销毁重建**，
         // 不会再复用旧布局/旧 draw 命令；配合外层 clipToBounds，杜绝 t47 观测到的单字残影（城/军/武/音）。
         if (!programTitle.isNullOrBlank()) {
-            key("row_focused_$index") {
+            key("sub_$index") {
             Column(modifier = Modifier.weight(1f, fill = true)) {
                 Text(
                     text = label,
@@ -1306,6 +1320,7 @@ private fun DrawerChannelItem(
                         lineHeight = 14.sp,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f),
                         // t46：给验收一个可断言的语义节点（t45 在语义树里没观测到副标题）。
+                        softWrap = false,
                         modifier = Modifier.testTag("drawer_row_subtitle")
                     )
                 }
