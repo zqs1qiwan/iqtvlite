@@ -1,0 +1,12 @@
+digitsZap: D/IQTV-ZAP(32457): zap=1360ms prepare=38ms firstFrame=1322ms fmt=1227ms dec=0ms render=95ms
+audio: D/IQTV-METRICS(32457): audio_format session=c7191342808196610621-l2575020907-s5 mime=audio/mpeg-L2 codecs=unknown rate=48000 channels=2 language=unknown bitrate=-1
+D/IQTV-METRICS(32457): audio_advancing session=c7191342808196610621-l2575020907-s5 playout_start_ms=1795277454721 since_prepare_ms=1445
+info_card_logo=''@[60,705][300,849]
+info_card_title='CCTV-12 社会与法'@[336,728][751,803]
+info_card_number='频道 12 · 央视频道 · MPEG-L2'@[336,803][569,827]
+info_card_badges='FHD'@[1821,668][1860,689]
+info_card_program='回看：2026社会与法电视剧精选-我是刑警-29/38'@[1030,753][1746,802]
+info_card_program_time=missing
+info_card_tech='H.264  ·  MPEG-L2  ·  SDR'@[60,855][1860,879]
+info_card_hint='← 频道列表　·　→ 设置'@[1593,879][1800,906]
+info_card_recent_row=''@[120,918][1800,1014]

@@ -1,0 +1,30 @@
+Applications Memory Usage (in Kilobytes):
+Uptime: 29818341 Realtime: 29818341
+
+** MEMINFO in pid 14560 [tv.iqtvlite.app.validation] **
+                   Pss  Private  Private  SwapPss     Heap     Heap     Heap
+                 Total    Dirty    Clean    Dirty     Size    Alloc     Free
+                ------   ------   ------   ------   ------   ------   ------
+  Native Heap    15811    15768        0        0    67328    37976    29351
+  Dalvik Heap    13883    13828        0        0    30032    15016    15016
+ Dalvik Other     4484     4484        0        0                           
+        Stack      220      220        0        0                           
+       Ashmem      294        0        0        0                           
+    Other dev       27        0       24        0                           
+     .so mmap     2290      180        0        0                           
+    .apk mmap    15165    12440     1744        0                           
+    .ttf mmap      255        0       40        0                           
+    .dex mmap     2944      460      456        0                           
+    .oat mmap       80        0        0        0                           
+    .art mmap     4711     4276       92        0                           
+   Other mmap     3302        4     1832        0                           
+      Unknown     1161     1144        0        0                           
+        TOTAL    64627    52804     4188        0    97360    52992    44367
+ 
+ App Summary
+                       Pss(KB)
+                        ------
+           Java Heap:    18196
+         Native Heap:    15768
+                Code:    15320
+               Stack:      220

@@ -1,0 +1,37 @@
+
+time     : Sat Nov 21 18:31:52 CST 2026
+loadavg  : 12.01 12.61 12.79 3/1004 5904
+cpu_user : 8.4
+cpu_sys  : 9.9
+cpu_busy : 18.5
+top1     : top(self-measurement) (26.3%CPU)
+top5     :  5942 shell        20   0 5.8M 3.4M 2.8M R 26.3   0.1   0:00.18 top -b -n 1
+            8043 u0_a10       20   0 1.3G 101M  89M S  2.6   5.1   4:34.00 com.hpplay.happyplay.aw.new
+            2165 system       18  -2 1.4G 196M 170M S  2.6  10.0  13:53.40 system_server
+            1807 audioserver  20   0  26M  10M 8.7M S  2.6   0.5   4:19.00 android.hardware.audio@2.0-service
+            5944 shell        20   0 5.8M 2.5M 2.1M S  0.0   0.1   0:00.05 head -16
+
+time     : Sat Nov 21 18:32:02 CST 2026
+loadavg  : 12.08 12.60 12.79 2/1003 6014
+cpu_user : 12.4
+cpu_sys  : 11
+cpu_busy : 23.4
+top1     : top(self-measurement) (39.4%CPU)
+top5     :  6040 shell        20   0 5.8M 3.3M 2.7M R 39.4   0.1   0:00.15 top -b -n 1
+            1881 root         20   0    0    0    0 D  2.6   0.0   0:36.16 [VDP_Async_Threa]
+            1807 audioserver  20   0  26M  10M 8.7M S  2.6   0.5   4:19.06 android.hardware.audio@2.0-service
+            1207 root         20   0    0    0    0 D  2.6   0.0   0:58.35 [HDMI_kThread]
+            6041 shell        20   0 5.8M 2.6M 2.2M S  0.0   0.1   0:00.04 head -16
+
+time     : Sat Nov 21 18:32:11 CST 2026
+loadavg  : 11.91 12.55 12.77 2/999 6082
+cpu_user : 11
+cpu_sys  : 8.6
+cpu_busy : 19.6
+top1     : top(self-measurement) (37.1%CPU)
+top5     :  6125 shell        20   0 5.8M 3.4M 2.8M R 37.1   0.1   0:00.14 top -b -n 1
+            2165 system       18  -2 1.4G 198M 170M S  5.7  10.1  13:54.26 system_server
+            1872 logd         30  10  19M 7.8M 2.2M S  2.8   0.4   1:22.07 logd
+            1796 root         20   0  30M 6.5M 5.5M S  2.8   0.3   0:20.45 netd
+              20 root         20   0    0    0    0 S  2.8   0.0   0:06.33 [ksoftirqd/2]
+

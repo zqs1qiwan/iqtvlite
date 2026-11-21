@@ -1,0 +1,10 @@
+=== B ch117 : firstFrame=False state3=False ===
+  ZAP: 
+B ch117 firstFrame=False state3=False
+=== B ch118 : firstFrame=False state3=False ===
+  ZAP: 
+  timeline: 11-22 04:31:54.443 30531 30531 D IQTV-JINGCAI: diag mode=b bytesRead=8422400 firstByteMs=51293292 format=video/avc/1920x1080@-1.0 firstFrame=false state=2 code=open :: pcr=none pts=7764.840 offset=none mode=b pcr_pid=-1 drop_pcr_only=0 rewrite_pmt=0
+B ch118 firstFrame=False state3=False
+=== B ch119 : firstFrame=True state3=True ===
+  ZAP: 11-22 04:32:24.178 30531 30531 D IQTV-ZAP: zap=780ms prepare=48ms firstFrame=732ms fmt=646ms dec=0ms render=86ms
+B ch119 firstFrame=True state3=True

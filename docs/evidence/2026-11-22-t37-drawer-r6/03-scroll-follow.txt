@@ -1,0 +1,5 @@
+initial: 1. CCTV-1 综合 / 2. CCTV-2 财经 / 3. CCTV-3 综艺 / 4. CCTV-4 中文国际 / 5. CCTV-5 体育 / 6. CCTV-6 电影 / 7. CCTV-7 国防军事 / 8. CCTV-8 电视剧 / 9. CCTV-9 纪录 / 10. CCTV-10 科教 / 11. CCTV-11 戏曲 / 12. CCTV-12 社会与法 | focused=
+down8: 1. CCTV-1 综合 / 2. CCTV-2 财经 / 3. CCTV-3 综艺 / 4. CCTV-4 中文国际 / 5. CCTV-5 体育 / 6. CCTV-6 电影 / 7. CCTV-7 国防军事 / 8. CCTV-8 电视剧 / 9. CCTV-9 纪录 / 10. CCTV-10 科教 / 11. CCTV-11 戏曲 / 12. CCTV-12 社会与法 | focused=
+up8: 1. CCTV-1 综合 / 2. CCTV-2 财经 / 3. CCTV-3 综艺 / 4. CCTV-4 中文国际 / 5. CCTV-5 体育 / 6. CCTV-6 电影 / 7. CCTV-7 国防军事 / 8. CCTV-8 电视剧 / 9. CCTV-9 纪录 / 10. CCTV-10 科教 / 11. CCTV-11 戏曲 / 12. CCTV-12 社会与法 | focused=
+down25: 1. CCTV-1 综合 / 2. CCTV-2 财经 / 3. CCTV-3 综艺 / 4. CCTV-4 中文国际 / 5. CCTV-5 体育 / 6. CCTV-6 电影 / 7. CCTV-7 国防军事 / 8. CCTV-8 电视剧 / 9. CCTV-9 纪录 / 10. CCTV-10 科教 / 11. CCTV-11 戏曲 / 12. CCTV-12 社会与法 | focused=
+reopen: 15. CCTV-15 音乐 / 16. CCTV-16 奥林匹克 / 17. CCTV-17 农业农村 / 18. CCTV-5+ 体育赛事 / 19. CCTV-4K 超高清 / 20. 湖南卫视4K / 21. 浙江卫视4K / 22. 江苏卫视4K / 23. 东方卫视4K / 24. 山东卫视4K / 25. 安徽卫视 / 26. 湖北卫视 | focused=

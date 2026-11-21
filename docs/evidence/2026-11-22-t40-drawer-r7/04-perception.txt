@@ -1,0 +1,5 @@
+t1=UI hierchary dumped to: /sdcard/w.xml
+36157 t2=UI hierchary dumped to: /sdcard/w.xml
+36157 t3=UI hierchary dumped to: /sdcard/w.xml
+36157 t4=UI hierchary dumped to: /sdcard/w.xml
+36157

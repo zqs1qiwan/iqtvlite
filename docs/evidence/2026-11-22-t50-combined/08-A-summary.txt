@@ -1,0 +1,11 @@
+=== A ch117 : firstFrame=False state3=False ===
+  ZAP: 
+  JINGCAI: 11-22 04:27:34.758 30531 30531 D IQTV-JINGCAI: diag mode=a bytesRead=8422400 firstByteMs=51033608 format=video/avc/1920x1080@-1.0 firstFrame=false state=2 code=open :: pcr=none pts=7517.960 offset=none mode=a pcr_pid=-1 drop_pcr_only=0 rewrite_pmt=0 ;; 11-22 04:27:34.758 30531 30531 D IQTV-JINGCAI: IQTV-DIAG bytesRead=8422400 firstByteMs=51033608 code=open ;; 11-22 04:27:34.759 30531 30531 D IQTV-JINGCAI: buffer bufferMs=0 currentPosition=0 windowCount=1 state=2 rebuffers=0 rebuffer_ms=0 bytesRead=8422400 firstByteMs=51033608
+  DIAG: 11-22 04:27:34.758 30531 30531 D IQTV-JINGCAI: IQTV-DIAG bytesRead=8422400 firstByteMs=51033608 code=open ;; 11-22 04:27:34.759 30531 30531 D IQTV-JINGCAI: buffer bufferMs=0 currentPosition=0 windowCount=1 state=2 rebuffers=0 rebuffer_ms=0 bytesRead=8422400 firstByteMs=51033608
+A ch117 firstFrame=False state3=False
+=== A ch118 : firstFrame=True state3=True ===
+  ZAP: 11-22 04:28:01.555 30531 30531 D IQTV-ZAP: zap=1009ms prepare=146ms firstFrame=863ms fmt=628ms dec=0ms render=235ms
+A ch118 firstFrame=True state3=True
+=== A ch119 : firstFrame=True state3=True ===
+  ZAP: 11-22 04:28:53.139 30531 30531 D IQTV-ZAP: zap=776ms prepare=165ms firstFrame=611ms fmt=500ms dec=0ms render=111ms
+A ch119 firstFrame=True state3=True

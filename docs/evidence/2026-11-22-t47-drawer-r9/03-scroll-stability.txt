@@ -1,0 +1,7 @@
+round1: 1–12 -> dump失败 | row_focus idx=25 via=key down=true
+row_focus idx=26 subtitle=true title=飞哥大英雄
+round2: dump失败 -> 47–58 | row_focus idx=50 via=key down=true
+row_focus idx=51 subtitle=true title=马兰花开
+round3: 43–54 -> 73–84 | row_focus idx=75 via=key down=true
+row_focus idx=76 subtitle=false title=
+fast: 55–66 -> dump失败 -> 95–106

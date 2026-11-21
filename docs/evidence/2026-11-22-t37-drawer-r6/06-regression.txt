@@ -1,0 +1,11 @@
+MP2=2
+digitsZap=1308
+lastCh=1
+hide4s=4629
+L1=500ok
+BACK1=ok BACK2=ok
+Fatal=0
+greyOurs=0
+dropped=0
+keys=0
+bufferMin=500

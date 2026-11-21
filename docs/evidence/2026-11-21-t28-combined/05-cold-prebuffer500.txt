@@ -1,0 +1,26 @@
+--------- beginning of system
+--------- beginning of main
+D/IQTV-ZAP(10902): bufferMin=500
+D/IQTV-METRICS(10902): prepare session=c8176946471271799787-l590536782-s1 at=29215227
+D/IQTV-METRICS(10902): state session=c8176946471271799787-l590536782-s1 state=2 rebuffers=0 rebuffer_ms=0 dropped=0
+D/IQTV-METRICS(10902): audio_play_intent session=c8176946471271799787-l590536782-s1 value=false reason=1 volume=1.0 suppression=0 playWhenReady=false audioSessionId=0
+D/IQTV-METRICS(10902): audio_session session=c8176946471271799787-l590536782-s1 id=417
+D/IQTV-METRICS(10902): audio_play_intent session=c8176946471271799787-l590536782-s1 value=true reason=1 volume=1.0 suppression=0 playWhenReady=true audioSessionId=417
+D/IQTV-METRICS(10902): audio_enabled session=c8176946471271799787-l590536782-s1 volume=1.0 suppression=0 playWhenReady=true audioSessionId=417
+D/IQTV-METRICS(10902): audio_track session=c8176946471271799787-l590536782-s1 group=1 track=0 supported=true selected=true renderer_format_support=4 mime=audio/mpeg-L2 codecs=unknown rate=48000 channels=2 language=unknown bitrate=-1
+D/IQTV-METRICS(10902): audio_tracks session=c8176946471271799787-l590536782-s1 groups=1 volume=1.0 suppression=0 playWhenReady=true audioSessionId=417
+D/IQTV-METRICS(10902): decoder session=c8176946471271799787-l590536782-s1 name=OMX.goke.video.decoder.avc init_ms=97
+D/IQTV-METRICS(10902): format session=c8176946471271799787-l590536782-s1 mime=video/avc width=1920 height=1080 fps=-1.0
+D/IQTV-METRICS(10902): audio_decoder session=c8176946471271799787-l590536782-s1 name=ffmpegLavc60.3.100-mp3 init_ms=28
+D/IQTV-METRICS(10902): audio_format session=c8176946471271799787-l590536782-s1 mime=audio/mpeg-L2 codecs=unknown rate=48000 channels=2 language=unknown bitrate=-1
+D/IQTV-METRICS(10902): audio_track_initialized session=c8176946471271799787-l590536782-s1 encoding=2 rate=48000 channelConfig=12 bufferBytes=96000 tunneling=false offload=false
+D/IQTV-METRICS(10902): first_frame session=c8176946471271799787-l590536782-s1 ttff_ms=4234 rendered_at=29219447
+D/IQTV-ZAP(10902): zap=4199ms prepare=4ms firstFrame=4195ms fmt=3430ms dec=0ms render=765ms
+D/IQTV-METRICS(10902): state session=c8176946471271799787-l590536782-s1 state=3 rebuffers=0 rebuffer_ms=0 dropped=0
+D/IQTV-METRICS(10902): audio_advancing session=c8176946471271799787-l590536782-s1 playout_start_ms=1795271032940 since_prepare_ms=4511
+D/IQTV-METRICS(10902): rebuffer_begin session=c8176946471271799787-l590536782-s1 bytesRead=1466238 bufferMs=136 since_first_frame_ms=1081
+D/IQTV-METRICS(10902): state session=c8176946471271799787-l590536782-s1 state=2 rebuffers=1 rebuffer_ms=0 dropped=0
+D/IQTV-METRICS(10902): rebuffer_end session=c8176946471271799787-l590536782-s1 lasted_ms=4672 bytes=2547562 bytesPerSec=545282 bufferMs=1995
+D/IQTV-METRICS(10902): state session=c8176946471271799787-l590536782-s1 state=3 rebuffers=1 rebuffer_ms=4672 dropped=0
+D/IQTV-METRICS(10902): audio_advancing session=c8176946471271799787-l590536782-s1 playout_start_ms=1795271038001 since_prepare_ms=9997
+D/IQTV-ZAP(10902): epgCache=22038ms firstFrame=true

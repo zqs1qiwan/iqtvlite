@@ -1,0 +1,4 @@
+A-play-stable | TOTAL    79297    68896     3356        0    83639    56797    26841 | Java Heap:    31824 | Native Heap    18354    18312        0        0    54016    41985    12030
+B-drawer-open | TOTAL    64414    52932     4260        0    84247    52428    31818 | Java Heap:    19864 | Native Heap    14742    14700        0        0    54016    37312    16703
+C-settings-open | TOTAL    68284    55708     4888        0    84350    53295    31054 | Java Heap:    21308 | Native Heap    15654    15612        0        0    54016    38128    15887
+D-after-60s | TOTAL    69657    56992     4952        0    84230    52244    31985 | Java Heap:    23192 | Native Heap    14962    14920        0        0    54016    37137    16878

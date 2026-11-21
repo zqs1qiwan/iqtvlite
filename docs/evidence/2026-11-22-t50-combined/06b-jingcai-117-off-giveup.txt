@@ -1,0 +1,11 @@
+11-22 04:24:39.720 30531 30531 D IQTV-METRICS: state session=c4783027072129292115-l476020171-s5 state=2 rebuffers=0 rebuffer_ms=0 dropped=0
+11-22 04:24:47.823 30531 30531 D IQTV-JINGCAI: rebuild=1 channel=4783027072129292115
+11-22 04:24:47.989 30531 30531 D IQTV-ZAP: bufferMin=500
+11-22 04:24:48.024 30531 30531 D IQTV-METRICS: state session=c4783027072129292115-l476020171-s6 state=2 rebuffers=0 rebuffer_ms=0 dropped=0
+11-22 04:24:56.072 30531 30531 D IQTV-JINGCAI: softfallback=1 channel=4783027072129292115
+11-22 04:24:56.223 30531 30531 D IQTV-ZAP: bufferMin=500
+11-22 04:24:56.313 30531 30531 D IQTV-METRICS: state session=c4783027072129292115-l476020171-s7 state=2 rebuffers=0 rebuffer_ms=0 dropped=0
+11-22 04:25:04.394 30531 30531 D IQTV-JINGCAI: giveup=1 channel=4783027072129292115 giveup=1 stage=SOFT_TRIED
+11-22 04:25:04.395 30531 30531 D IQTV-JINGCAI: diag mode=off bytesRead=8430296 firstByteMs=50883240 format=video/avc/1920x1080@-1.0 firstFrame=false state=2 code=open
+11-22 04:25:04.395 30531 30531 D IQTV-JINGCAI: IQTV-DIAG bytesRead=8430296 firstByteMs=50883240 code=open
+11-22 04:25:04.396 30531 30531 D IQTV-JINGCAI: buffer bufferMs=0 currentPosition=0 windowCount=1 state=2 rebuffers=0 rebuffer_ms=0 bytesRead=8430296 firstByteMs=50883240

@@ -1,0 +1,43 @@
+11-22 04:32:12.575 30531 30531 D IQTV-METRICS: prepare session=c7583001598850122915-l590536782-s24 at=51319318
+11-22 04:32:12.582 30531 30531 D IQTV-METRICS: audio_tracks session=c7583001598850122915-l590536782-s24 groups=0 volume=1.0 suppression=0 playWhenReady=true audioSessionId=713
+11-22 04:32:12.666 30531 30531 D IQTV-METRICS: audio_track_released session=c7583001598850122915-l590536782-s24 encoding=2 rate=48000 channelConfig=12 bufferBytes=96000 tunneling=false offload=false
+11-22 04:32:13.018 30531 30531 D IQTV-METRICS: audio_enabled session=c7583001598850122915-l590536782-s24 volume=1.0 suppression=0 playWhenReady=true audioSessionId=713
+11-22 04:32:13.021 30531 30531 D IQTV-METRICS: audio_track session=c7583001598850122915-l590536782-s24 group=1 track=0 supported=true selected=true renderer_format_support=4 mime=audio/mpeg-L2 codecs=unknown rate=48000 channels=2 language=unknown bitrate=-1
+11-22 04:32:13.022 30531 30531 D IQTV-METRICS: audio_tracks session=c7583001598850122915-l590536782-s24 groups=1 volume=1.0 suppression=0 playWhenReady=true audioSessionId=713
+11-22 04:32:13.026 30531 30531 D IQTV-METRICS: format session=c7583001598850122915-l590536782-s24 mime=video/avc width=1920 height=1080 fps=-1.0
+11-22 04:32:13.057 30531 30531 D IQTV-METRICS: audio_decoder session=c7583001598850122915-l590536782-s24 name=ffmpegLavc60.3.100-mp3 init_ms=4
+11-22 04:32:13.058 30531 30531 D IQTV-METRICS: audio_format session=c7583001598850122915-l590536782-s24 mime=audio/mpeg-L2 codecs=unknown rate=48000 channels=2 language=unknown bitrate=-1
+11-22 04:32:13.065 30531 30531 D IQTV-METRICS: audio_track_initialized session=c7583001598850122915-l590536782-s24 encoding=2 rate=48000 channelConfig=12 bufferBytes=96000 tunneling=false offload=false
+11-22 04:32:13.148 30531 30531 D IQTV-METRICS: first_frame session=c7583001598850122915-l590536782-s24 ttff_ms=573 rendered_at=51319890
+11-22 04:32:13.150 30531 30531 D IQTV-ZAP: zap=748ms prepare=182ms firstFrame=566ms fmt=442ms dec=0ms render=124ms
+11-22 04:32:13.359 30531 30531 D IQTV-METRICS: state session=c7583001598850122915-l590536782-s24 state=3 rebuffers=0 rebuffer_ms=0 dropped=0
+11-22 04:32:13.401 30531 30531 D IQTV-METRICS: audio_advancing session=c7583001598850122915-l590536782-s24 playout_start_ms=1795293133365 since_prepare_ms=826
+11-22 04:32:18.060 30531 30531 D IQTV-METRICS: prepare session=c7583001598850122915-l590536782-s25 at=51324803
+11-22 04:32:18.067 30531 30531 D IQTV-METRICS: audio_tracks session=c7583001598850122915-l590536782-s25 groups=0 volume=1.0 suppression=0 playWhenReady=true audioSessionId=713
+11-22 04:32:18.069 30531 30531 D IQTV-METRICS: state session=c7583001598850122915-l590536782-s25 state=2 rebuffers=0 rebuffer_ms=0 dropped=0
+11-22 04:32:18.209 30531 30531 D IQTV-METRICS: audio_track_released session=c7583001598850122915-l590536782-s25 encoding=2 rate=48000 channelConfig=12 bufferBytes=96000 tunneling=false offload=false
+11-22 04:32:18.978 30531 30531 D IQTV-METRICS: audio_enabled session=c7583001598850122915-l590536782-s25 volume=1.0 suppression=0 playWhenReady=true audioSessionId=713
+11-22 04:32:18.981 30531 30531 D IQTV-METRICS: audio_track session=c7583001598850122915-l590536782-s25 group=1 track=0 supported=true selected=true renderer_format_support=4 mime=audio/mpeg-L2 codecs=unknown rate=48000 channels=2 language=unknown bitrate=-1
+11-22 04:32:18.981 30531 30531 D IQTV-METRICS: audio_tracks session=c7583001598850122915-l590536782-s25 groups=1 volume=1.0 suppression=0 playWhenReady=true audioSessionId=713
+11-22 04:32:18.988 30531 30531 D IQTV-METRICS: format session=c7583001598850122915-l590536782-s25 mime=video/avc width=1920 height=1080 fps=-1.0
+11-22 04:32:19.023 30531 30531 D IQTV-METRICS: audio_decoder session=c7583001598850122915-l590536782-s25 name=ffmpegLavc60.3.100-mp3 init_ms=4
+11-22 04:32:19.024 30531 30531 D IQTV-METRICS: audio_format session=c7583001598850122915-l590536782-s25 mime=audio/mpeg-L2 codecs=unknown rate=48000 channels=2 language=unknown bitrate=-1
+11-22 04:32:19.031 30531 30531 D IQTV-METRICS: audio_track_initialized session=c7583001598850122915-l590536782-s25 encoding=2 rate=48000 channelConfig=12 bufferBytes=96000 tunneling=false offload=false
+11-22 04:32:19.093 30531 30531 D IQTV-METRICS: first_frame session=c7583001598850122915-l590536782-s25 ttff_ms=1033 rendered_at=51325833
+11-22 04:32:19.157 30531 30531 D IQTV-METRICS: state session=c7583001598850122915-l590536782-s25 state=3 rebuffers=0 rebuffer_ms=0 dropped=0
+11-22 04:32:19.198 30531 30531 D IQTV-METRICS: audio_advancing session=c7583001598850122915-l590536782-s25 playout_start_ms=1795293139145 since_prepare_ms=1138
+11-22 04:32:23.412 30531 30531 D IQTV-METRICS: prepare session=c6766403803970025501-l2517762572-s26 at=51330155
+11-22 04:32:23.430 30531 30531 D IQTV-METRICS: audio_tracks session=c6766403803970025501-l2517762572-s26 groups=0 volume=1.0 suppression=0 playWhenReady=true audioSessionId=713
+11-22 04:32:23.432 30531 30531 D IQTV-METRICS: state session=c6766403803970025501-l2517762572-s26 state=2 rebuffers=0 rebuffer_ms=0 dropped=0
+11-22 04:32:23.600 30531 30531 D IQTV-METRICS: audio_track_released session=c6766403803970025501-l2517762572-s26 encoding=2 rate=48000 channelConfig=12 bufferBytes=96000 tunneling=false offload=false
+11-22 04:32:24.066 30531 30531 D IQTV-METRICS: audio_enabled session=c6766403803970025501-l2517762572-s26 volume=1.0 suppression=0 playWhenReady=true audioSessionId=713
+11-22 04:32:24.072 30531 30531 D IQTV-METRICS: audio_track session=c6766403803970025501-l2517762572-s26 group=1 track=0 supported=true selected=true renderer_format_support=4 mime=audio/mpeg-L2 codecs=unknown rate=48000 channels=2 language=unknown bitrate=-1
+11-22 04:32:24.073 30531 30531 D IQTV-METRICS: audio_tracks session=c6766403803970025501-l2517762572-s26 groups=1 volume=1.0 suppression=0 playWhenReady=true audioSessionId=713
+11-22 04:32:24.089 30531 30531 D IQTV-METRICS: format session=c6766403803970025501-l2517762572-s26 mime=video/avc width=1920 height=1080 fps=-1.0
+11-22 04:32:24.096 30531 30531 D IQTV-METRICS: audio_decoder session=c6766403803970025501-l2517762572-s26 name=ffmpegLavc60.3.100-mp3 init_ms=8
+11-22 04:32:24.097 30531 30531 D IQTV-METRICS: audio_format session=c6766403803970025501-l2517762572-s26 mime=audio/mpeg-L2 codecs=unknown rate=48000 channels=2 language=unknown bitrate=-1
+11-22 04:32:24.153 30531 30531 D IQTV-METRICS: audio_track_initialized session=c6766403803970025501-l2517762572-s26 encoding=2 rate=48000 channelConfig=12 bufferBytes=96000 tunneling=false offload=false
+11-22 04:32:24.169 30531 30531 D IQTV-METRICS: first_frame session=c6766403803970025501-l2517762572-s26 ttff_ms=757 rendered_at=51330907
+11-22 04:32:24.178 30531 30531 D IQTV-ZAP: zap=780ms prepare=48ms firstFrame=732ms fmt=646ms dec=0ms render=86ms
+11-22 04:32:24.375 30531 30531 D IQTV-METRICS: state session=c6766403803970025501-l2517762572-s26 state=3 rebuffers=0 rebuffer_ms=0 dropped=0
+11-22 04:32:24.461 30531 30531 D IQTV-METRICS: audio_advancing session=c6766403803970025501-l2517762572-s26 playout_start_ms=1795293144434 since_prepare_ms=1049

@@ -1,0 +1,5 @@
+D/IQTV-ZAP( 8837): zap=1310ms prepare=50ms firstFrame=1260ms fmt=1218ms dec=0ms render=42ms
+D/IQTV-ZAP( 8837): zap=672ms prepare=19ms firstFrame=653ms fmt=519ms dec=0ms render=134ms
+D/IQTV-ZAP( 8837): zap=368ms prepare=17ms firstFrame=351ms fmt=297ms dec=0ms render=54ms
+D/IQTV-ZAP( 8837): zap=1232ms prepare=23ms firstFrame=1209ms fmt=1090ms dec=0ms render=119ms
+D/IQTV-ZAP( 8837): zap=1420ms prepare=24ms firstFrame=1396ms fmt=1135ms dec=0ms render=261ms

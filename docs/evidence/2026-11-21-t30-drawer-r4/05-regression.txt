@@ -1,0 +1,10 @@
+MP2: 2
+digitsDelta=0
+lastChDelta=1
+info_card_badges='FHD'@[1821,1077][1860,1080]
+hideAfter4s=34063
+settingsL1=设置|播放与画面|起播缓冲 稳(500ms)|›|遥控器与操作|换台 · 显示信息卡|›|音频与字幕|音轨 mpeg-L2 · 2ch|›|数据与更新|列表 启
+focusBACK1=ok BACK2=ok
+Fatal=0
+greyOurs=0
+dropped=D/IQTV-METRICS(12316): state session=c7583001598850122915-l590536782-s4 state=3 rebuffers=0 rebuffer_ms=0 dropped=0

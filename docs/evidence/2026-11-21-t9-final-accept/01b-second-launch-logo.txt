@@ -1,0 +1,4 @@
+--------- beginning of system
+--------- beginning of main
+I/IQTV-LOGO(32312): prefetch=req=0 dec=0 hit=0
+I/IQTV-LOGO(32312): prefetch=req=180 dec=0 hit=180

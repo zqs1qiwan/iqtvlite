@@ -1,0 +1,10 @@
+MP2=8
+digits=633
+lastCh=1
+L1=CHECK
+BACK1=ok BACK2=ok
+Fatal=0
+greyOurs=0
+dropped=0
+keys=0
+jingcaiMode=off

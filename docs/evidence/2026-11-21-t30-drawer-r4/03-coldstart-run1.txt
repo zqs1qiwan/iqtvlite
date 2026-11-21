@@ -1,0 +1,15 @@
+--------- beginning of system
+--------- beginning of main
+D/IQTV-ZAP( 8018): bufferMin=300
+D/IQTV-METRICS( 8018): prepare session=c7583001598850122915-l590536782-s1 at=32177778
+D/IQTV-METRICS( 8018): state session=c7583001598850122915-l590536782-s1 state=2 rebuffers=0 rebuffer_ms=0 dropped=0
+D/IQTV-METRICS( 8018): audio_session session=c7583001598850122915-l590536782-s1 id=497
+D/IQTV-METRICS( 8018): audio_enabled session=c7583001598850122915-l590536782-s1 volume=1.0 suppression=0 playWhenReady=true audioSessionId=497
+D/IQTV-METRICS( 8018): audio_track session=c7583001598850122915-l590536782-s1 group=1 track=0 supported=true selected=true renderer_format_support=4 mime=audio/mpeg-L2 codecs=unknown rate=48000 channels=2 language=unknown bitrate=-1
+D/IQTV-METRICS( 8018): audio_tracks session=c7583001598850122915-l590536782-s1 groups=1 volume=1.0 suppression=0 playWhenReady=true audioSessionId=497
+D/IQTV-METRICS( 8018): decoder session=c7583001598850122915-l590536782-s1 name=OMX.goke.video.decoder.avc init_ms=180
+D/IQTV-METRICS( 8018): format session=c7583001598850122915-l590536782-s1 mime=video/avc width=1920 height=1080 fps=-1.0
+D/IQTV-METRICS( 8018): audio_decoder session=c7583001598850122915-l590536782-s1 name=ffmpegLavc60.3.100-mp3 init_ms=22
+D/IQTV-METRICS( 8018): audio_format session=c7583001598850122915-l590536782-s1 mime=audio/mpeg-L2 codecs=unknown rate=48000 channels=2 language=unknown bitrate=-1
+D/IQTV-METRICS( 8018): audio_track_initialized session=c7583001598850122915-l590536782-s1 encoding=2 rate=48000 channelConfig=12 bufferBytes=96000 tunneling=false offload=false
+D/IQTV-ZAP( 8018): epgCache=10393ms firstFrame=false

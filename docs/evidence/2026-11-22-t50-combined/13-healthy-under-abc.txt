@@ -1,0 +1,3 @@
+mode=a zap= ff=True s3=True jingcaiLog=无
+mode=b zap= ff=True s3=True jingcaiLog=无
+mode=auto zap= ff=True s3=True jingcaiLog=无

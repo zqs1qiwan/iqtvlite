@@ -1,0 +1,20 @@
+--------- beginning of system
+--------- beginning of main
+11-21 21:15:19.872  1897  1897 D IQTV-ZAP: bufferMin=500
+11-21 21:15:20.505  1897  1897 D IQTV-METRICS: prepare session=c7583001598850122915-l590536782-s1 at=25107246
+11-21 21:15:20.561  1897  1897 D IQTV-METRICS: state session=c7583001598850122915-l590536782-s1 state=2 rebuffers=0 rebuffer_ms=0 dropped=0
+11-21 21:15:21.239  1897  1897 D IQTV-METRICS: audio_session session=c7583001598850122915-l590536782-s1 id=313
+11-21 21:15:22.997  1897  1897 D IQTV-METRICS: audio_enabled session=c7583001598850122915-l590536782-s1 volume=1.0 suppression=0 playWhenReady=true audioSessionId=313
+11-21 21:15:23.010  1897  1897 D IQTV-METRICS: audio_track session=c7583001598850122915-l590536782-s1 group=1 track=0 supported=true selected=true renderer_format_support=4 mime=audio/mpeg-L2 codecs=unknown rate=48000 channels=2 language=unknown bitrate=-1
+11-21 21:15:23.011  1897  1897 D IQTV-METRICS: audio_tracks session=c7583001598850122915-l590536782-s1 groups=1 volume=1.0 suppression=0 playWhenReady=true audioSessionId=313
+11-21 21:15:23.127  1897  1897 D IQTV-METRICS: decoder session=c7583001598850122915-l590536782-s1 name=OMX.goke.video.decoder.avc init_ms=96
+11-21 21:15:23.131  1897  1897 D IQTV-METRICS: format session=c7583001598850122915-l590536782-s1 mime=video/avc width=1920 height=1080 fps=-1.0
+11-21 21:15:23.141  1897  1897 D IQTV-METRICS: audio_decoder session=c7583001598850122915-l590536782-s1 name=ffmpegLavc60.3.100-mp3 init_ms=29
+11-21 21:15:23.144  1897  1897 D IQTV-METRICS: audio_format session=c7583001598850122915-l590536782-s1 mime=audio/mpeg-L2 codecs=unknown rate=48000 channels=2 language=unknown bitrate=-1
+11-21 21:15:23.210  1897  1897 D IQTV-METRICS: audio_track_initialized session=c7583001598850122915-l590536782-s1 encoding=2 rate=48000 channelConfig=12 bufferBytes=96000 tunneling=false offload=false
+11-21 21:15:23.514  1897  1897 D IQTV-METRICS: first_frame session=c7583001598850122915-l590536782-s1 ttff_ms=3011 rendered_at=25110238
+11-21 21:15:23.520  1897  1897 D IQTV-ZAP: zap=2971ms prepare=4ms firstFrame=2967ms fmt=2579ms dec=0ms render=388ms
+11-21 21:15:23.640  1897  1897 D IQTV-METRICS: state session=c7583001598850122915-l590536782-s1 state=3 rebuffers=0 rebuffer_ms=0 dropped=0
+11-21 21:15:23.650  1897  1897 D IQTV-METRICS: audio_advancing session=c7583001598850122915-l590536782-s1 playout_start_ms=1795266923531 since_prepare_ms=3147
+11-21 21:15:31.612  1897  1897 D IQTV-ZAP: epgCache=6068ms firstFrame=true
+11-21 21:15:31.613  1897  1897 D IQTV-PERF: epg_cache_load ms=6069 firstFrame=true
