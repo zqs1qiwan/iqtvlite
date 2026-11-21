@@ -74,8 +74,37 @@ class ZapTraceTest {
     }
 
     @Test
-    fun theCachedPlaylistIsPreferredWhenPresent() {
-        assertTrue(ColdStartPolicy.usesCacheFirstPlaylist(cachedAvailable = true))
-        assertFalse(ColdStartPolicy.usesCacheFirstPlaylist(cachedAvailable = false))
+    fun theStopwatchIsArmedOncePerRealZap() {
+        // t201 (ZAP-ONZAP-01): the production path calls onZapIfChanged(mediaId), so a re-prepare for
+        // the same channel (layout change, retry) must NOT wipe the running measurement…
+        ZapTrace.reset()
+        ZapTrace.onZapIfChanged("chan-1", 1_000L)
+        ZapTrace.onPrepare(1_100L)
+        assertEquals(100L, ZapTrace.prepareDelayMs())
+
+        ZapTrace.onZapIfChanged("chan-1", 1_500L) // same channel prepared again
+        assertEquals("the same zap keeps its original start point", 100L, ZapTrace.prepareDelayMs())
+
+        // …while a genuinely new channel re-arms it
+        ZapTrace.onZapIfChanged("chan-2", 3_000L)
+        assertEquals(-1L, ZapTrace.prepareDelayMs())
+        assertEquals(-1L, ZapTrace.zapToFirstFrameMs())
+    }
+
+    @Test
+    fun theProductionArmProducesASummaryLine() {
+        // t201: without the arm call summaryLine() was always null and logcat had no `zap=` line.
+        ZapTrace.reset()
+        ZapTrace.onZapIfChanged("channel-42", 10_000L)
+        ZapTrace.onPrepare(10_150L)
+        ZapTrace.onFirstFrame(10_765L)
+        assertEquals("zap=765ms prepare=150ms firstFrame=615ms", ZapTrace.summaryLine())
+    }
+
+    @Test
+    fun theEpgCacheFallbackIsBounded() {
+        // t201 (EPG-COLLECT-01): if the first frame never arrives the cache must still load.
+        assertTrue(ColdStartPolicy.EPG_CACHE_FALLBACK_MS in 5_000L..30_000L)
+        assertTrue("a fallback window must exist", ColdStartPolicy.EPG_CACHE_FALLBACK_MS > 0L)
     }
 }

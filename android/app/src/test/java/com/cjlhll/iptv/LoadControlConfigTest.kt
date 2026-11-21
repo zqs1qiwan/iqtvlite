@@ -15,11 +15,33 @@ class LoadControlConfigTest {
 
     @Test
     fun productionBufferDurationsAreValid() {
-        // Must NOT throw. Keep in sync with PlayerActivity.initializePlayer().
+        // t201 (LOADCONTROL-TEST-01): read the PRODUCTION numbers from LoadControlTuning, so this guard
+        // can never drift back to a stale literal (it asserted 500 while production moved to 300).
         DefaultLoadControl.Builder()
-            .setBufferDurationsMs(2_500, 6_000, 500, 2_000)
+            .setBufferDurationsMs(
+                LoadControlTuning.minBufferMs(),
+                LoadControlTuning.maxBufferMs(),
+                LoadControlTuning.playbackBufferMinMs(),
+                LoadControlTuning.playbackBufferAfterRebufferMs(),
+            )
             .setBackBuffer(0, false)
             .setPrioritizeTimeOverSizeThresholds(true)
+            .build()
+    }
+
+    @Test
+    fun theProductionArmIsActuallyThreeHundred() {
+        // t197 A/B arm: playbackBufferMinMs must be 300 (not the old 500) and stay below
+        // bufferForPlayback so the builder accepts it.
+        org.junit.Assert.assertEquals(300, LoadControlTuning.playbackBufferMinMs())
+        org.junit.Assert.assertTrue(LoadControlTuning.isValid)
+        DefaultLoadControl.Builder()
+            .setBufferDurationsMs(
+                LoadControlTuning.minBufferMs(),
+                LoadControlTuning.maxBufferMs(),
+                LoadControlTuning.playbackBufferMinMs(),
+                LoadControlTuning.playbackBufferAfterRebufferMs(),
+            )
             .build()
     }
 
@@ -27,11 +49,11 @@ class LoadControlConfigTest {
     fun productionMinBufferCoversAfterRebuffer() {
         // t157: the CPU fix relies on minBufferMs >= bufferForPlaybackAfterRebufferMs. If a future
         // edit lowers the minimum below the rebuffer threshold, the builder throws (CI10077).
-        val min = 2_500
-        val afterRebuffer = 2_000
+        val min = LoadControlTuning.minBufferMs()
+        val afterRebuffer = LoadControlTuning.playbackBufferAfterRebufferMs()
         org.junit.Assert.assertTrue(min >= afterRebuffer)
         DefaultLoadControl.Builder()
-            .setBufferDurationsMs(min, 6_000, 500, afterRebuffer)
+            .setBufferDurationsMs(min, LoadControlTuning.maxBufferMs(), LoadControlTuning.playbackBufferMinMs(), afterRebuffer)
             .build()
     }
 

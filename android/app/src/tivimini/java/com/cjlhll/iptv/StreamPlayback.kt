@@ -64,9 +64,11 @@ object StreamPlayback {
         val prepared = intent.prepared(request.copy(channel=channel.copy(id=channelId)), id)
         metrics.begin(prepared, onFailure)
         player.setMediaSource(factory.createMediaSource(item))
-        // t197 (A1): start the TTFF stopwatch right before the network/decode work begins.
-    ZapTrace.onPrepare(android.os.SystemClock.elapsedRealtime())
-    player.prepare()
+        // t197 (A1) / t201 (ZAP-ONZAP-01): arm the TTFF stopwatch from the production path — once per
+        // real channel change — and mark the moment the network/decode work begins.
+        ZapTrace.onZapIfChanged(id, android.os.SystemClock.elapsedRealtime())
+        ZapTrace.onPrepare(android.os.SystemClock.elapsedRealtime())
+        player.prepare()
         player.play()
         return prepared
     }

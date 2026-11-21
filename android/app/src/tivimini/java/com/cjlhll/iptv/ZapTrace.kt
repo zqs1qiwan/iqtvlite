@@ -24,6 +24,22 @@ object ZapTrace {
     @Volatile
     private var lastZapMs = -1L
 
+    @Volatile
+    private var zapKey: String? = null
+
+    /**
+     * t201 (ZAP-ONZAP-01): arm the stopwatch from the production path.
+     *
+     * Called on the stream-preparation path, but only re-arms when the media identity actually
+     * changed, so a re-prepare for the same channel (layout change, retry, audio re-select) does not
+     * wipe the measurement of the running zap.
+     */
+    fun onZapIfChanged(key: String, now: Long) {
+        if (key == zapKey && zapAt > 0L) return
+        zapKey = key
+        onZap(now)
+    }
+
     /** A channel change was requested. */
     fun onZap(now: Long) {
         zapAt = now
@@ -64,6 +80,7 @@ object ZapTrace {
     }
 
     fun reset() {
+        zapKey = null
         zapAt = 0L
         prepareAt = 0L
         firstFrameAt = 0L
@@ -107,8 +124,12 @@ object ColdStartPolicy {
     /** EPG must not be parsed before the first frame — it competes with it (14 s cold start). */
     const val EPG_AFTER_FIRST_FRAME = true
 
-    /** The cached playlist is what the first screen shows; the network refresh replaces it later. */
-    fun usesCacheFirstPlaylist(cachedAvailable: Boolean): Boolean = cachedAvailable
+    /**
+     * t201: hard ceiling on the "wait for the first frame" gate. If the first frame never arrives
+     * (offline, broken stream, unsupported codec) the EPG cache must still be read — otherwise the
+     * schedule would simply be missing.
+     */
+    const val EPG_CACHE_FALLBACK_MS = 10_000L
 
     /**
      * Whether the EPG cache may be read now.

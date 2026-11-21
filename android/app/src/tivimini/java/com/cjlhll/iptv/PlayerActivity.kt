@@ -58,6 +58,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import androidx.lifecycle.lifecycleScope
@@ -905,24 +906,13 @@ fun VideoPlayerScreen(
         }
     }
 
-    // t197 (B): cold start was dominated by pulling the playlist AND parsing the EPG before the
-    // first frame. The EPG cache read now waits for `onRenderedFirstFrame`, so the first screen and
-    // the first frame no longer compete with the XMLTV parse. The background-updated collector below
-    // still runs from the start (it is a cold Flow with no work until data arrives).
-    LaunchedEffect(firstFrameRendered) {
-        if (!ColdStartPolicy.mayLoadEpgCache(firstFrameRendered)) return@LaunchedEffect
+    // t201 (EPG-COLLECT-01): the COLLECTORS run from the very first composition again. Both flows are
+    // cold SharedFlows without replay, so parking them behind the first-frame gate silently dropped
+    // events emitted before the first frame (and broke manual EPG entirely when the frame never came).
+    // Only the CACHE READ is deferred — and only until the first frame, with a hard fallback.
+    LaunchedEffect(Unit) {
         val epgSource = Prefs.getEpgSource(context)
         if (epgSource.isNotBlank()) {
-            val t0 = System.currentTimeMillis()
-            val cachedEpg = EpgRepository.load(context, epgSource, forceRefresh = false)
-            if (android.util.Log.isLoggable(ZAP_TAG, android.util.Log.DEBUG)) {
-                android.util.Log.d(ZAP_TAG, "epgCache=${System.currentTimeMillis() - t0}ms")
-            }
-            if (cachedEpg != null) {
-                epgData = cachedEpg
-                Log.i(epgLoadTag, "cache loaded. programs=${cachedEpg.programsByChannelId.size}")
-            }
-
             launch {
                 BackgroundSourceUpdater.epgUpdated.collect { data ->
                     epgData = data
@@ -932,14 +922,33 @@ fun VideoPlayerScreen(
 
             // t176 (EPG-DUAL-01): AutoUpdateScheduler is the ONLY EPG executor. This screen keeps the
             // cached data and consumes epgUpdated; it never downloads/parses EPG itself.
-            // t189 (MANUAL-POLICY-01): one emission of [manualEpgRequests] = at most one download, and
-            // the decision comes from ManualRefreshPolicy instead of a hand-written flag check.
-            manualEpgRequests.collect {
-                when (ManualRefreshPolicy.actionFor(manualFlagRaised = true, pumpAlreadyConsumed = false)) {
-                    ManualRefreshPolicy.Action.CALL_SCHEDULER -> AutoUpdateScheduler.requestManualEpg(context)
-                    ManualRefreshPolicy.Action.CONSUME_FLAG,
-                    ManualRefreshPolicy.Action.NONE -> Unit
+            // t189 (MANUAL-POLICY-01): one emission of [manualEpgRequests] = at most one download.
+            launch {
+                manualEpgRequests.collect {
+                    when (ManualRefreshPolicy.actionFor(manualFlagRaised = true, pumpAlreadyConsumed = false)) {
+                        ManualRefreshPolicy.Action.CALL_SCHEDULER -> AutoUpdateScheduler.requestManualEpg(context)
+                        ManualRefreshPolicy.Action.CONSUME_FLAG,
+                        ManualRefreshPolicy.Action.NONE -> Unit
+                    }
                 }
+            }
+
+            // t197 (B) / t201: wait for the first frame, but never longer than the fallback — if the
+            // stream never renders (offline/broken), the cached schedule must still load.
+            kotlinx.coroutines.withTimeoutOrNull(ColdStartPolicy.EPG_CACHE_FALLBACK_MS) {
+                androidx.compose.runtime.snapshotFlow { firstFrameRendered }.first { it }
+            }
+            val t0 = System.currentTimeMillis()
+            val cachedEpg = EpgRepository.load(context, epgSource, forceRefresh = false)
+            if (android.util.Log.isLoggable(ZAP_TAG, android.util.Log.DEBUG)) {
+                android.util.Log.d(
+                    ZAP_TAG,
+                    "epgCache=${System.currentTimeMillis() - t0}ms firstFrame=$firstFrameRendered"
+                )
+            }
+            if (cachedEpg != null) {
+                epgData = cachedEpg
+                Log.i(epgLoadTag, "cache loaded. programs=${cachedEpg.programsByChannelId.size}")
             }
         }
     }
