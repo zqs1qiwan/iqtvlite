@@ -24,7 +24,11 @@ import tv.iqtvlite.app.RustBridge
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 object StreamPlayback {
     private const val TAG = "IQTV-METRICS"
+    private const val WATCHDOG_TAG = "IQTV-WATCHDOG"
     private val sequence = AtomicLong()
+    // t225: one first-frame watchdog per player (see FirstFrameWatchdogPolicy).
+    private val watchdogs = java.util.WeakHashMap<ExoPlayer, FirstFrameWatchdogPolicy.Watchdog>()
+    private val watchdogScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val sessions = java.util.WeakHashMap<ExoPlayer, Metrics>()
 
     fun restore(context: Context, url: String, title: String): Channel {
@@ -34,6 +38,7 @@ object StreamPlayback {
         else Channel(title=title, url=url)
     }
     fun release(player: ExoPlayer) {
+        watchdogs.remove(player)?.cancel()
         sessions.remove(player)?.let {
             it.cancelSummary()
             PlaybackSession.clear(it.mediaIdForSession())
@@ -78,7 +83,62 @@ object StreamPlayback {
         ZapTrace.onPrepare(android.os.SystemClock.elapsedRealtime())
         player.prepare()
         player.play()
+        // t225: if no first frame arrives in 8 s, retry once and then tell the user (see policy).
+        armWatchdog(player, context, channelId)
         return prepared
+    }
+
+    /** t225: arm a generation-stamped watchdog after every prepare. */
+    private fun armWatchdog(player: ExoPlayer, context: Context, channelId: Long) {
+        val watchdog = watchdogs.getOrPut(player) { FirstFrameWatchdogPolicy.Watchdog() }
+        val gen = watchdog.arm("$channelId")
+        watchdogScope.launch {
+            delay(watchdog.timeoutMillis())
+            // Pausing sets playWhenReady = false; a paused zap must not be retried. (A rebuffer keeps
+            // playWhenReady true, so buffering still counts as "should be playing".)
+            if (!player.playWhenReady) {
+                watchdog.cancel()
+                return@launch
+            }
+            when (watchdog.onTimeout(gen)) {
+                FirstFrameWatchdogPolicy.Action.RETRY -> {
+                    if (Log.isLoggable(WATCHDOG_TAG, Log.DEBUG)) {
+                        Log.d(WATCHDOG_TAG, FirstFrameWatchdogPolicy.retryLine("$channelId", watchdog.retriesUsed()))
+                    }
+                    try {
+                        // Re-prepare the SAME media item: one retry, no new media source, no zap re-arm.
+                        player.seekToDefaultPosition()
+                        player.prepare()
+                        player.play()
+                    } catch (e: Exception) {
+                        // a failed retry must never crash playback
+                    }
+                    watchdogScope.launch {
+                        delay(watchdog.timeoutMillis())
+                        if (player.playWhenReady &&
+                            watchdog.onTimeout(gen) == FirstFrameWatchdogPolicy.Action.GIVE_UP
+                        ) {
+                            android.widget.Toast.makeText(
+                                context,
+                                FirstFrameWatchdogPolicy.GIVE_UP_MESSAGE,
+                                android.widget.Toast.LENGTH_LONG
+                            ).show()
+                        }
+                    }
+                }
+                FirstFrameWatchdogPolicy.Action.GIVE_UP -> android.widget.Toast.makeText(
+                    context,
+                    FirstFrameWatchdogPolicy.GIVE_UP_MESSAGE,
+                    android.widget.Toast.LENGTH_LONG
+                ).show()
+                FirstFrameWatchdogPolicy.Action.IGNORE -> Unit
+            }
+        }
+    }
+
+    /** t225: the first frame cancels the watchdog for this player. */
+    internal fun onFirstFrameForWatchdog(player: ExoPlayer) {
+        watchdogs[player]?.onFirstFrame()
     }
 
     private class Metrics(private val player: ExoPlayer) : AnalyticsListener {
@@ -232,6 +292,7 @@ object StreamPlayback {
         }
         override fun onRenderedFirstFrame(eventTime: AnalyticsListener.EventTime, output: Any, renderTimeMs: Long) {
             if (!matches(eventTime) || firstFrame) return
+            onFirstFrameForWatchdog(player)
             firstFrame = true
             emit("first_frame", "ttff_ms=${SystemClock.elapsedRealtime()-preparedAt} rendered_at=$renderTimeMs")
         }
