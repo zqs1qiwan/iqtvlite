@@ -259,11 +259,13 @@ object StreamPlayback {
         fun diagnosticLine(mode: JingcaiExperiment.Mode): String {
             // t20：bytes 取「onLoadCompleted 累计」与「DataSource 实读」的较大者（直播恒无 complete）。
             val line = JingcaiExperiment.diagnosticLine(
-                mode,
-                maxOf(loaderBytes, JingcaiDiag.bytesRead()),
-                downstream,
-                firstFrame,
-                player.playbackState,
+                mode = mode,
+                bytesRead = maxOf(loaderBytes, JingcaiDiag.bytesRead()),
+                firstByteMs = JingcaiDiag.firstByteMs(),
+                downstreamFormat = downstream,
+                firstFrame = firstFrame,
+                playbackState = player.playbackState,
+                code = JingcaiDiag.lastCode,
             )
             // t38：追加时间轴一行（pcr/pts/offset/mode），无 pipeline 时省略。
             val tm = JingcaiDiag.timelineLine()
