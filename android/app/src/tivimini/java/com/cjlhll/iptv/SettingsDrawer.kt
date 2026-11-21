@@ -69,6 +69,9 @@ fun SettingsDrawer(
     audioEntryLabel: String = "音轨选择",
     /** t187 (AUDIO-SINGLE-02): false for single-track / no-audio channels → the row is inert. */
     audioSelectable: Boolean = true,
+    // t205: start-up buffer tier
+    playbackBufferLabel: String = "稳(500ms)",
+    onCyclePlaybackBuffer: () -> Unit = {},
     onAudioTrackClick: () -> Unit = {},
     // t186 (F1): remote habits
     remoteUpDownLabel: String = "换台",
@@ -114,6 +117,7 @@ fun SettingsDrawer(
     val remoteDigitsRequester = remember { FocusRequester() }
     val remoteChannelKeysRequester = remember { FocusRequester() }
     val remoteResetRequester = remember { FocusRequester() }
+    val playbackBufferRequester = remember { FocusRequester() }
 
     LaunchedEffect(visible) {
         if (visible) {
@@ -214,6 +218,23 @@ fun SettingsDrawer(
                         onClick = onOpenRecent
                     )
 
+                    Spacer(modifier = Modifier.padding(8.dp))
+
+                    // t205: 播放与显示 group — currently the start-up buffer tier. The change takes
+                    // effect on the next player creation / channel switch (see the note row).
+                    SettingsGroupHeader(text = "播放与显示")
+                    SettingsItem(
+                        text = "起播缓冲：$playbackBufferLabel",
+                        focusRequester = playbackBufferRequester,
+                        tag = "settings_playback_buffer",
+                        onClick = onCyclePlaybackBuffer
+                    )
+                    Text(
+                        text = "快=起播更快但弱网更易卡顿；稳=更抗抖动。切换后下次切台生效。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(start = 16.dp, top = 2.dp, bottom = 6.dp)
+                    )
                     Spacer(modifier = Modifier.padding(8.dp))
 
                     // t186 (F1): 遥控器与操作 group — every row cycles its own value, defaults keep

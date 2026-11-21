@@ -110,22 +110,53 @@ object LoadControlTuning {
     const val MIN_BUFFER_MS = 2_500
     const val MAX_BUFFER_MS = 6_000
 
-    /** t197 A/B arm: 500 → 300 to start later and shave TTFF; depends on the two below. */
-    const val PLAYBACK_BUFFER_MIN_MS = 300
-
     const val BUFFER_FOR_PLAYBACK_MS = 500
     const val BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS = 2_000
+
+    /**
+     * t205: selectable start-up buffer tiers (ms). 300 starts fastest but an A/B on the real box showed
+     * a 5.8 s rebuffer on cold start, so the DEFAULT is the safe tier (500) until the tiers are A/B'd
+     * on device.
+     */
+    const val TIER_FAST_MS = 300
+    const val TIER_BALANCED_MS = 400
+    const val TIER_STABLE_MS = 500
+    const val DEFAULT_BUFFER_MIN_MS = TIER_STABLE_MS
+
+    val TIERS: List<Int> = listOf(TIER_FAST_MS, TIER_BALANCED_MS, TIER_STABLE_MS)
+
+    /** Human label for the settings row / the debug line. */
+    fun tierLabel(value: Int): String = when (sanitize(value)) {
+        TIER_FAST_MS -> "快(300ms)"
+        TIER_BALANCED_MS -> "均衡(400ms)"
+        else -> "稳(500ms)"
+    }
+
+    /** Unknown / out-of-range Pref values fall back to the safe default (never crash the builder). */
+    fun sanitize(value: Int): Int = if (value in TIERS) value else DEFAULT_BUFFER_MIN_MS
+
+    /** Next tier when the user presses OK on the row (快 → 均衡 → 稳 → 快). */
+    fun next(value: Int): Int {
+        val i = TIERS.indexOf(sanitize(value))
+        return TIERS[(i + 1) % TIERS.size]
+    }
 
     /** setBufferDurationsMs takes Ints. */
     fun minBufferMs(): Int = MIN_BUFFER_MS
     fun maxBufferMs(): Int = MAX_BUFFER_MS
-    fun playbackBufferMinMs(): Int = PLAYBACK_BUFFER_MIN_MS
     fun playbackBufferAfterRebufferMs(): Int = BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS
 
-    val isValid: Boolean
-        get() = MIN_BUFFER_MS >= BUFFER_FOR_PLAYBACK_MS &&
+    /** The start-up buffer the player is built with, from the persisted Pref value. */
+    fun playbackBufferMinMs(prefValue: Int = DEFAULT_BUFFER_MIN_MS): Int = sanitize(prefValue)
+
+    /** The invariant USAB2-01 / CI10077 must hold for every tier. */
+    fun isValidFor(bufferMinMs: Int): Boolean =
+        MIN_BUFFER_MS >= BUFFER_FOR_PLAYBACK_MS &&
             MIN_BUFFER_MS >= BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS &&
-            PLAYBACK_BUFFER_MIN_MS in 1..BUFFER_FOR_PLAYBACK_MS
+            bufferMinMs in 1..BUFFER_FOR_PLAYBACK_MS
+
+    val isValid: Boolean
+        get() = TIERS.all { isValidFor(it) }
 }
 
 /**

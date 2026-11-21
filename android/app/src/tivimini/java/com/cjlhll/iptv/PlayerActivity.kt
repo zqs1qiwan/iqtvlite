@@ -513,6 +513,8 @@ fun VideoPlayerScreen(
     var autoUpdatePlaylist by remember { mutableStateOf(Prefs.getAutoUpdatePlaylist(context)) }
     // t186 (F1): remote habits (persisted; the Activity re-reads them on resume).
     var remoteHabits by remember { mutableStateOf(Prefs.getRemoteSettings(context)) }
+    // t205: start-up buffer tier (applies on the next player creation / channel switch).
+    var playbackBufferMin by remember { mutableStateOf(Prefs.getPlaybackBufferMin(context)) }
     // t193 (REMOTE-INSTANT-01): every habits change reaches the Activity immediately, without any
     // pause/resume cycle — the settings drawer lives in the same Activity.
     SideEffect { onRemoteSettingsChanged(remoteHabits) }
@@ -606,12 +608,20 @@ fun VideoPlayerScreen(
                 // t197: numbers live in LoadControlTuning so an A/B arm is one constant.
                 LoadControlTuning.minBufferMs(),
                 LoadControlTuning.maxBufferMs(),
-                LoadControlTuning.playbackBufferMinMs(),
+                // t205: start-up buffer comes from the user's tier (300/400/500, default 500).
+                LoadControlTuning.playbackBufferMinMs(Prefs.getPlaybackBufferMin(context)),
                 LoadControlTuning.playbackBufferAfterRebufferMs()
             )
             .setBackBuffer(0, false)
             .setPrioritizeTimeOverSizeThresholds(true)
             .build()
+        // t205: prove the tier took effect in an A/B (`setprop log.tag.IQTV-ZAP DEBUG`).
+        if (android.util.Log.isLoggable(ZAP_TAG, android.util.Log.DEBUG)) {
+            android.util.Log.d(
+                ZAP_TAG,
+                "bufferMin=${LoadControlTuning.playbackBufferMinMs(Prefs.getPlaybackBufferMin(context))}"
+            )
+        }
 
         val renderersFactory = DefaultRenderersFactory(context)
             .setEnableDecoderFallback(true)
@@ -1479,6 +1489,17 @@ fun VideoPlayerScreen(
             audioSummary = AudioTrackUi.summary(audioTracks, audioOverrideGroup, audioOverrideTrack),
             audioEntryLabel = AudioTrackUi.entryLabel(audioTracks),
             audioSelectable = AudioTrackUi.canSelect(audioTracks),
+            playbackBufferLabel = LoadControlTuning.tierLabel(playbackBufferMin),
+            onCyclePlaybackBuffer = {
+                val next = LoadControlTuning.next(playbackBufferMin)
+                Prefs.setPlaybackBufferMin(context, next)
+                playbackBufferMin = next
+                android.widget.Toast.makeText(
+                    context,
+                    "起播缓冲已设为${LoadControlTuning.tierLabel(next)}，下次切台生效",
+                    android.widget.Toast.LENGTH_SHORT
+                ).show()
+            },
             onAudioTrackClick = {
                 // t187 (AUDIO-SINGLE-02): a single-track channel has nothing to pick, so the row is
                 // inert (the label already says 仅 1 条) and no empty dialog is opened.

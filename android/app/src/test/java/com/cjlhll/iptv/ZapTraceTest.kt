@@ -53,17 +53,19 @@ class ZapTraceTest {
     }
 
     @Test
-    fun loadControlKeepsTheCrashInvariantWithTheNewBufferArm() {
-        // t197 A2: playbackBufferMin 500 → 300, everything else untouched.
+    fun loadControlKeepsTheCrashInvariantForEveryTier() {
+        // t205: the start-up buffer is a user tier; every tier must keep the USAB2-01 invariant.
         assertEquals(2_500, LoadControlTuning.minBufferMs())
         assertEquals(6_000, LoadControlTuning.maxBufferMs())
-        assertEquals(300, LoadControlTuning.playbackBufferMinMs())
         assertEquals(2_000, LoadControlTuning.playbackBufferAfterRebufferMs())
-        assertTrue("2500 >= 2000 and 300 <= 500 must hold", LoadControlTuning.isValid)
-        assertTrue(
-            "the A/B arm must stay below bufferForPlayback",
-            LoadControlTuning.playbackBufferMinMs() < LoadControlTuning.BUFFER_FOR_PLAYBACK_MS
-        )
+        assertEquals(listOf(300, 400, 500), LoadControlTuning.TIERS)
+        assertTrue("2500 >= 2000 for every tier", LoadControlTuning.isValid)
+        LoadControlTuning.TIERS.forEach { tier ->
+            assertEquals(tier, LoadControlTuning.playbackBufferMinMs(tier))
+            assertTrue("$tier must not exceed bufferForPlayback", tier <= LoadControlTuning.BUFFER_FOR_PLAYBACK_MS)
+        }
+        // the default is the safe tier until the device A/B decides
+        assertEquals(500, LoadControlTuning.playbackBufferMinMs())
     }
 
     @Test

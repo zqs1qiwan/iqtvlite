@@ -30,19 +30,41 @@ class LoadControlConfigTest {
     }
 
     @Test
-    fun theProductionArmIsActuallyThreeHundred() {
-        // t197 A/B arm: playbackBufferMinMs must be 300 (not the old 500) and stay below
-        // bufferForPlayback so the builder accepts it.
-        org.junit.Assert.assertEquals(300, LoadControlTuning.playbackBufferMinMs())
-        org.junit.Assert.assertTrue(LoadControlTuning.isValid)
-        DefaultLoadControl.Builder()
-            .setBufferDurationsMs(
-                LoadControlTuning.minBufferMs(),
-                LoadControlTuning.maxBufferMs(),
-                LoadControlTuning.playbackBufferMinMs(),
-                LoadControlTuning.playbackBufferAfterRebufferMs(),
-            )
-            .build()
+    fun everyStartupBufferTierBuilds() {
+        // t205: 快/均衡/稳 must all be accepted by the real builder and keep min >= afterRebuffer.
+        org.junit.Assert.assertEquals(listOf(300, 400, 500), LoadControlTuning.TIERS)
+        LoadControlTuning.TIERS.forEach { tier ->
+            org.junit.Assert.assertTrue("tier $tier must satisfy the invariant", LoadControlTuning.isValidFor(tier))
+            DefaultLoadControl.Builder()
+                .setBufferDurationsMs(
+                    LoadControlTuning.minBufferMs(),
+                    LoadControlTuning.maxBufferMs(),
+                    LoadControlTuning.playbackBufferMinMs(tier),
+                    LoadControlTuning.playbackBufferAfterRebufferMs(),
+                )
+                .build()
+        }
+    }
+
+    @Test
+    fun theDefaultIsTheStableTier() {
+        // t205: 300 showed a 5.8 s cold-start rebuffer on the box → default is 稳/500 until A/B.
+        org.junit.Assert.assertEquals(500, LoadControlTuning.DEFAULT_BUFFER_MIN_MS)
+        org.junit.Assert.assertEquals(500, LoadControlTuning.playbackBufferMinMs(0))
+        org.junit.Assert.assertEquals(500, LoadControlTuning.playbackBufferMinMs(999))
+    }
+
+    @Test
+    fun unknownPrefValuesFallBackAndCycleWraps() {
+        org.junit.Assert.assertEquals(300, LoadControlTuning.sanitize(300))
+        org.junit.Assert.assertEquals(400, LoadControlTuning.sanitize(400))
+        org.junit.Assert.assertEquals(500, LoadControlTuning.sanitize(500))
+        org.junit.Assert.assertEquals(500, LoadControlTuning.sanitize(123))
+        org.junit.Assert.assertEquals(500, LoadControlTuning.sanitize(-1))
+        org.junit.Assert.assertEquals(400, LoadControlTuning.next(300))
+        org.junit.Assert.assertEquals(500, LoadControlTuning.next(400))
+        org.junit.Assert.assertEquals(300, LoadControlTuning.next(500))
+        org.junit.Assert.assertEquals("稳(500ms)", LoadControlTuning.tierLabel(999))
     }
 
     @Test

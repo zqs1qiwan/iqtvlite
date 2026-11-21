@@ -30,6 +30,8 @@ object Prefs {
     private const val KEY_REMOTE_BACK = "remote_back"
     private const val KEY_REMOTE_DIGITS = "remote_digits"
     private const val KEY_REMOTE_CHANNEL_KEYS = "remote_channel_keys"
+    // t205: start-up buffer tier (300/400/500 ms), default 稳/500.
+    private const val KEY_PLAYBACK_BUFFER_MIN = "playback_buffer_min"
 
     private fun getPrefs(context: Context): SharedPreferences {
         return context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
@@ -187,6 +189,14 @@ object Prefs {
             .putLong(KEY_EPG_LAST_FAILURE, at)
             .putInt(KEY_EPG_FAIL_COUNT, prefs.getInt(KEY_EPG_FAIL_COUNT, 0) + 1)
             .apply()
+    }
+
+    /** t205: the persisted start-up buffer tier; unknown values fall back to 稳/500. */
+    fun getPlaybackBufferMin(context: Context): Int =
+        LoadControlTuning.sanitize(getPrefs(context).getInt(KEY_PLAYBACK_BUFFER_MIN, LoadControlTuning.DEFAULT_BUFFER_MIN_MS))
+
+    fun setPlaybackBufferMin(context: Context, value: Int) {
+        getPrefs(context).edit().putInt(KEY_PLAYBACK_BUFFER_MIN, LoadControlTuning.sanitize(value)).apply()
     }
 
     // ---- t186: remote habits (read on every key event, so a change applies immediately) ----
