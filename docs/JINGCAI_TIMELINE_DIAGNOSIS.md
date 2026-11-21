@@ -161,5 +161,12 @@ t15 的设计在 t49 落地为可编译、可门禁的代码（此前 WIP 只在
 
 | 项 | 值 |
 |---|---|
-| 提交 / CI | 见 t15 任务输出（本文件随实现一起提交；文档定稿后再补 run 号） |
+| 提交 | `02c0d69`（落地全部代码/测试/门禁）→ `8de4e77`（diagnosticLine 具名参数，修编译）→ `39e86e1`（测试 PCR 夹具 Long/Int 位运算，修编译） |
+| CI run（绿） | **#185**，sha `39e86e1`，push，conclusion `success` |
+| 构建 | `BUILD SUCCESSFUL in 3m 23s`；`:app:testDebugUnitTest`（含 `JingcaiTimelineTest`：PCR 包识别/PMT PCR_PID/CRC32/60s 闸门/A·B 逐字节）+ `:app:lintDebug` + 双包 assemble |
+| 门禁 | **新增 `check_jingcai_timeline: OK (pure TS/PMT/PCR policy, 60s gate, default off, real byte counting, A/B/AUTO only)`** 已进 `apk.yml`；logo / info_card / settings_ia / settings_scroll / perf_policy / player_threading / refresh_paths 全 OK；pair gate `{0,0,0}` |
+| 包 | `tv.iqtvlite.app.validation`，versionCode **10185**，versionName `2.2.0-tivimini-39e86e1d-validation` |
+| app sha256 | `1e1e415e9dfed27b1a2ac7a9e18bd65e3413540142d06627d8ec8e4c201f98f4` |
+| test sha256 | `7d9a4ecfefca8c73bcadb385f0d0cd8a36ea6e4033c32df6fc109f9683948d38` |
+| 产物 | `iqtvlite-test-apk`（artifact id 14722398320，10,465,889 B ≪30MB） |
 | 回退 | 设置行切回「关闭」即全局回退；代码级 `git revert` 本提交回到 t16 状态；无 Prefs 迁移 |
