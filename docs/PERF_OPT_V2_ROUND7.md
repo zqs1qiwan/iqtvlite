@@ -106,4 +106,12 @@ subList 揭示、56dp 固定行高、`step=2`（`nextRevealedRows` 仍用于纯�
 
 | 项 | 值 |
 |---|---|
-| 提交 / CI | 见 t39 任务输出（本文件随实现提交，定稿后补 run 号） |
+| 提交 | `189c109`（r7 主体）→ `ac12b26`（把窗口揭示 effect 移到 `channelListState` 之后、替换旧的全量揭示滚动 effect，修编译） |
+| CI run（绿） | **#173**，sha `ac12b26`，push，conclusion `success` |
+| 构建 | `BUILD SUCCESSFUL in 3m 20s`；`:app:testDebugUnitTest` + `:app:lintDebug` + `assembleDebug` + `assembleDebugAndroidTest` |
+| 包 | `tv.iqtvlite.app.validation`，versionCode **10173**，versionName `2.2.0-tivimini-ac12b266-validation` |
+| app sha256 | `453d26eb206a4956c808e0138b02afbf17d2912c9bbf570d92633ae8771aad8b` |
+| test sha256 | `d351e4fac0231fff5c510d6fc8a599fb47afdba92fb1a3453e99dca18c73daf4` |
+| 门禁 | logo / info_card / settings_ia / settings_scroll / **perf_policy（t39 断言）** / player_threading / refresh_paths 全 OK；pair gate `{0,0,0}` |
+| 产物 | `iqtvlite-test-apk`（artifact id 14716414176，10,454,333 B ≪30MB） |
+| 红→绿 | `#172` 编译错（窗口揭示 effect 引用了后面才声明的 `initialScrollIndex`/`channelListState`）→ 移到声明之后 + 替换旧 effect → `#173` 全绿 |
