@@ -38,7 +38,14 @@ object RemoteHabits {
         val channelKeysEnabled: Boolean = true,
     )
 
-    /** t186: defaults keep the shipped behaviour (up/down zaps, BACK closes, digits zap). */
+    /**
+     * t186/t193 (DEFAULT-01): the shipped defaults. Documented in docs/REMOTE_HABITS_SETTINGS*.md:
+     *  - 上下键 = 换台
+     *  - OK键   = 打开频道列表 (在回看中例外：显示信息条，见 [onOk])
+     *  - Back键 = 关闭抽屉 (双按退出)
+     *  - 数字键 = 直接跳台
+     *  - 频道键 166/167 = 启用
+     */
     val DEFAULT = Settings()
 
     // ---- persistence helpers (names are stable Prefs values) ----
@@ -69,8 +76,12 @@ object RemoteHabits {
 
     enum class OkAction { NONE, OPEN_DRAWER, SHOW_INFO }
 
-    fun onOk(settings: Settings, overlayOpen: Boolean): OkAction {
+    fun onOk(settings: Settings, overlayOpen: Boolean, catchupPlayback: Boolean = false): OkAction {
         if (overlayOpen) return OkAction.NONE
+        // t193 (CATCHUP-01): while a catch-up programme is playing, OK must NOT open the channel list
+        // (that switches channels and would drop the replay). It shows the info banner instead, which
+        // is also what the pre-F1 behaviour was.
+        if (catchupPlayback) return OkAction.SHOW_INFO
         return when (settings.ok) {
             Ok.OPEN_DRAWER -> OkAction.OPEN_DRAWER
             Ok.CONFIRM -> OkAction.SHOW_INFO

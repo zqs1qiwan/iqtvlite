@@ -77,6 +77,75 @@ class RemoteHabitsTest {
     }
 
     @Test
+    fun catchupKeepsOkOnTheInfoBanner() {
+        // t193 (CATCHUP-01): during catch-up, OK must not open the channel list (it would switch
+        // channels and drop the replay) — it shows the info banner regardless of the habit.
+        assertTrue(
+            RemoteHabits.onOk(defaults, overlayOpen = false, catchupPlayback = true) ==
+                RemoteHabits.OkAction.SHOW_INFO
+        )
+        RemoteHabits.Ok.entries.forEach { ok ->
+            val s = defaults.copy(ok = ok)
+            assertTrue(
+                "$ok must show the banner during catch-up",
+                RemoteHabits.onOk(s, overlayOpen = false, catchupPlayback = true) ==
+                    RemoteHabits.OkAction.SHOW_INFO
+            )
+        }
+        // live TV keeps the configured habit
+        assertEquals(
+            RemoteHabits.OkAction.OPEN_DRAWER,
+            RemoteHabits.onOk(defaults, overlayOpen = false, catchupPlayback = false)
+        )
+        // and an overlay still wins over catch-up
+        assertEquals(
+            RemoteHabits.OkAction.NONE,
+            RemoteHabits.onOk(defaults, overlayOpen = true, catchupPlayback = true)
+        )
+    }
+
+    @Test
+    fun aSettingsChangeAppliesToTheNextKeyWithoutAnyPause() {
+        // t193 (REMOTE-INSTANT-01): the Activity mirrors the composable's value, so the moment the
+        // row is clicked the next decision already uses the new setting (no onResume needed).
+        var live = RemoteHabits.DEFAULT
+        assertEquals(
+            RemoteHabits.UpDownAction.CHANNEL_UP,
+            RemoteHabits.onUpDown(live, overlayOpen = false, up = true)
+        )
+
+        // user cycles 上下键 → 呼出频道列表 (the row writes Prefs + pushes the new value)
+        live = live.copy(upDown = RemoteHabits.nextUpDown(live.upDown))
+        assertEquals(
+            "the very next key must follow the new habit",
+            RemoteHabits.UpDownAction.OPEN_DRAWER,
+            RemoteHabits.onUpDown(live, overlayOpen = false, up = true)
+        )
+
+        // and BACK switches to EXIT immediately as well
+        live = live.copy(back = RemoteHabits.nextBack(live.back))
+        assertEquals(
+            RemoteHabits.BackAction.EXIT,
+            RemoteHabits.onBack(live, overlayOpen = false)
+        )
+        // overlays still take precedence right after the change
+        assertEquals(
+            RemoteHabits.BackAction.CLOSE_OVERLAY,
+            RemoteHabits.onBack(live, overlayOpen = true)
+        )
+    }
+
+    @Test
+    fun digitsStillSubmitThroughTheSameDecision() {
+        // t193 TEST-01: the digits habit only decides *when* the OSD submits.
+        assertEquals(RemoteHabits.DigitAction.DIRECT, RemoteHabits.onDigit(RemoteHabits.DEFAULT))
+        assertEquals(
+            RemoteHabits.DigitAction.NEEDS_CONFIRM,
+            RemoteHabits.onDigit(RemoteHabits.DEFAULT.copy(digits = RemoteHabits.Digits.NEEDS_CONFIRM))
+        )
+    }
+
+    @Test
     fun overlaysAlwaysWin() {
         // every habit combination is neutralised while an overlay is open
         RemoteHabits.UpDown.entries.forEach { upDown ->

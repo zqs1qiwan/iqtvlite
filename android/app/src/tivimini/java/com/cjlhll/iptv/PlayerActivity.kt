@@ -112,7 +112,9 @@ class PlayerActivity : ComponentActivity() {
     private var isQualityDialogOpen: Boolean = false
     private var isRecentChannelsOpen: Boolean = false
     private var isAudioDialogOpen: Boolean = false
-    // t186 (F1): remote habits; re-read on resume so a settings change applies immediately.
+    // t186 (F1): remote habits. t193 (REMOTE-INSTANT-01): a settings change pushes the new value
+    // straight into this field through a controller, so the NEXT key event already uses it even
+    // though the SettingsDrawer lives in the same Activity and never triggers onResume().
     private var remote = RemoteHabits.DEFAULT
     private var setInfoBannerOpen: ((Boolean) -> Unit)? = null
     private var isInfoBannerOpen: Boolean = false
@@ -194,6 +196,7 @@ class PlayerActivity : ComponentActivity() {
                         setRecentChannelsOpenController = { setRecentChannelsOpen = it },
                         onRecentChannelsOpenChanged = { isRecentChannelsOpen = it },
                         setAudioDialogOpenController = { setAudioDialogOpen = it },
+                        onRemoteSettingsChanged = { settings -> remote = settings },
                         onAudioDialogOpenChanged = { isAudioDialogOpen = it },
                         onDrawerOpenChanged = { isDrawerOpen = it },
                         onDrawerActiveColumnChanged = { drawerActiveColumn = it },
@@ -280,7 +283,7 @@ class PlayerActivity : ComponentActivity() {
                 KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
                     if (!isDrawerOpen && !isSettingsDrawerOpen && !isQualityDialogOpen && !isRecentChannelsOpen && !isAudioDialogOpen) {
                         // t186 (F1): the OK habit decides between opening the list and confirming.
-                        when (RemoteHabits.onOk(remote, overlayOpen = false)) {
+                        when (RemoteHabits.onOk(remote, overlayOpen = false, catchupPlayback = isCatchupPlayback)) {
                             RemoteHabits.OkAction.OPEN_DRAWER -> sidebarController.openDrawer()
                             RemoteHabits.OkAction.SHOW_INFO -> setInfoBannerOpen?.invoke(true)
                             RemoteHabits.OkAction.NONE -> Unit
@@ -364,7 +367,10 @@ class PlayerActivity : ComponentActivity() {
                     // t186 (F1): 直接退出 exits on the first BACK; 关闭抽屉 keeps the historical
                     // double-press guard so a stray press never kills playback.
                     if (RemoteHabits.onBack(remote, overlayOpen = false) == RemoteHabits.BackAction.EXIT) {
-                        return super.dispatchKeyEvent(event)
+                        // t193 (REMOTE-BACK-01): explicit finish(); the habit no longer depends on the
+                        // key reaching the system back dispatch.
+                        finish()
+                        return true
                     }
                     val currentTime = System.currentTimeMillis()
                     if (currentTime - lastBackPressTime > 2000) {
@@ -435,6 +441,7 @@ fun VideoPlayerScreen(
     setRecentChannelsOpenController: (((Boolean) -> Unit)?) -> Unit,
     onRecentChannelsOpenChanged: (Boolean) -> Unit,
     setAudioDialogOpenController: (((Boolean) -> Unit)?) -> Unit,
+    onRemoteSettingsChanged: (RemoteHabits.Settings) -> Unit,
     onAudioDialogOpenChanged: (Boolean) -> Unit,
     onDrawerOpenChanged: (Boolean) -> Unit,
     onDrawerActiveColumnChanged: (DrawerColumn?) -> Unit,
@@ -503,6 +510,9 @@ fun VideoPlayerScreen(
     var autoUpdatePlaylist by remember { mutableStateOf(Prefs.getAutoUpdatePlaylist(context)) }
     // t186 (F1): remote habits (persisted; the Activity re-reads them on resume).
     var remoteHabits by remember { mutableStateOf(Prefs.getRemoteSettings(context)) }
+    // t193 (REMOTE-INSTANT-01): every habits change reaches the Activity immediately, without any
+    // pause/resume cycle — the settings drawer lives in the same Activity.
+    SideEffect { onRemoteSettingsChanged(remoteHabits) }
     var autoUpdateEpg by remember { mutableStateOf(Prefs.getAutoUpdateEpg(context)) }
     var autoUpdateTick by remember { mutableIntStateOf(0) }
     var qualityDialogGroupIndex by remember { mutableIntStateOf(-1) }
