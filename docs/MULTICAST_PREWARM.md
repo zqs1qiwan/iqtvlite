@@ -73,4 +73,12 @@ Default buffer **稳/500**, F1 remote habits, F3 auto-update, F4 audio UI, LoadC
 ## Verification
 
 - Local `--no-daemon` `:app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleDebugAndroidTest`: **BUILD SUCCESSFUL**; JVM **198 tests 0 failures** (`MulticastPrewarmPolicyTest` 5); lint **0 errors**/89 warnings; pair gate missing 0; keep 210 identical; dex contract 7 OK; `check_player_threading` / `check_refresh_paths` / `check_settings_scroll` all OK; APK 16,083,919 B ≤ 30 MB.
-- CI pair receipt: _(filled after run completes)_
+- CI pair receipt (run 44865749199, source `eb3c1913`, **success**, NDK r27, dual ABI/API24, pair gate passed): cloud JVM **198 tests 0 failures** (MulticastPrewarmPolicyTest 5); lint 0 errors / 87 warnings.
+
+| Deliverable | Actual bytes | SHA256 |
+|---|---:|---|
+| app-debug.apk |13,076,429| `9636c7908ccfebc8e520351d3e74d2d57bbff7ecc146da7506735d33fcbfe1ba` |
+| app-debug-androidTest.apk |502,955| `1a380dce17cef66f2dc5e7a81c805b866815256702ce0ef7332cd15243ed56d4` |
+
+- Artifacts: pair `14692395439` (`sha256:9b62ce619180f16741f572b53c8ad2ec71464e65a8ce01bf473a07423d37ac52`, zip 10,360,934 B); reports `14691479550` (`sha256:eed4d695544a965be2d6f98ccf536b5d6cc426c99d7e9ae26f152d8a1bff713c`). Signer `1e61749454e5dda7235e9a4d92085e0d7c6b65ab2978dfe6d02a20477fc81028`.
+- Version: `tv.iqtvlite.app.validation / 10131 / 2.2.0-tivimini-eb3c1913-validation`; label "IQTV Lite 验证版"; min24/target35/compile36; dual ABI; contract missing types/methods/fields empty; keep 210 identical. Size 13,076,429 B ≤ 30 MB.
