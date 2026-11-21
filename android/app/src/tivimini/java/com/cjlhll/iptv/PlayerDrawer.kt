@@ -29,6 +29,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -53,6 +54,7 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -339,7 +341,8 @@ fun PlayerDrawer(
     LaunchedEffect(visible, channels.size, initialScrollIndex) {
         if (!visible || !PerfPolicy.DRAWER_INCREMENTAL_ROWS) return@LaunchedEffect
         // t46：打开只**设定目标**（有界开窗），实际推进交给分帧泵（每帧 +2 行）。
-        val openTarget = (initialScrollIndex + PerfPolicy.DRAWER_LOOKAHEAD_ROWS + PerfPolicy.DRAWER_SCREEN_ROWS)
+        // t48：首屏目标 28 → 18（减少分帧数 13→9），仍按 step=2 分帧推进。
+        val openTarget = (initialScrollIndex + PerfPolicy.DRAWER_OPEN_WINDOW_ROWS)
             .coerceIn(PerfPolicy.DRAWER_FIRST_FRAME_ROWS, channels.size)
         revealedRows = PerfPolicy.DRAWER_FIRST_FRAME_ROWS.coerceIn(0, channels.size)
         revealTarget = openTarget
@@ -1251,6 +1254,8 @@ private fun DrawerChannelItem(
             .fillMaxWidth()
             // t33：固定行高（避免逐行测量/文字重排；长标题仍单行 ellipsis）
             .height(PerfPolicy.DRAWER_ROW_HEIGHT_DP.dp)
+            // t48：行内容严格裁剪在行内（残影的兜底）
+            .clipToBounds()
             .padding(vertical = 3.dp)
             .let { m -> if (focusRequester != null) m.focusRequester(focusRequester) else m }
             .background(bg)
@@ -1278,7 +1283,10 @@ private fun DrawerChannelItem(
         // t44（信息不减法）：**只有聚焦行**才组合节目副标题 + 2dp 进度 —— 每帧最多 1 行，
         // 且聚焦切换时旧行立即释放；不用 FocusMarqueeText/ThinProgressBar（避免动画节点与额外 draw）。
         val programTitle = if (PerfPolicy.DRAWER_FOCUSED_SUBTITLE && focused) nowProgram?.title else null
+        // t48（修残影）：聚焦/非聚焦两种行结构用 `key(...)` 隔开 —— 失焦时整棵副标题子树**销毁重建**，
+        // 不会再复用旧布局/旧 draw 命令；配合外层 clipToBounds，杜绝 t47 观测到的单字残影（城/军/武/音）。
         if (!programTitle.isNullOrBlank()) {
+            key("row_focused_$index") {
             Column(modifier = Modifier.weight(1f, fill = true)) {
                 Text(
                     text = label,
@@ -1287,17 +1295,20 @@ private fun DrawerChannelItem(
                     style = MaterialTheme.typography.titleMedium,
                     color = contentColor
                 )
-                Text(
-                    text = programTitle,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    style = MaterialTheme.typography.bodySmall,
-                    fontSize = 11.sp,
-                    lineHeight = 14.sp,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f),
-                    // t46：给验收一个可断言的语义节点（t45 在语义树里没观测到副标题）。
-                    modifier = Modifier.testTag("drawer_row_subtitle")
-                )
+                // 固定 16dp 高的盒子承载副标题：不给文字任何溢出/裁剪到行外的机会。
+                Box(modifier = Modifier.height(16.dp).fillMaxWidth().clipToBounds()) {
+                    Text(
+                        text = programTitle,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontSize = 11.sp,
+                        lineHeight = 14.sp,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f),
+                        // t46：给验收一个可断言的语义节点（t45 在语义树里没观测到副标题）。
+                        modifier = Modifier.testTag("drawer_row_subtitle")
+                    )
+                }
                 val progress = nowProgram?.progress
                 if (progress != null) {
                     // 2dp 进度：两个 Box（底 + 前景 fillMaxWidth(fraction)），不引入 SubcomposeLayout。
@@ -1316,6 +1327,7 @@ private fun DrawerChannelItem(
                         )
                     }
                 }
+            }
             }
         } else {
             Text(

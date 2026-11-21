@@ -134,6 +134,13 @@ def main() -> int:
         problems.append("PlayerDrawer.kt: subtitle must be gated on focused (t44)")
     if "const val DRAWER_FOCUSED_SUBTITLE = true" not in policy:
         problems.append("PerfPolicy.kt: DRAWER_FOCUSED_SUBTITLE must default true (t44)")
+    # t48: subtitle residue guard (clip + keyed subtree) and 18-row open window
+    if "clipToBounds()" not in drawer_code:
+        problems.append("PlayerDrawer.kt: row content must be clipped (t48 residue guard)")
+    if 'key("row_focused_$index")' not in drawer_code:
+        problems.append("PlayerDrawer.kt: focused subtitle subtree must be keyed (t48 residue guard)")
+    if "const val DRAWER_OPEN_WINDOW_ROWS = 18" not in policy:
+        problems.append("PerfPolicy.kt: DRAWER_OPEN_WINDOW_ROWS must be 18 (t48)")
     if "openTarget" not in drawer_code:
         problems.append("PlayerDrawer.kt: bounded open window (openTarget) missing (t42)")
     # the channel row must not carry the EPG subtitle / marquee / progress bar any more

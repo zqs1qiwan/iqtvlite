@@ -60,8 +60,15 @@ object PerfPolicy {
      */
     const val DRAWER_LOOKAHEAD_ROWS = 16
 
-    /** t39：一屏大约行数（56dp 行 × 12 ≈ 672dp 可视高度）；用于打开时算“工作窗口”。 */
+    /** t39：一屏大约行数（56dp 行 × 12 ≈ 672dp 可视高度）。 */
     const val DRAWER_SCREEN_ROWS = 12
+
+    /**
+     * t48：打开时的工作窗口行数（28 → **18**）。t47 实测巨帧 3 个、50th 53ms；
+     * 首屏目标从 28 行降到 18 行，分帧帧数 13→9，预期巨帧 3→2。
+     * 回退：改回 `DRAWER_LOOKAHEAD_ROWS + DRAWER_SCREEN_ROWS`（=28）。
+     */
+    const val DRAWER_OPEN_WINDOW_ROWS = 18
 
     /**
      * t44：**只在聚焦行**显示节目副标题 + 2dp 进度（信息不减法的折中）。
