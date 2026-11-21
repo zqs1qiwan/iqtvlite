@@ -95,4 +95,11 @@ adb logcat -d -s IQTV-PERF | grep -E 'drawer_compose|drawer_open'
 
 | 项 | 值 |
 |---|---|
-| 提交 / CI | 见 t42 任务输出（本文件随实现提交，定稿后补 run 号） |
+| 提交 | `cab53dc`（perf(drawer) r8：step=2 + 有界 openTarget + 精简行） |
+| CI run（绿） | **#175**，sha `cab53dc`，push，conclusion `success` |
+| 构建 | `BUILD SUCCESSFUL in 3m 36s`；`:app:testDebugUnitTest` + `:app:lintDebug` + `assembleDebug` + `assembleDebugAndroidTest` |
+| 包 | `tv.iqtvlite.app.validation`，versionCode **10175**，versionName `2.2.0-tivimini-cab53dce-validation` |
+| app sha256 | `f9bf69a0d096738c3faba84b445b6fdd7856a5e3331196f0009096bf28590fd2` |
+| test sha256 | `a0f6dae532b1a9c96ec7e099b3725b4ac17c2c9dbb952405dd74ccb06a89ccf2` |
+| 门禁 | logo / info_card / settings_ia / settings_scroll / **perf_policy（含 t42 精简行断言：DrawerChannelItem 内禁止 FocusMarqueeText/ThinProgressBar/nowProgram/无信息）** / player_threading / refresh_paths 全 OK；pair gate `{0,0,0}` |
+| 产物 | `iqtvlite-test-apk`（artifact id 14717803461，10,450,742 B ≪30MB） |
