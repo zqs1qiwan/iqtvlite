@@ -109,6 +109,8 @@ class PlayerActivity : ComponentActivity() {
     private var drawerActiveColumn: DrawerColumn? = null
     private var setSettingsDrawerOpen: ((Boolean) -> Unit)? = null
     private var isSettingsDrawerOpen: Boolean = false
+    // t13（SETTINGS_IA_V2 §5.1）：设置二级页的 BACK 处理器（true = 已从二级退回一级）。
+    private var settingsBackHandler: (() -> Boolean)? = null
     private var setQualityDialogOpen: ((Boolean) -> Unit)? = null
     private var isQualityDialogOpen: Boolean = false
     private var isRecentChannelsOpen: Boolean = false
@@ -208,6 +210,7 @@ class PlayerActivity : ComponentActivity() {
                         onDrawerActiveColumnChanged = { drawerActiveColumn = it },
                         setSettingsDrawerOpenController = { setSettingsDrawerOpen = it },
                         onSettingsDrawerOpenChanged = { isSettingsDrawerOpen = it },
+                        setSettingsBackHandlerController = { handler -> settingsBackHandler = handler },
                         setQualityDialogOpenController = { setQualityDialogOpen = it },
                         onQualityDialogOpenChanged = { isQualityDialogOpen = it },
                         setInfoBannerOpenController = { setInfoBannerOpen = it },
@@ -386,6 +389,8 @@ class PlayerActivity : ComponentActivity() {
                         return true
                     }
                     if (isSettingsDrawerOpen) {
+                        // t13：二级页先退到一级（只退一层）；一级再 BACK 才关抽屉。
+                        if (settingsBackHandler?.invoke() == true) return true
                         setSettingsDrawerOpen?.invoke(false)
                         return true
                     }
@@ -491,6 +496,8 @@ fun VideoPlayerScreen(
     onDrawerActiveColumnChanged: (DrawerColumn?) -> Unit,
     setSettingsDrawerOpenController: (((Boolean) -> Unit)?) -> Unit,
     onSettingsDrawerOpenChanged: (Boolean) -> Unit,
+    // t13: 设置二级页的 BACK 处理器（Activity 侧兜底：二级 → 一级）。
+    setSettingsBackHandlerController: (((() -> Boolean)?) -> Unit),
     setQualityDialogOpenController: (((Boolean) -> Unit)?) -> Unit,
     onQualityDialogOpenChanged: (Boolean) -> Unit,
     setInfoBannerOpenController: (((Boolean) -> Unit)?) -> Unit,
@@ -857,6 +864,7 @@ fun VideoPlayerScreen(
 
     DisposableEffect(Unit) {
         setSettingsDrawerOpenController { settingsDrawerOpen = it }
+        setSettingsBackHandlerController { handler -> settingsBackHandler = handler }
         setQualityDialogOpenController { qualityDialogOpen = it }
         setInfoBannerOpenController { open ->
             // t4：Activity 侧的旧入口（OK 习惯 SHOW_INFO / 回看 UP-DOWN）仍然只表达“显示卡片”。
@@ -866,6 +874,7 @@ fun VideoPlayerScreen(
         }
         onDispose {
             setSettingsDrawerOpenController(null)
+            setSettingsBackHandlerController { _ -> settingsBackHandler = null }
             setQualityDialogOpenController(null)
             setInfoBannerOpenController(null)
         }
@@ -1840,7 +1849,10 @@ fun VideoPlayerScreen(
                     android.widget.Toast.LENGTH_SHORT
                 ).show()
             },
-            onClose = { settingsDrawerOpen = false }
+            onClose = { settingsDrawerOpen = false },
+            // t13（SETTINGS_IA_V2 §5.1）：二级页存在时，BACK 只退到一级（消费按键）；
+            // 一级再 BACK 才关抽屉。Compose 内部也会消费，这里是 Activity 侧的兜底。
+            onBackHandlerReady = setSettingsBackHandlerController
         )
 
         AudioTrackDialog(

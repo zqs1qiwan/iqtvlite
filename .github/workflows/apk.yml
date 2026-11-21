@@ -144,6 +144,9 @@ jobs:
           python3 scripts/check_logo_webp.py
           # t4: 信息卡 v2 结构/焦点/默认值门禁。
           python3 scripts/check_info_card.py
+          # t13: 设置二级 IA 结构/零丢失/Back 层级门禁。
+          python3 scripts/check_settings_ia.py
+          python3 scripts/check_settings_scroll.py
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs "$APK"
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep -E 'package:|native-code:|sdkVersion|targetSdkVersion|application-label:'
           TEST_APK=android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
