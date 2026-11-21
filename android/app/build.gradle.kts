@@ -20,14 +20,36 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
     }
-    val signingFile = System.getenv("ANDROID_SIGNING_KEYSTORE_FILE")
-    val signingPassword = System.getenv("ANDROID_SIGNING_STORE_PASSWORD")
-    val signingAlias = System.getenv("ANDROID_SIGNING_KEY_ALIAS")
-    val signingKeyPassword = System.getenv("ANDROID_SIGNING_KEY_PASSWORD")
-    val stableSigning = listOf(signingFile, signingPassword, signingAlias, signingKeyPassword).all { !it.isNullOrBlank() }
-    require(stableSigning || listOf(signingFile, signingPassword, signingAlias, signingKeyPassword).all { it.isNullOrBlank() }) { "Stable signing requires all four ANDROID_SIGNING_* environment values" }
+    // ── Validation 稳定签名（CI 跨 run 同证书，设备可一直 `adb install -r`） ──
+    // 首选 VALIDATION_*（见 docs/CI_STABLE_SIGNING.md），兼容旧名 ANDROID_SIGNING_*。
+    // 四个值必须同时提供；keystore 文件必须存在。都没配置时回退 Android 自动 debug
+    // keystore（本地开发 / 未加 secrets 的 CI 照常构建，只是签名每个 run 都会变）。
+    val signingFile = System.getenv("VALIDATION_KEYSTORE_FILE")?.takeIf { it.isNotBlank() }
+        ?: System.getenv("ANDROID_SIGNING_KEYSTORE_FILE")?.takeIf { it.isNotBlank() }
+    val signingPassword = System.getenv("VALIDATION_KEYSTORE_PASSWORD")?.takeIf { it.isNotBlank() }
+        ?: System.getenv("ANDROID_SIGNING_STORE_PASSWORD")?.takeIf { it.isNotBlank() }
+    val signingAlias = System.getenv("VALIDATION_KEY_ALIAS")?.takeIf { it.isNotBlank() }
+        ?: System.getenv("ANDROID_SIGNING_KEY_ALIAS")?.takeIf { it.isNotBlank() }
+    val signingKeyPassword = System.getenv("VALIDATION_KEY_PASSWORD")?.takeIf { it.isNotBlank() }
+        ?: System.getenv("ANDROID_SIGNING_KEY_PASSWORD")?.takeIf { it.isNotBlank() }
+    val signingValues = listOf(signingFile, signingPassword, signingAlias, signingKeyPassword)
+    require(signingValues.all { it == null } || signingValues.all { it != null }) {
+        "Stable validation signing needs all four values together: " +
+            "VALIDATION_KEYSTORE_FILE / VALIDATION_KEYSTORE_PASSWORD / VALIDATION_KEY_ALIAS / VALIDATION_KEY_PASSWORD " +
+            "(legacy aliases ANDROID_SIGNING_KEYSTORE_FILE / ANDROID_SIGNING_STORE_PASSWORD / " +
+            "ANDROID_SIGNING_KEY_ALIAS / ANDROID_SIGNING_KEY_PASSWORD). Missing: " +
+            listOf("file", "storePassword", "alias", "keyPassword")
+                .filterIndexed { index, _ -> signingValues[index] == null }
+                .joinToString(", ")
+    }
+    val signingKeystore = signingFile?.let { java.io.File(it) }
+    require(signingKeystore == null || signingKeystore.isFile) {
+        "Configured validation keystore does not exist: $signingKeystore"
+    }
+    // 仅当 keystore 文件确实存在时才启用，避免配置中断导致构建失败或静默换签名。
+    val stableSigning = signingKeystore != null && signingKeystore.isFile
     if (stableSigning) signingConfigs.create("ciStable") {
-        storeFile = file(signingFile!!)
+        storeFile = signingKeystore
         storePassword = signingPassword
         keyAlias = signingAlias
         keyPassword = signingKeyPassword

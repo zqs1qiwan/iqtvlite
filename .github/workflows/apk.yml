@@ -64,22 +64,73 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x android/gradlew
 
-      - name: Prepare stable signing when configured
+      # 稳定签名（跨 run 同证书，设备可一直 `adb install -r` 覆盖升级、永不卸载）。
+      # 首选 VALIDATION_* secrets，兼容旧名 ANDROID_SIGNING_*；四个都配才启用，
+      # 一个都不配则回退 runner 临时 debug keystore（CI 仍然成功，只是签名每 run 变）。
+      # 详见 docs/CI_STABLE_SIGNING.md。
+      - name: Prepare stable validation signing (optional)
+        id: signing
         env:
-          KEYSTORE_BASE64: ${{ secrets.ANDROID_SIGNING_KEYSTORE_BASE64 }}
+          VALIDATION_KEYSTORE_BASE64: ${{ secrets.VALIDATION_KEYSTORE_BASE64 }}
+          LEGACY_KEYSTORE_BASE64: ${{ secrets.ANDROID_SIGNING_KEYSTORE_BASE64 }}
+          VALIDATION_KEYSTORE_PASSWORD: ${{ secrets.VALIDATION_KEYSTORE_PASSWORD }}
+          LEGACY_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_SIGNING_STORE_PASSWORD }}
+          VALIDATION_KEY_ALIAS: ${{ secrets.VALIDATION_KEY_ALIAS }}
+          LEGACY_KEY_ALIAS: ${{ secrets.ANDROID_SIGNING_KEY_ALIAS }}
+          VALIDATION_KEY_PASSWORD: ${{ secrets.VALIDATION_KEY_PASSWORD }}
+          LEGACY_KEY_PASSWORD: ${{ secrets.ANDROID_SIGNING_KEY_PASSWORD }}
         run: |
-          if [ -n "$KEYSTORE_BASE64" ]; then
-            umask 077
-            printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/iqtv-signing.keystore"
-            echo "ANDROID_SIGNING_KEYSTORE_FILE=$RUNNER_TEMP/iqtv-signing.keystore" >> "$GITHUB_ENV"
+          set -u
+          keystore_b64="${VALIDATION_KEYSTORE_BASE64:-${LEGACY_KEYSTORE_BASE64:-}}"
+          store_password="${VALIDATION_KEYSTORE_PASSWORD:-${LEGACY_KEYSTORE_PASSWORD:-}}"
+          key_alias="${VALIDATION_KEY_ALIAS:-${LEGACY_KEY_ALIAS:-}}"
+          key_password="${VALIDATION_KEY_PASSWORD:-${LEGACY_KEY_PASSWORD:-}}"
+
+          if [ -z "$keystore_b64" ] && [ -z "$store_password" ] && [ -z "$key_alias" ] && [ -z "$key_password" ]; then
+            echo "::notice::No validation signing secrets configured -> runner ephemeral debug keystore (APK certificate changes every run)."
+            echo "stable_signing=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "### APK signing"
+              echo ""
+              echo "- Secrets: **not configured** (VALIDATION_KEYSTORE_BASE64 / VALIDATION_KEYSTORE_PASSWORD / VALIDATION_KEY_ALIAS / VALIDATION_KEY_PASSWORD)"
+              echo "- Keystore: ephemeral Android debug keystore, regenerated on every run"
+              echo "- In-place upgrade with \`adb install -r\` across runs: **not possible** (\`INSTALL_FAILED_UPDATE_INCOMPATIBLE\`)"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
           fi
+
+          # 部分配置 = 配置错误；宁可红也不要静默回退到每次都会变的 debug keystore。
+          missing=""
+          [ -n "$keystore_b64" ]   || missing="$missing VALIDATION_KEYSTORE_BASE64"
+          [ -n "$store_password" ] || missing="$missing VALIDATION_KEYSTORE_PASSWORD"
+          [ -n "$key_alias" ]      || missing="$missing VALIDATION_KEY_ALIAS"
+          [ -n "$key_password" ]   || missing="$missing VALIDATION_KEY_PASSWORD"
+          if [ -n "$missing" ]; then
+            echo "::error::Validation signing is partially configured. Missing:$missing (set all four secrets or none)."
+            exit 1
+          fi
+
+          umask 077
+          keystore="$RUNNER_TEMP/validation-signing.keystore"
+          printf '%s' "$keystore_b64" | tr -d ' \t\r\n' | base64 --decode > "$keystore"
+          if [ ! -s "$keystore" ]; then
+            echo "::error::Decoded validation keystore is empty; check the VALIDATION_KEYSTORE_BASE64 secret."
+            exit 1
+          fi
+          # 口令/别名错误在这里就红，避免产出一个用错密钥签名的 APK。
+          keytool -list -keystore "$keystore" -storepass "$store_password" -alias "$key_alias" > /dev/null
+
+          {
+            echo "VALIDATION_KEYSTORE_FILE=$keystore"
+            echo "VALIDATION_KEYSTORE_PASSWORD=$store_password"
+            echo "VALIDATION_KEY_ALIAS=$key_alias"
+            echo "VALIDATION_KEY_PASSWORD=$key_password"
+          } >> "$GITHUB_ENV"
+          echo "stable_signing=true" >> "$GITHUB_OUTPUT"
+          echo "::notice::Stable validation signing enabled (keystore alias: $key_alias)."
 
       - name: Build debug APK
         working-directory: android
-        env:
-          ANDROID_SIGNING_STORE_PASSWORD: ${{ secrets.ANDROID_SIGNING_STORE_PASSWORD }}
-          ANDROID_SIGNING_KEY_ALIAS: ${{ secrets.ANDROID_SIGNING_KEY_ALIAS }}
-          ANDROID_SIGNING_KEY_PASSWORD: ${{ secrets.ANDROID_SIGNING_KEY_PASSWORD }}
         run: ./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleDebugAndroidTest -PISOLATED_TEST_PACKAGE=${{ inputs.isolated_test_package || false }} --stacktrace
 
       - name: Verify APK contains Rust .so
@@ -103,6 +154,60 @@ jobs:
           done
         env:
           ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+
+      # 签名稳定性断言 + 每 run 可对比的证书指纹（Step Summary + reports artifact）。
+      # 1) 主包与 androidTest 包必须同一证书；2) 配了固定 keystore 时 APK 证书必须等于
+      # keystore 证书 —— 这两条保证后续每个 run 的 APK 都能被同一个已装包覆盖升级。
+      # （配合 keystore 配置时：VALIDATION_* 由上一步写入 $GITHUB_ENV，本步直接可见）
+      - name: Verify APK signing certificate
+        run: |
+          set -u
+          APKSIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
+          APK=android/app/build/outputs/apk/debug/app-debug.apk
+          TEST_APK=android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+          apk_cert=$("$APKSIGNER" verify --print-certs "$APK" | grep -m1 'certificate SHA-256 digest' | sed 's/.*digest: //' | tr -d '[:space:]' | tr 'A-F' 'a-f')
+          test_cert=$("$APKSIGNER" verify --print-certs "$TEST_APK" | grep -m1 'certificate SHA-256 digest' | sed 's/.*digest: //' | tr -d '[:space:]' | tr 'A-F' 'a-f')
+          echo "debug APK signer sha256: $apk_cert"
+          echo "androidTest APK signer sha256: $test_cert"
+          if [ -z "$apk_cert" ] || [ "$apk_cert" != "$test_cert" ]; then
+            echo "::error::Main APK and androidTest APK are not signed by the same certificate; the validation pair is unusable."
+            exit 1
+          fi
+
+          keystore_cert=""
+          if [ -n "${VALIDATION_KEYSTORE_FILE:-}" ] && [ -n "${VALIDATION_KEYSTORE_PASSWORD:-}" ] && [ -n "${VALIDATION_KEY_ALIAS:-}" ]; then
+            keytool -exportcert -rfc \
+              -keystore "$VALIDATION_KEYSTORE_FILE" \
+              -storepass "$VALIDATION_KEYSTORE_PASSWORD" \
+              -alias "$VALIDATION_KEY_ALIAS" > "$RUNNER_TEMP/validation-signing.pem" 2>/dev/null || true
+            keystore_cert=$(openssl x509 -in "$RUNNER_TEMP/validation-signing.pem" -noout -fingerprint -sha256 2>/dev/null | sed 's/.*=//' | tr -d ':' | tr 'A-F' 'a-f' || true)
+            if [ -z "$keystore_cert" ]; then
+              echo "::warning::Could not derive the configured keystore certificate fingerprint; skipping the stability assertion for this run."
+            elif [ "$apk_cert" != "$keystore_cert" ]; then
+              echo "::error::APK signer $apk_cert does not match the configured validation keystore certificate $keystore_cert."
+              exit 1
+            fi
+          fi
+
+          {
+            echo "### APK signing certificate"
+            echo ""
+            echo "| Item | SHA-256 |"
+            echo "| --- | --- |"
+            echo "| debug APK signer | \`$apk_cert\` |"
+            echo "| androidTest APK signer | \`$test_cert\` |"
+            if [ -n "${VALIDATION_KEYSTORE_FILE:-}" ]; then
+              echo "| configured keystore cert | \`${keystore_cert:-unavailable}\` |"
+              echo ""
+              echo "Stable validation signing is **active**: this fingerprint must be identical in every run, so \`adb install -r\` keeps working without uninstalling."
+            else
+              echo ""
+              echo "Stable validation signing is **not configured**: the debug keystore is regenerated per run, so APKs from different runs cannot be installed over each other (see docs/CI_STABLE_SIGNING.md)."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          mkdir -p android/app/build/reports
+          printf 'debug-apk-sha256: %s\nandroidtest-apk-sha256: %s\nconfigured-keystore-sha256: %s\n' \
+            "$apk_cert" "$test_cert" "${keystore_cert:-none}" | tee android/app/build/reports/signing-certificate.txt
 
       - name: Upload APK
         uses: actions/upload-artifact@v4

@@ -41,7 +41,7 @@ Windows 使用 `gradlew.bat`。本机缺少 MSVC link.exe，可按命令选择�
 
 CI 版本由 run number/commit 派生，也支持 `APP_VERSION_CODE`、`APP_VERSION_NAME` Gradle属性。现装生产包与本轮CI证书不同；CI主包和测试包是同签名匹配对，须取自同一run。不得默认卸载或清数据；采用隔离包验收。
 
-工作流提供可选的稳定签名环境配置。需要维护者安全配置 `ANDROID_SIGNING_KEYSTORE_BASE64`、`ANDROID_SIGNING_STORE_PASSWORD`、`ANDROID_SIGNING_KEY_ALIAS`、`ANDROID_SIGNING_KEY_PASSWORD` 四个 GitHub secrets。没有配置时仍是临时 debug 签名，不能承诺跨CI可升级。仓库不包含任何私钥或签名密码。
+工作流提供可选的稳定签名：维护者按 `docs/CI_STABLE_SIGNING.md` 一次性生成固定 keystore，并配置 `VALIDATION_KEYSTORE_BASE64`、`VALIDATION_KEYSTORE_PASSWORD`、`VALIDATION_KEY_ALIAS`、`VALIDATION_KEY_PASSWORD` 四个 GitHub secrets（旧名 `ANDROID_SIGNING_*` 仍兼容）。配好后每个 run 的 validation 包证书恒定，设备可一直 `adb install -r` 覆盖升级、永不卸载（历史 debug 证书不同，切换时仅需一次卸载）；没配时仍是临时 debug 签名，不能承诺跨 CI 可升级。仓库不包含任何私钥或签名密码。
 
 ## 验收
 

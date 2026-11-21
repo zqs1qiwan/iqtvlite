@@ -11,6 +11,8 @@
 *.aab
 *.keystore
 *.jks
+# 签名材料的本机副本（gen-validation-keystore.ps1 产出），永不提交
+*.b64.txt
 /android/.kotlin/
 
 # Rust Android 产物（CI 构建）
