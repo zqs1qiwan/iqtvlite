@@ -27,6 +27,11 @@ class JingcaiTsPipeline(
     private var alignment = ALIGN_UNKNOWN
     private var filtered = 0
     private var rewrotePmt = 0
+    // t54：实验 D（剥离 PCR）与 E（PES 时间戳归零）的计数与基准。
+    private var strippedPcr = 0
+    private var rewrittenPes = 0
+    private var basePts90k = -1L
+    private var vPts: Long? = null
 
     var pcrPid: Int = -1
         private set
@@ -191,14 +196,16 @@ class JingcaiTsPipeline(
         }
     }
 
-    fun diagnosticLine(): String = JingcaiTimeline.diagnosticLine(
-        mode = if (autoActivated) "auto-on" else modeLabel,
-        pcrSeconds = pcrSeconds,
-        ptsSeconds = ptsSeconds,
-        pcrPid = pcrPid,
-        filtered = filtered,
-        rewrotePmt = rewrotePmt,
-    )
+    fun diagnosticLine(): String =
+        JingcaiTimeline.diagnosticLine(
+            mode = if (autoActivated) "auto-on" else modeLabel,
+            pcrSeconds = pcrSeconds,
+            ptsSeconds = ptsSeconds,
+            pcrPid = pcrPid,
+            filtered = filtered,
+            rewrotePmt = rewrotePmt,
+        ) + " strip_pcr=$strippedPcr pes_rewrite=$rewrittenPes vpts=" +
+            (vPts?.let { String.format(java.util.Locale.US, "%.3f", it / 90_000.0) } ?: "none")
 
     fun pendingBytes(): Int = end - start
 
