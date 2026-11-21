@@ -52,17 +52,33 @@ object FirstFrameWatchdogPolicy {
         @Synchronized
         fun currentChannel(): String? = channelKey
 
-        /** First frame arrived → cancel. */
+        /**
+         * t228 (WATCHDOG-RETRY-01): a first frame always cancels — including the frame produced by a
+         * RETRY (which does not go through `Metrics.begin`). Bumping the generation makes every timer
+         * that was already scheduled inert.
+         */
         @Synchronized
-        fun onFirstFrame() {
+        fun onFirstFrame(): Boolean {
+            val was = armed
             armed = false
+            generation++
+            return was
         }
 
-        /** New zap / pause / overlay / exit → cancel silently. */
+        /**
+         * New zap / pause / overlay / exit → cancel silently.
+         * t228 (WATCHDOG-PAUSE-01): the generation MUST advance, otherwise a stale timer could come
+         * back later and silently cancel a NEWER channel's watchdog.
+         */
         @Synchronized
         fun cancel() {
             armed = false
+            generation++
         }
+
+        /** t228: is this timer still the owner? Checked *before* touching the player (release safety). */
+        @Synchronized
+        fun isCurrent(gen: Int): Boolean = armed && gen == generation
 
         /**
          * A timer of [gen] expired. Stale generations (already re-armed by a newer zap) are ignored.
@@ -70,8 +86,7 @@ object FirstFrameWatchdogPolicy {
          */
         @Synchronized
         fun onTimeout(gen: Int): Action {
-            if (!armed) return Action.IGNORE
-            if (gen != generation) return Action.IGNORE   // a newer zap owns the watchdog now
+            if (!isCurrent(gen)) return Action.IGNORE   // a newer zap/frame owns the watchdog now
             if (retries < maxRetries) {
                 retries++
                 return Action.RETRY

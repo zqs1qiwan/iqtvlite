@@ -29,6 +29,9 @@ object StreamPlayback {
     // t225: one first-frame watchdog per player (see FirstFrameWatchdogPolicy).
     private val watchdogs = java.util.WeakHashMap<ExoPlayer, FirstFrameWatchdogPolicy.Watchdog>()
     private val watchdogScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    // t228 (WATCHDOG-RELEASE-01): the timers must be cancellable, otherwise one can wake up after the
+    // player was released and touch it / the old Activity's Context.
+    private val watchdogJobs = java.util.WeakHashMap<ExoPlayer, MutableList<Job>>()
     private val sessions = java.util.WeakHashMap<ExoPlayer, Metrics>()
 
     fun restore(context: Context, url: String, title: String): Channel {
@@ -38,6 +41,8 @@ object StreamPlayback {
         else Channel(title=title, url=url)
     }
     fun release(player: ExoPlayer) {
+        // t228 (RELEASE-01): kill the timers first, then the policy, then the player.
+        watchdogJobs.remove(player)?.forEach { it.cancel() }
         watchdogs.remove(player)?.cancel()
         sessions.remove(player)?.let {
             it.cancelSummary()
@@ -80,20 +85,25 @@ object StreamPlayback {
                 android.os.SystemClock.elapsedRealtime()
             )
         }
+        // t225/t228: arm BEFORE prepare — a fast first frame must never arrive un-armed (ARM-01).
+        armWatchdog(player, context, channelId)
         ZapTrace.onPrepare(android.os.SystemClock.elapsedRealtime())
         player.prepare()
         player.play()
-        // t225: if no first frame arrives in 8 s, retry once and then tell the user (see policy).
-        armWatchdog(player, context, channelId)
         return prepared
     }
 
-    /** t225: arm a generation-stamped watchdog after every prepare. */
+    /** t225/t228: arm a generation-stamped watchdog right before every prepare. */
     private fun armWatchdog(player: ExoPlayer, context: Context, channelId: Long) {
+        // drop any timer of the previous channel before starting a new generation
+        watchdogJobs.remove(player)?.forEach { it.cancel() }
         val watchdog = watchdogs.getOrPut(player) { FirstFrameWatchdogPolicy.Watchdog() }
         val gen = watchdog.arm("$channelId")
-        watchdogScope.launch(Dispatchers.Main) {
+        val job = watchdogScope.launch(Dispatchers.Main) {
             delay(watchdog.timeoutMillis())
+            // t228 (RELEASE-01/PAUSE-01): check ownership BEFORE touching the player, so a stale
+            // generation can neither use a released player nor cancel the newer channel's watchdog.
+            if (!watchdog.isCurrent(gen)) return@launch
             // Pausing sets playWhenReady = false; a paused zap must not be retried. (A rebuffer keeps
             // playWhenReady true, so buffering still counts as "should be playing".)
             if (!player.playWhenReady) {
@@ -113,8 +123,9 @@ object StreamPlayback {
                     } catch (e: Exception) {
                         // a failed retry must never crash playback
                     }
-                    watchdogScope.launch(Dispatchers.Main) {
+                    val retryJob = watchdogScope.launch(Dispatchers.Main) {
                         delay(watchdog.timeoutMillis())
+                        if (!watchdog.isCurrent(gen)) return@launch
                         if (player.playWhenReady &&
                             watchdog.onTimeout(gen) == FirstFrameWatchdogPolicy.Action.GIVE_UP
                         ) {
@@ -125,6 +136,7 @@ object StreamPlayback {
                             ).show()
                         }
                     }
+                    watchdogJobs.getOrPut(player) { ArrayList() }.add(retryJob)
                 }
                 FirstFrameWatchdogPolicy.Action.GIVE_UP -> android.widget.Toast.makeText(
                     context,
@@ -134,6 +146,7 @@ object StreamPlayback {
                 FirstFrameWatchdogPolicy.Action.IGNORE -> Unit
             }
         }
+        watchdogJobs.getOrPut(player) { ArrayList() }.add(job)
     }
 
     /** t225: the first frame cancels the watchdog for this player. */
@@ -291,8 +304,11 @@ object StreamPlayback {
             binding?.let { onFailure(PlaybackFailure(it)) }
         }
         override fun onRenderedFirstFrame(eventTime: AnalyticsListener.EventTime, output: Any, renderTimeMs: Long) {
-            if (!matches(eventTime) || firstFrame) return
+            // t228 (RETRY-01): notify the watchdog FIRST — a retry does not call begin(), so
+            // `firstFrame` is still true and the old early-return swallowed the retry's success,
+            // which made the second timer fire a bogus "cannot play" toast.
             onFirstFrameForWatchdog(player)
+            if (!matches(eventTime) || firstFrame) return
             firstFrame = true
             emit("first_frame", "ttff_ms=${SystemClock.elapsedRealtime()-preparedAt} rendered_at=$renderTimeMs")
         }

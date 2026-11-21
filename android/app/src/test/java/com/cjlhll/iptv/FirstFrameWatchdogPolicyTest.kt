@@ -64,6 +64,60 @@ class FirstFrameWatchdogPolicyTest {
     }
 
     @Test
+    fun aFirstFrameAfterARetryCancelsTheSecondTimer() {
+        // t228 (RETRY-01): the retry does not call Metrics.begin(), so the frame it produces used to be
+        // swallowed by the `firstFrame` early-return and the second timer fired a bogus toast.
+        val w = FirstFrameWatchdogPolicy.Watchdog()
+        val gen = w.arm("c9")
+        assertEquals(retry, w.onTimeout(gen))          // 8 s: retry
+        assertTrue(w.onFirstFrame())                   // retry worked → cancel
+        assertEquals("no toast after a successful retry", ignore, w.onTimeout(gen))
+        assertFalse(w.isArmed())
+    }
+
+    @Test
+    fun aSecondFrameForTheSameChannelIsHarmless() {
+        val w = FirstFrameWatchdogPolicy.Watchdog()
+        val gen = w.arm("c9")
+        w.onFirstFrame()
+        assertFalse("second frame does nothing", w.onFirstFrame())
+        assertEquals(ignore, w.onTimeout(gen))
+    }
+
+    @Test
+    fun aPausedNewChannelIsNotKilledByTheOldTimer() {
+        // t228 (PAUSE-01): the old generation must not be able to cancel the new one.
+        val w = FirstFrameWatchdogPolicy.Watchdog()
+        val old = w.arm("c1")
+        val fresh = w.arm("c2")                        // user zapped to another channel
+        assertFalse("old timer is stale", w.isCurrent(old))
+        assertTrue("the new channel still owns the watchdog", w.isCurrent(fresh))
+        // the stale timer waking up must be a no-op, whatever the new channel's play state is
+        assertEquals(ignore, w.onTimeout(old))
+        assertTrue(w.isCurrent(fresh))
+    }
+
+    @Test
+    fun releaseInvalidatesEveryTimer() {
+        val w = FirstFrameWatchdogPolicy.Watchdog()
+        val gen = w.arm("c3")
+        w.cancel()                                     // release path
+        assertFalse(w.isCurrent(gen))
+        assertEquals(ignore, w.onTimeout(gen))
+    }
+
+    @Test
+    fun fastFirstFrameBeforeArmingIsCovered() {
+        // t228 (ARM-01): the production path arms BEFORE prepare(); a frame that arrives immediately
+        // therefore always cancels a live watchdog instead of leaving an un-cancelled timer behind.
+        val w = FirstFrameWatchdogPolicy.Watchdog()
+        val gen = w.arm("c4")                          // armed before prepare()
+        assertTrue("the first frame cancels the live watchdog", w.onFirstFrame())
+        assertFalse(w.isCurrent(gen))
+        assertEquals(ignore, w.onTimeout(gen))
+    }
+
+    @Test
     fun theRetryLogLineIsStable() {
         assertEquals(
             "firstFrameTimeout retry=1 channel=c7",
