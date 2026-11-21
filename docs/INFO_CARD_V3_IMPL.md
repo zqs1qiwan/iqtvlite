@@ -74,5 +74,14 @@
 
 | 项 | 值 |
 |---|---|
-| 提交 / CI | 见 t24 任务输出（本文件随实现提交，文档定稿后补 run 号） |
-| 未改 | 播放/零拷贝/设置/台标/自动更新/音轨；t20 perf 默认值（M1/E4/E1）保持现状 |
+| 提交链 | `3180954`（v3 实现）→ `68c6e51`（channelLabel when 条件修正）→ `84e3693`（bitrate 一位小数 HALF_DOWN，950k→0.9Mbps） |
+| CI run（绿） | **#160**，sha `84e3693`，push，conclusion `success` |
+| 构建 | `BUILD SUCCESSFUL in 3m 28s`；`:app:testDebugUnitTest`（312 用例，含新增 `InfoCardBadgeTest` 11 例）+ `:app:lintDebug` + `assembleDebug` + `assembleDebugAndroidTest` |
+| 包 | `tv.iqtvlite.app.validation`，versionCode **10160**，versionName `2.2.0-tivimini-84e36930-validation` |
+| app sha256 | `623081d2cd1ec7e0477728e03f19afc6bdddeea1f4edd36205097b69e6ac319d` |
+| test sha256 | `8928141b6fd74d9631c60cca0c988e759d666d936ad72c505bbddb0d7ebcf0e0` |
+| 门禁 | logo / **info_card(v3 新增断言)** / settings_ia / settings_scroll / perf_policy 全 OK；pair gate `{0,0,0}` |
+| 产物 | `iqtvlite-test-apk`（artifact id 14708775885，10,448,106 B ≪30MB） |
+| 未改 | 播放/零拷贝/设置/台标/自动更新/音轨；t20 perf 默认值（M1/E4/E1）保持现状；无 Prefs 迁移 |
+
+> 修复过程：`#158` 编译错（`channelLabel` 的 `when { 1 -> … }` 缺布尔条件）→ `#159` 单测 1 红（`%.1f` 把 950k 进位成 1.0Mbps，规格要求 0.9）→ `#160` 全绿。
