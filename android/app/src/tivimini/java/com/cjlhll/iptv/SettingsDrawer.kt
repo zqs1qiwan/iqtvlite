@@ -13,6 +13,11 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -22,6 +27,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -33,6 +39,7 @@ import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import androidx.compose.ui.platform.testTag
@@ -144,7 +151,13 @@ fun SettingsDrawer(
                     .padding(24.dp)
             ) {
                 Column(
-                    modifier = Modifier.fillMaxSize()
+                    // t192: the settings list scrolls. Before this, rows past ~y=980 (立即刷新EPG /
+                    // 自动更新EPG / 上次更新) were unreachable on a 1080p/240dpi TV: DOWN moved focus
+                    // off-screen and neither the D-pad nor a swipe scrolled the column.
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
+                        .testTag("settings_list")
                 ) {
                     Text(
                         text = "设置",
@@ -158,6 +171,7 @@ fun SettingsDrawer(
                     SettingsItem(
                         text = "源配置",
                         focusRequester = sourceConfigRequester,
+                        tag = "settings_source_config",
                         onClick = onSourceConfigClick
                     )
 
@@ -166,6 +180,7 @@ fun SettingsDrawer(
                     SettingsItem(
                         text = "更新EPG",
                         focusRequester = epgSettingsRequester,
+                        tag = "settings_epg_source",
                         onClick = onEpgSettingsClick
                     )
 
@@ -175,6 +190,7 @@ fun SettingsDrawer(
                         SettingsItem(
                             text = "源选择",
                             focusRequester = qualityMenuRequester,
+                            tag = "settings_quality_menu",
                             onClick = onQualityMenuClick
                         )
                     }
@@ -184,6 +200,7 @@ fun SettingsDrawer(
                     SettingsItem(
                         text = "检查更新",
                         focusRequester = checkUpdateRequester,
+                        tag = "settings_check_update",
                         onClick = onCheckUpdateClick
                     )
 
@@ -308,6 +325,7 @@ fun SettingsDrawer(
                     // t154: perf-isolation switches (default on; turning them off lowers load on
                     // weak boxes and isolates the cost during A/B measurements).
                     SettingsItem(
+                        tag = "settings_logo_prefetch",
                         text = if (logoPrefetchEnabled) "台标预取：开" else "台标预取：关",
                         focusRequester = logoPrefetchRequester,
                         onClick = { onToggleLogoPrefetch(!logoPrefetchEnabled) }
@@ -320,6 +338,7 @@ fun SettingsDrawer(
                     )
                     Spacer(modifier = Modifier.padding(4.dp))
                     SettingsItem(
+                        tag = "settings_logo_load",
                         text = if (logoLoadEnabled) "台标显示：开" else "台标显示：关",
                         focusRequester = logoLoadRequester,
                         onClick = { onToggleLogoLoad(!logoLoadEnabled) }
@@ -340,6 +359,7 @@ fun SettingsDrawer(
                     SettingsItem(
                         text = "清理台标缓存",
                         focusRequester = logoClearRequester,
+                        tag = "settings_logo_clear",
                         onClick = onClearLogoCache
                     )
                 }
@@ -360,6 +380,7 @@ private fun SettingsGroupHeader(text: String) {
 }
 
 @Composable
+@OptIn(ExperimentalFoundationApi::class)
 private fun SettingsItem(
     text: String,
     focusRequester: FocusRequester?,
@@ -367,6 +388,10 @@ private fun SettingsItem(
     tag: String? = null,
 ) {
     var focused by remember { mutableStateOf(false) }
+    // t192: when the D-pad moves focus to a row that is outside the viewport, scroll it into view.
+    // Every row gets its own requester, so no call site has to know about scrolling.
+    val bringIntoView = remember { BringIntoViewRequester() }
+    val scope = rememberCoroutineScope()
     val bg = when {
         focused -> MaterialTheme.colorScheme.surfaceVariant
         else -> MaterialTheme.colorScheme.surface.copy(alpha = 0.01f)
@@ -378,8 +403,14 @@ private fun SettingsItem(
             .let { m -> if (tag != null) m.testTag(tag) else m }
             .semantics { contentDescription = text }
             .let { m -> if (focusRequester != null) m.focusRequester(focusRequester) else m }
+            .bringIntoViewRequester(bringIntoView)
             .background(bg, RoundedCornerShape(0.dp))
-            .onFocusChanged { focused = it.isFocused }
+            .onFocusChanged {
+                focused = it.isFocused
+                if (it.isFocused) {
+                    scope.launch { runCatching { bringIntoView.bringIntoView() } }
+                }
+            }
             .focusable()
             .clickable {
                 onClick()
