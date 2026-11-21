@@ -26,8 +26,11 @@ class PerfPolicyTest {
     @Test
     fun drawerUsesOpaqueContainerToAvoidFullLayerAlphaBlend() {
         assertTrue("E4：抽屉容器必须不透明（避免每帧整层 alpha 合成）", PerfPolicy.DRAWER_OPAQUE_CONTAINER)
-        // t27（D2）：默认打开后 120ms 再组合列表内容（面板先出、内容后到），可 A/B 改 0。
-        assertTrue(PerfPolicy.DRAWER_DEFER_CONTENT_MS in 100L..200L)
+        // t29（D4）：不再延迟——从第 0 帧起分帧增量组合，首屏 10 行、每帧 +3 行。
+        assertEquals("去掉 120ms 延迟，从第 0 帧开始", 0L, PerfPolicy.DRAWER_DEFER_CONTENT_MS)
+        assertTrue(PerfPolicy.DRAWER_INCREMENTAL_ROWS)
+        assertEquals(10, PerfPolicy.DRAWER_FIRST_FRAME_ROWS)
+        assertEquals(3, PerfPolicy.DRAWER_ROWS_PER_FRAME)
         assertEquals("D1：不额外预组合（严格可见区）", 0, PerfPolicy.DRAWER_OVERSCAN_ITEMS)
     }
 
@@ -92,6 +95,24 @@ class PerfPolicyTest {
     @Test
     fun settingsPagesAreNotAnimated() {
         assertFalse("层内直接替换，避免转场动画带来的 jank", PerfPolicy.SETTINGS_PAGE_ANIMATED)
+    }
+
+    @Test
+    fun revealedRowsGrowPerFrameAndStopAtTotal() {
+        // 首帧：0 → 10（首屏一屏可见行）
+        assertEquals(10, PerfPolicy.nextRevealedRows(0, 147))
+        // 之后每帧 +3
+        assertEquals(13, PerfPolicy.nextRevealedRows(10, 147))
+        assertEquals(16, PerfPolicy.nextRevealedRows(13, 147))
+        // 到顶后钳住，不会越界（LazyColumn subList 依赖这一点）
+        assertEquals(147, PerfPolicy.nextRevealedRows(145, 147))
+        assertEquals(147, PerfPolicy.nextRevealedRows(147, 147))
+        // 空列表/小列表
+        assertEquals(0, PerfPolicy.nextRevealedRows(0, 0))
+        assertEquals(5, PerfPolicy.nextRevealedRows(0, 5))
+        assertEquals(5, PerfPolicy.nextRevealedRows(3, 5))
+        // 首帧就够（total < 10）
+        assertEquals(8, PerfPolicy.nextRevealedRows(0, 8))
     }
 
     @Test

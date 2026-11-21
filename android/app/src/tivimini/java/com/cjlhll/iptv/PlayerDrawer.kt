@@ -29,6 +29,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -215,19 +216,53 @@ fun PlayerDrawer(
     val perfOpenAt = remember { longArrayOf(0L) }
     // t27（D1/D3）：统计“打开时真正组合了多少行”（旧日志 rows=channels.size 是总数，误导验收）。
     val composedUrls = remember { HashSet<String>() }
-    // t20（E1）：关闭时不组合列表；DRAWER_DEFER_CONTENT_MS>0 时先画面板再组合列表。
+    // t20（E1）：关闭时不组合列表。
+    // t29（D4）：打开时**分帧增量组合** —— 首帧 10 行，之后每帧 +3 行（withFrameNanos 驱动），
+    // 避免"120ms 后一次性大块组合"造成的 300+ms 巨帧（t28 实测 5 个 332–368ms）。
     var contentReady by remember { mutableStateOf(PerfPolicy.DRAWER_DEFER_CONTENT_MS <= 0L) }
+    var revealedRows by remember { mutableIntStateOf(0) }
     val showContent = visible && contentReady
+    val visibleRows = if (!PerfPolicy.DRAWER_INCREMENTAL_ROWS) channels.size
+    else revealedRows.coerceIn(0, channels.size)
     LaunchedEffect(visible) {
         if (!visible) {
             contentReady = false
+            revealedRows = 0
             composedUrls.clear()
         } else if (PerfPolicy.DRAWER_DEFER_CONTENT_MS > 0L) {
             contentReady = false
+            revealedRows = 0
             delay(PerfPolicy.DRAWER_DEFER_CONTENT_MS)
             contentReady = true
         } else {
             contentReady = true
+            revealedRows = 0
+        }
+    }
+    // t29：逐帧把行数补到 total（每帧一次，单帧最多 3 行 → 单帧工作量远低于 16ms）。
+    // 埋点：drawer_compose frames=<补了几帧> rows=<总行数> lastFrameRows=<末帧新增行>。
+    LaunchedEffect(visible, channels.size) {
+        if (!visible || !PerfPolicy.DRAWER_INCREMENTAL_ROWS) return@LaunchedEffect
+        var frames = 0
+        while (revealedRows < channels.size) {
+            val before = revealedRows
+            androidx.compose.runtime.withFrameNanos { }
+            revealedRows = PerfPolicy.nextRevealedRows(revealedRows, channels.size)
+            frames++
+            if (frames == 1 || revealedRows >= channels.size) {
+                PerfTrace.d {
+                    "drawer_compose frames=$frames rows=${channels.size} " +
+                        "lastFrameRows=${revealedRows - before} first=${PerfPolicy.DRAWER_FIRST_FRAME_ROWS}"
+                }
+            }
+        }
+        // t29：补行完成后再校正一次滚动（首帧只有 10 行时，scrollToItem(选中行) 会先被钳住）。
+        if (activeColumn == DrawerColumn.Channels) {
+            val target = focusedChannelUrl ?: selectedChannelUrl
+            val idx = target?.let { channelIndexByUrl[it] }
+            if (idx != null && idx !in channelListState.layoutInfo.visibleItemsInfo.map { it.index }) {
+                runCatching { channelListState.scrollToItem((idx - 2).coerceAtLeast(0)) }
+            }
         }
     }
     LaunchedEffect(visible) {
@@ -243,7 +278,8 @@ fun PlayerDrawer(
         if (started > 0L) {
             val ms = android.os.SystemClock.elapsedRealtime() - started
             PerfTrace.d {
-                "drawer_open ms=$ms total=${channels.size} composed=${composedUrls.size} groups=${groups.size} group=$selectedGroup"
+                "drawer_open ms=$ms total=${channels.size} composed=${composedUrls.size} " +
+                    "revealed=$revealedRows first=${PerfPolicy.DRAWER_FIRST_FRAME_ROWS} groups=${groups.size} group=$selectedGroup"
             }
         }
     }
@@ -387,7 +423,10 @@ fun PlayerDrawer(
         if (channels.isEmpty() || activeColumn != DrawerColumn.Channels) return@LaunchedEffect
 
         isFocusRestoring = true
-        repeat(15) {
+        // t29：分帧组合下，选中行可能要几百毫秒后才被组合出来 → 重试窗口按帧计（最多 ~90 帧≈1.5s），
+        // 只要选中行还没出现就继续等；一旦拿到焦点立刻返回（不改变“打开即聚焦选中行”的行为）。
+        var attempts = 0
+        while (attempts < 90) {
             if (activeColumn != DrawerColumn.Channels) {
                 isFocusRestoring = false
                 return@LaunchedEffect
@@ -396,7 +435,13 @@ fun PlayerDrawer(
                 isFocusRestoring = false
                 return@LaunchedEffect
             }
-            delay(30)
+            // 分帧补行期间优先用帧同步；补完后退回 30ms 轮询。
+            if (revealedRows < channels.size) {
+                androidx.compose.runtime.withFrameNanos { }
+            } else {
+                delay(30)
+            }
+            attempts++
         }
         isFocusRestoring = false
     }
@@ -824,8 +869,9 @@ fun PlayerDrawer(
                             modifier = Modifier.fillMaxSize(),
                             state = channelListState
                         ) {
+                            // t29（D4）：只先组合前 visibleRows 行（其余逐帧补），避免单帧大块组合。
                             itemsIndexed(
-                                channels,
+                                channels.subList(0, visibleRows.coerceIn(0, channels.size)),
                                 key = { index, ch -> "${index}:${ch.url}" },
                                 contentType = { _, _ -> "channel" },
                             ) { index, ch ->

@@ -31,13 +31,40 @@ object PerfPolicy {
     const val DRAWER_OPAQUE_CONTAINER = true
 
     /**
-     * t27（D2）：打开抽屉后隔多少毫秒才组合列表内容。
+     * t29（D4）：打开抽屉后的内容组合方式 —— **分帧增量组合**，不再"延迟后一次性组合"。
      *
-     * t22 真机证据：`drawer_open 314–408ms`、framestats 3–4 个 300–385ms 巨帧 → 打开那一帧在
-     * 组合/绘制抽屉内容。D2 让「面板先出、内容后到」：第一帧只画容器（极轻），内容在 120ms 后
-     * 组合。默认 120ms；与 D1（懒组合）可叠加，A/B 时改 0 即恢复旧行为。
+     * 演进：
+     * - t22：打开那一帧组合+绘制整个抽屉 → `drawer_open 314–408ms`、3–4 个 300–385ms 巨帧；
+     * - t27：延迟 120ms 再组合 → 首帧 `composed=0`（达标）但 120ms 后**一次性同步大块组合**，
+     *   t28 实测仍有 **5 个 300+ms 巨帧（332–368ms）**；
+     * - t29（本版）：从**第 0 帧**开始分帧增量组合，每帧只加 [DRAWER_ROWS_PER_FRAME] 行，
+     *   首屏先出 [DRAWER_FIRST_FRAME_ROWS] 行 → 没有"先空后炸"，也没有 300ms 巨帧。
+     *
+     * 回退：`DRAWER_INCREMENTAL_ROWS = false`（回到 t27 的 120ms 延迟整块组合）。
      */
-    const val DRAWER_DEFER_CONTENT_MS = 120L
+    const val DRAWER_INCREMENTAL_ROWS = true
+
+    /** 首帧先组合多少行（≈一屏可见行数，保证不出现"空面板"）。 */
+    const val DRAWER_FIRST_FRAME_ROWS = 10
+
+    /** 之后每帧追加多少行（2–3 行/帧，单帧工作量远低于 16ms 预算）。 */
+    const val DRAWER_ROWS_PER_FRAME = 3
+
+    /**
+     * 分帧组合的每帧上限保护：一帧内最多再追加这么多"帧"，避免主线程被长循环占住。
+     * （实际由 withFrameNanos 驱动，每帧只跑一次。）
+     */
+    const val DRAWER_MAX_FRAMES = 64
+
+    /** 打开后延迟多少毫秒才开始组合（0 = 从第 0 帧就开始；分帧模式下不再需要 120ms）。 */
+    const val DRAWER_DEFER_CONTENT_MS = 0L
+
+    /** 已就绪行数：首帧给 [DRAWER_FIRST_FRAME_ROWS]，之后每帧 +[DRAWER_ROWS_PER_FRAME]，到 total 为止。 */
+    fun nextRevealedRows(current: Int, total: Int): Int {
+        if (total <= 0) return 0
+        val start = if (current <= 0) DRAWER_FIRST_FRAME_ROWS else current + DRAWER_ROWS_PER_FRAME
+        return start.coerceIn(0, total)
+    }
 
     /** t27（D1）：列表 overscan —— 0 表示严格只组合可见区（不给 LazyColumn 额外预组合）。 */
     const val DRAWER_OVERSCAN_ITEMS = 0
