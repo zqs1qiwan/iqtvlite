@@ -27,6 +27,10 @@ object ZapTrace {
     @Volatile
     private var zapKey: String? = null
 
+    /** t208 (ZAP-REPEAT-01): the key we already printed, so a re-entered channel logs once. */
+    @Volatile
+    private var loggedKey: String? = null
+
     /**
      * t204 (ZAP-KEY-01): the STABLE identity of a channel — deliberately free of the per-prepare
      * MediaItem sequence number, so a re-prepare of the same channel keeps the running measurement.
@@ -83,6 +87,20 @@ object ZapTrace {
     /** user action → first frame, i.e. what the user perceives as the zap latency. */
     fun zapToFirstFrameMs(): Long = lastZapMs
 
+    /**
+     * t208 (ZAP-REPEAT-01): the same line, but **at most once per key**. `onRenderedFirstFrame` fires
+     * again when the same channel is re-entered (or after an audio/video re-configure), which used to
+     * print a second line with a bogus, much larger `zap`. Returns null when there is nothing new to
+     * print (or the measurement is incomplete).
+     */
+    fun summaryLineOnce(): String? {
+        val key = zapKey ?: return null
+        if (key == loggedKey) return null
+        val line = summaryLine() ?: return null
+        loggedKey = key
+        return line
+    }
+
     /** `IQTV-ZAP zap=<x>ms prepare=<y>ms firstFrame=<z>ms` or null when the measurement is incomplete. */
     fun summaryLine(): String? {
         val total = zapToFirstFrameMs()
@@ -92,6 +110,7 @@ object ZapTrace {
 
     fun reset() {
         zapKey = null
+        loggedKey = null
         zapAt = 0L
         prepareAt = 0L
         firstFrameAt = 0L

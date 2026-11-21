@@ -706,7 +706,7 @@ fun VideoPlayerScreen(
                     // t197 (B): the EPG cache may only be read once the first frame is on screen.
                     firstFrameRendered = true
                     if (android.util.Log.isLoggable(ZAP_TAG, android.util.Log.DEBUG)) {
-                        ZapTrace.summaryLine()?.let { android.util.Log.d(ZAP_TAG, it) }
+                        ZapTrace.summaryLineOnce()?.let { android.util.Log.d(ZAP_TAG, it) }
                     }
                 }
 
@@ -1088,6 +1088,12 @@ fun VideoPlayerScreen(
         if (selectionTicket != null && !playbackIntent.matches(selectionTicket)) return
         val group = channelGroups.getOrNull(groupIndex) ?: return
         val channel = group.variants.getOrNull(variantIndex)?.channel ?: return
+        // t208 (ZAP-ENTRY-01): last channel, quality-variant pick and the drawer selection all reach
+        // this function; arm here so every zap has a real key→prepare gap. PERF-01: the key is only
+        // built when the debug tag is enabled, so release pays nothing.
+        if (android.util.Log.isLoggable(ZAP_TAG, android.util.Log.DEBUG)) {
+            ZapTrace.onZapRequested(ZapTrace.zapKey(channel.id, channel.url), android.os.SystemClock.elapsedRealtime())
+        }
         if (selectionTicket == null) {
             sourceSelectGeneration += 1
             sourceSelectJob?.cancel()
@@ -1122,6 +1128,14 @@ fun VideoPlayerScreen(
      * 切台：按源列表顺序探测，第一个能连上的就用；都失败则仍播第一个。
      */
     fun playGroupAuto(groupIndex: Int) {
+        // t208 (ZAP-ENTRY-01): D-pad / number jump / last-channel all land here (and finally in
+        // playGroupVariant); arming at this funnel covers every entry. onZapRequested is idempotent
+        // for the same channel key, so nested calls cannot restart the measurement.
+        if (android.util.Log.isLoggable(ZAP_TAG, android.util.Log.DEBUG)) {
+            channelGroups.getOrNull(groupIndex)?.variants?.firstOrNull()?.channel?.let { c ->
+                ZapTrace.onZapRequested(ZapTrace.zapKey(c.id, c.url), android.os.SystemClock.elapsedRealtime())
+            }
+        }
         val group = channelGroups.getOrNull(groupIndex) ?: return
         if (group.variants.isEmpty()) return
 
@@ -1174,11 +1188,10 @@ fun VideoPlayerScreen(
     }
 
     fun playChannel(channel: Channel) {
-        // t204 (ZAP-TIMING-01): the user zap starts here — one measurement per channel change.
-        ZapTrace.onZapRequested(
-            ZapTrace.zapKey(channel.id, channel.url),
-            android.os.SystemClock.elapsedRealtime()
-        )
+        // t204/t208: the user zap starts here too (drawer selection / return-to-live).
+        if (android.util.Log.isLoggable(ZAP_TAG, android.util.Log.DEBUG)) {
+            ZapTrace.onZapRequested(ZapTrace.zapKey(channel.id, channel.url), android.os.SystemClock.elapsedRealtime())
+        }
         // t126: warm this channel's logo so the next drawer open is instant.
         channel.logoUrl?.trim()?.takeIf { it.isNotBlank() }?.let { u ->
             val pxW = with(density) { 64.dp.roundToPx() }

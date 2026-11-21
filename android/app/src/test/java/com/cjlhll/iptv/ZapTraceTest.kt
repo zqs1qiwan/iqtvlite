@@ -98,6 +98,38 @@ class ZapTraceTest {
     }
 
     @Test
+    fun theLineIsPrintedOncePerChannelEvenIfTheFrameRepeats() {
+        // t208 (ZAP-REPEAT-01): onRenderedFirstFrame fires again when the same channel is re-entered;
+        // that must not produce a second line (nor a bogus larger zap).
+        ZapTrace.reset()
+        val key = ZapTrace.zapKey(9L, "http://src/z")
+        ZapTrace.onZapRequested(key, 1_000L)
+        ZapTrace.onPrepare(1_100L)
+        ZapTrace.onFirstFrame(1_700L)
+        assertEquals("zap=700ms prepare=100ms firstFrame=600ms", ZapTrace.summaryLineOnce())
+        assertNull("a repeated first frame must not print again", ZapTrace.summaryLineOnce())
+
+        // a different channel prints again
+        ZapTrace.onZapRequested(ZapTrace.zapKey(10L, "http://src/z"), 2_000L)
+        ZapTrace.onPrepare(2_050L)
+        ZapTrace.onFirstFrame(2_500L)
+        assertEquals("zap=500ms prepare=50ms firstFrame=450ms", ZapTrace.summaryLineOnce())
+        assertNull(ZapTrace.summaryLineOnce())
+    }
+
+    @Test
+    fun aRealZapEntryLeavesAPositivePrepareGap() {
+        // t208 (ZAP-ENTRY-01): when the arm happens at the entry (playGroupAuto/Variant) and the
+        // prepare happens later, prepareDelay is a real gap — not the old 0 from the fallback.
+        ZapTrace.reset()
+        ZapTrace.onZapRequested(ZapTrace.zapKey(11L, "http://src/dpad"), 10_000L)
+        ZapTrace.onPrepare(10_320L)   // D-pad path: ~0.3 s of variant probing before prepare
+        assertEquals(320L, ZapTrace.prepareDelayMs())
+        assertEquals(1_450L, ZapTrace.onFirstFrame(11_450L))
+        assertEquals(320L, ZapTrace.prepareDelayMs())
+    }
+
+    @Test
     fun theKeyIsTheChannelNotThePerPrepareMediaId() {
         // t204 (ZAP-KEY-01): production used to arm from `id` = "c…-l…-s<sequence>", which changes on
         // EVERY prepare → the same channel always looked new. The key must be channel-stable.
