@@ -1208,7 +1208,12 @@ fun VideoPlayerScreen(
                             if (duration <= 0f) null
                             else ((nowMillis - it.startMillis).toFloat() / duration).coerceIn(0f, 1f)
                         }
-                        val ui = NowProgramUi(title = t, progress = progress)
+                        val ui = NowProgramUi(
+                            title = t,
+                            progress = progress,
+                            startMillis = current?.startMillis ?: 0L,
+                            endMillis = current?.endMillis ?: 0L,
+                        )
                         for (variant in group.variants) {
                             put(variant.channel.url, ui)
                         }
@@ -1982,6 +1987,17 @@ fun VideoPlayerScreen(
                     currentLive.number
                 }
 
+                // t24（INFO_CARD_V3）：右侧节目行需要起止/分组小字。
+                val bannerProgram = if (req != null) null else bannerChannel?.let { nowProgramByUrl[it.url] }
+                val bannerProgramStart = catchupConfig?.startMillis ?: (bannerProgram?.startMillis ?: 0L)
+                val bannerProgramEnd = catchupConfig?.endMillis ?: (bannerProgram?.endMillis ?: 0L)
+                val bannerGroup = if (req != null) {
+                    channelGroups.firstOrNull { g -> g.variants.any { it.channel.url == req.liveUrl } }
+                } else {
+                    playingGroup
+                }
+                val bannerGroupLabel = bannerGroup?.let { ChannelGrouper.displayGroupName(it) }
+
                 ChannelInfoBanner(
                     state = infoCardState,
                     seekOverlayVisible = isSeekOverlayVisible,
@@ -1992,6 +2008,10 @@ fun VideoPlayerScreen(
                     videoFormat = videoFormat,
                     audioLabel = AudioTrackUi.summary(audioTracks, audioOverrideGroup, audioOverrideTrack),
                     catchupConfiguration = catchupConfig,
+                    programStartMs = bannerProgramStart,
+                    programEndMs = bannerProgramEnd,
+                    nowMillis = nowMillis,
+                    groupLabel = bannerGroupLabel,
                     recentCards = cardRecentItems,
                     focusIndex = infoCardFocusIndex,
                     onMoveFocus = { delta ->

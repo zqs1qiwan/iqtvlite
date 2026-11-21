@@ -157,4 +157,7 @@ data class NowProgramUi(
     val title: String,
     val progress: Float?,
     val nextTitle: String? = null,
+    // t24（INFO_CARD_V3 §9.2）：节目起止，供右侧节目行显示 “HH:mm–HH:mm · 剩余 N 分钟”。
+    val startMillis: Long = 0L,
+    val endMillis: Long = 0L,
 )

@@ -98,29 +98,155 @@ object InfoCardPolicy {
         return items.filterNot(isCurrent).take(limit)
     }
 
-    /**
-     * 中部技术参数行：`音轨 mpeg-L2 · 2ch · 1920x1080 · 3000 kbps`。
-     * 空项省略；全空返回空串（UI 不渲染该行）。audioLabel 存在时不再重复 codec/声道（沿用旧规则）。
-     */
-    fun techLine(
-        audioLabel: String?,
-        width: Int,
-        height: Int,
-        bitrate: Int,
-        channelCount: Int = -1,
-        sampleMimeType: String? = null,
-    ): String {
-        val parts = ArrayList<String>(4)
-        val hasAudioLabel = !audioLabel.isNullOrBlank()
-        if (hasAudioLabel) {
-            parts.add("音轨 ${audioLabel!!.trim()}")
-        } else {
-            val codec = sampleMimeType.orEmpty().substringAfter("/", "").trim()
-            if (codec.isNotEmpty()) parts.add(codec)
-            if (channelCount > 0) parts.add("${channelCount}ch")
+    // ── t24（INFO_CARD_V3）：右上徽标 / 技术行 / 节目行 / 小字（全部纯逻辑、Android-free） ──
+    enum class ResolutionTier(val label: String) { SD("SD"), HD("HD"), FHD("FHD"), UHD("4K") }
+    data class BadgeCandidate(val key: String, val label: String)
+    data class BadgePlan(val visible: List<String>, val overflow: List<String>)
+
+    /** 徽标行策略层宽度上限（4 个徽标 + 分隔绰绰有余；不是布局宽度）。 */
+    const val BADGE_MAX_WIDTH_DP = 260.0
+
+    /** 分辨率档：h = height>0 ? height : width；h<=0 → null（隐藏）。 */
+    fun resolutionTier(width: Int, height: Int): ResolutionTier? {
+        val h = if (height > 0) height else width
+        return when {
+            h <= 0 -> null
+            h < 720 -> ResolutionTier.SD
+            h < 1080 -> ResolutionTier.HD
+            h < 2160 -> ResolutionTier.FHD
+            else -> ResolutionTier.UHD
         }
-        if (width > 0 && height > 0) parts.add("${width}x$height")
-        if (bitrate > 0) parts.add("${bitrate / 1000} kbps")
+    }
+
+    /** 帧率：<=0 / NaN → null；否则取整 + "fps"（29.97→30、59.94→60）。 */
+    fun frameRateLabel(frameRate: Float): String? {
+        if (frameRate.isNaN() || frameRate <= 0f) return null
+        return "${Math.round(frameRate)}fps"
+    }
+
+    /** 码率：Format.bitrate 单位为 bit/s；<=0 → null；8_300_000 → "8.3Mbps"。 */
+    fun bitrateLabel(bitrate: Int): String? {
+        if (bitrate <= 0) return null
+        return String.format(java.util.Locale.ROOT, "%.1fMbps", bitrate / 1_000_000.0)
+    }
+
+    /** 声道：1→单声道、2→2ch、6→5.1、8→7.1、其它→Nch；<=0 → null。 */
+    fun channelLabel(channelCount: Int): String? = when {
+        channelCount <= 0 -> null
+        1 -> "单声道"
+        2 -> "2ch"
+        6 -> "5.1"
+        8 -> "7.1"
+        else -> "${channelCount}ch"
+    }
+
+    /** 徽标候选（优先级：分辨率 > 帧率 > 码率 > 声道；未知跳过、不占位）。 */
+    fun badgeCandidates(width: Int, height: Int, frameRate: Float, bitrate: Int, channelCount: Int): List<BadgeCandidate> {
+        val out = ArrayList<BadgeCandidate>(4)
+        resolutionTier(width, height)?.let { out.add(BadgeCandidate("resolution", it.label)) }
+        frameRateLabel(frameRate)?.let { out.add(BadgeCandidate("fps", it)) }
+        bitrateLabel(bitrate)?.let { out.add(BadgeCandidate("bitrate", it)) }
+        channelLabel(channelCount)?.let { out.add(BadgeCandidate("channels", it)) }
+        return out
+    }
+
+    /**
+     * 把候选塞进一行：按优先级累加估算宽度，超 [maxWidthDp] 的从那一刻起全部进 overflow
+     * （保证 visible 是候选前缀、overflow 是后缀，绝不换行）。
+     */
+    fun planBadges(
+        candidates: List<BadgeCandidate>,
+        maxWidthDp: Double = BADGE_MAX_WIDTH_DP,
+        charWidthDp: Double = 7.0,
+        gapDp: Double = 8.0,
+        dotDp: Double = 10.0,
+    ): BadgePlan {
+        val visible = ArrayList<String>()
+        val overflow = ArrayList<String>()
+        var used = 0.0
+        var full = false
+        for (c in candidates) {
+            val add = c.label.length * charWidthDp + if (visible.isEmpty()) 0.0 else (dotDp + gapDp)
+            if (!full && used + add <= maxWidthDp) {
+                visible.add(c.label)
+                used += add
+            } else {
+                full = true
+                overflow.add(c.label)
+            }
+        }
+        return BadgePlan(visible, overflow)
+    }
+
+    /** 视频编码：avc→H.264、hevc→H.265、av01→AV1；未知 null。 */
+    fun videoCodecLabel(mime: String?, codecs: String?): String? {
+        val s = "${mime.orEmpty()} ${codecs.orEmpty()}".lowercase()
+        return when {
+            s.contains("avc") || s.contains("h264") -> "H.264"
+            s.contains("hevc") || s.contains("hvc1") || s.contains("hev1") || s.contains("h265") -> "H.265"
+            s.contains("av01") || s.contains("av1") -> "AV1"
+            else -> null
+        }
+    }
+
+    /** 音频编码：取 AudioTrackUi.summary 的第一段；未知 null。 */
+    fun audioCodecLabel(audioSummary: String?): String? {
+        val first = audioSummary?.split("·", "|", ",")?.firstOrNull()?.trim().orEmpty().lowercase()
+        if (first.isEmpty()) return null
+        return when {
+            first.contains("mpeg-l2") || first.contains("mpeg-l2") || first.contains("mp2") || first.contains("mpeg2") -> "MPEG-L2"
+            first.contains("eac3") -> "EAC3"
+            first.contains("ac-3") || first.contains("ac3") -> "AC-3"
+            first.contains("aac") -> "AAC"
+            first.contains("opus") -> "OPUS"
+            first.contains("flac") -> "FLAC"
+            first.contains("mp3") -> "MP3"
+            else -> null
+        }
+    }
+
+    /** 动态范围：colorInfo 缺失或非 HDR → SDR；ST2084(6)→HDR10、HLG(7)→HLG。 */
+    fun dynamicRangeLabel(colorTransfer: Int, hasHdrStaticInfo: Boolean): String = when (colorTransfer) {
+        6 -> "HDR10"
+        7 -> "HLG"
+        else -> "SDR"
+    }
+
+    /** 技术行：视频编码 · 音频编码 · 动态范围 (+ 溢出徽标)，空项省略。 */
+    fun techLine(videoCodec: String?, audioCodec: String?, dynamicRange: String?, overflow: List<String>): String =
+        (listOfNotNull(videoCodec, audioCodec, dynamicRange) + overflow)
+            .filter { it.isNotBlank() }
+            .joinToString("  ·  ")
+
+    fun programTitleOrPlaceholder(title: String?): String =
+        title?.takeIf { it.isNotBlank() } ?: "暂无节目信息"
+
+    /**
+     * 节目时间行：end<=0 → ""；直播 `HH:mm–HH:mm · 剩余 N 分钟`（0 → "<1 分钟"）；
+     * 回看只给起止（剩余由进度条表达）。
+     */
+    fun programTimeLine(startMillis: Long, endMillis: Long, nowMillis: Long, catchup: Boolean): String {
+        if (endMillis <= 0L) return ""
+        val range = "${clockHm(startMillis)}–${clockHm(endMillis)}"
+        if (catchup) return range
+        val remainingMin = (endMillis - nowMillis).coerceAtLeast(0L) / 60_000L
+        val remaining = if (remainingMin <= 0L) "<1 分钟" else "$remainingMin 分钟"
+        return "$range · 剩余 $remaining"
+    }
+
+    private val cardClockFormatter: java.time.format.DateTimeFormatter =
+        java.time.format.DateTimeFormatter.ofPattern("HH:mm")
+
+    private fun clockHm(millis: Long): String =
+        java.time.Instant.ofEpochMilli(millis).atZone(java.time.ZoneId.systemDefault()).toLocalTime()
+            .format(cardClockFormatter)
+
+    /** 台名下小字：`频道 N · 分组 · 音频编码`（存在项才拼接）。 */
+    fun smallMetaLine(number: Int, group: String?, audioCodec: String?): String {
+        val parts = ArrayList<String>(3)
+        if (number > 0) parts.add("频道 $number")
+        group?.takeIf { it.isNotBlank() }?.let { parts.add(it.trim()) }
+        audioCodec?.takeIf { it.isNotBlank() }?.let { parts.add(it.trim()) }
         return parts.joinToString(" · ")
     }
 

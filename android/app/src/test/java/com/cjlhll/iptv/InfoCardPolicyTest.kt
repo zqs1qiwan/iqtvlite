@@ -99,26 +99,33 @@ class InfoCardPolicyTest {
     }
 
     @Test
-    fun techLineOmitsEmptyParts() {
-        assertEquals("", InfoCardPolicy.techLine(null, 0, 0, -1))
-        assertEquals("1920x1080", InfoCardPolicy.techLine(null, 1920, 1080, -1))
-        assertEquals("1920x1080 · 3000 kbps", InfoCardPolicy.techLine(null, 1920, 1080, 3_000_000))
+    fun techLineJoinsCodecsAndDynamicRangeAndOmitsEmptyParts() {
+        assertEquals("", InfoCardPolicy.techLine(null, null, null, emptyList()))
+        assertEquals("H.264", InfoCardPolicy.techLine("H.264", null, null, emptyList()))
         assertEquals(
-            "音轨 mpeg-L2 · 2ch · 1920x1080 · 3000 kbps",
-            InfoCardPolicy.techLine("mpeg-L2 · 2ch", 1920, 1080, 3_000_000, channelCount = 2, sampleMimeType = "audio/mpeg-L2")
+            "H.264  ·  MPEG-L2  ·  SDR",
+            InfoCardPolicy.techLine("H.264", "MPEG-L2", "SDR", emptyList()),
+        )
+        // 溢出徽标追加到末尾，仍单行
+        assertEquals(
+            "H.265  ·  AAC  ·  SDR  ·  8.3Mbps",
+            InfoCardPolicy.techLine("H.265", "AAC", "SDR", listOf("8.3Mbps")),
         )
     }
 
     @Test
-    fun techLineFallsBackToCodecAndChannelsWhenNoAudioLabel() {
-        assertEquals(
-            "avc · 1920x1080",
-            InfoCardPolicy.techLine(null, 1920, 1080, -1, channelCount = -1, sampleMimeType = "video/avc")
-        )
-        assertEquals(
-            "avc · 2ch",
-            InfoCardPolicy.techLine(null, 0, 0, -1, channelCount = 2, sampleMimeType = "video/avc")
-        )
+    fun codecAndDynamicRangeLabelsMapKnownValuesAndHideUnknown() {
+        assertEquals("H.264", InfoCardPolicy.videoCodecLabel("video/avc", "avc1.640028"))
+        assertEquals("H.265", InfoCardPolicy.videoCodecLabel("video/hevc", null))
+        assertEquals("AV1", InfoCardPolicy.videoCodecLabel("video/av01", null))
+        assertNull(InfoCardPolicy.videoCodecLabel("video/mp4v-es", null))
+        assertEquals("MPEG-L2", InfoCardPolicy.audioCodecLabel("mpeg-L2 · 2ch · 1920x1080"))
+        assertEquals("AAC", InfoCardPolicy.audioCodecLabel("aac · 2ch"))
+        assertEquals("AC-3", InfoCardPolicy.audioCodecLabel("ac-3 · 6ch"))
+        assertNull(InfoCardPolicy.audioCodecLabel(null))
+        assertEquals("SDR", InfoCardPolicy.dynamicRangeLabel(-1, false))
+        assertEquals("HDR10", InfoCardPolicy.dynamicRangeLabel(6, true))
+        assertEquals("HLG", InfoCardPolicy.dynamicRangeLabel(7, false))
     }
 
     @Test

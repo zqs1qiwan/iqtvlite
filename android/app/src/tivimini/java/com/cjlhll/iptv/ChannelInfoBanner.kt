@@ -6,7 +6,6 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -15,7 +14,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.BiasAlignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -34,12 +32,10 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.media3.common.Format
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
-import java.time.Instant
-import java.time.ZoneId
-import java.time.format.DateTimeFormatter
 
 /**
  * t4（docs/INFO_CARD_V2.md）：播放器底部信息卡 v2。
@@ -66,6 +62,11 @@ fun ChannelInfoBanner(
     // t175: current audio track (language · codec · channels); omitted entirely when null.
     audioLabel: String? = null,
     catchupConfiguration: CatchupConfiguration? = null,
+    // t24（INFO_CARD_V3）：右侧节目行所需信息（起止/当前时刻/分组小字）。
+    programStartMs: Long = 0L,
+    programEndMs: Long = 0L,
+    nowMillis: Long = System.currentTimeMillis(),
+    groupLabel: String? = null,
     // t4：底部最近观看快跳（已排除当前台、最多 6 条）。
     recentCards: List<RecentChannelUi> = emptyList(),
     focusIndex: Int = 0,
@@ -137,14 +138,30 @@ fun ChannelInfoBanner(
         if (state == InfoCardPolicy.State.HIDDEN) onFocusedChanged(false)
     }
 
-    val techLine = InfoCardPolicy.techLine(
-        audioLabel = audioLabel,
-        width = videoFormat?.width ?: 0,
-        height = videoFormat?.height ?: 0,
-        bitrate = videoFormat?.bitrate ?: -1,
-        channelCount = videoFormat?.channelCount ?: -1,
-        sampleMimeType = videoFormat?.sampleMimeType,
+    // t24（INFO_CARD_V3）：右上徽标 / 技术行 / 节目行 / 小字（全部来自 InfoCardPolicy 纯函数）。
+    val vf = videoFormat
+    val badgePlan = InfoCardPolicy.planBadges(
+        InfoCardPolicy.badgeCandidates(
+            vf?.width ?: 0, vf?.height ?: 0, vf?.frameRate ?: -1f, vf?.bitrate ?: -1, vf?.channelCount ?: -1,
+        )
     )
+    val videoCodec = InfoCardPolicy.videoCodecLabel(vf?.sampleMimeType, vf?.codecs)
+    val audioCodec = InfoCardPolicy.audioCodecLabel(audioLabel)
+    val colorInfo = vf?.colorInfo
+    val dynamicRange = InfoCardPolicy.dynamicRangeLabel(colorInfo?.colorTransfer ?: -1, colorInfo?.hdrStaticInfo != null)
+    val techText = InfoCardPolicy.techLine(videoCodec, audioCodec, dynamicRange, badgePlan.overflow)
+    val programText = InfoCardPolicy.programTitleOrPlaceholder(programTitle)
+    val programTime = InfoCardPolicy.programTimeLine(
+        startMillis = programStartMs,
+        endMillis = programEndMs,
+        nowMillis = nowMillis,
+        catchup = catchupConfiguration != null,
+    )
+    val smallMeta = InfoCardPolicy.smallMetaLine(channelNumber, groupLabel, audioCodec)
+    val progressValue: Float? = programProgress ?: catchupConfiguration?.let { c ->
+        val d = (c.endMillis - c.startMillis).toFloat()
+        if (d <= 0f) null else ((c.positionMs - c.startMillis).toFloat() / d).coerceIn(0f, 1f)
+    }
 
     val content: @Composable () -> Unit = {
         Box(
@@ -168,90 +185,124 @@ fun ChannelInfoBanner(
                     }
                 }
         ) {
-            Column {
-                if (catchupConfiguration != null) {
-                    CatchupProgressRow(
-                        startMillis = catchupConfiguration.startMillis,
-                        endMillis = catchupConfiguration.endMillis,
-                        positionMs = catchupConfiguration.positionMs
-                    )
-                }
-
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 40.dp, end = 40.dp, top = 20.dp, bottom = 20.dp)
+            ) {
+                // ── 右上徽标行（单行、右对齐、固定 24dp、绝不换行） ──────────────
                 Row(
-                    verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(
-                            start = 32.dp,
-                            end = 32.dp,
-                            top = if (catchupConfiguration != null) 4.dp else 24.dp,
-                            bottom = if (showRecent) 16.dp else 24.dp
+                        .height(24.dp),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (badgePlan.visible.isNotEmpty()) {
+                        Text(
+                            text = badgePlan.visible.joinToString("  ·  "),
+                            style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.sp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.testTag("info_card_badges")
                         )
+                    }
+                }
+                Spacer(modifier = Modifier.height(6.dp))
+
+                // ── 主行：台标(160×96) + 台名(34sp) 同行；右侧节目列 ────────────────
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(96.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
                     ChannelLogo(
                         logoUrl = channel?.logoUrl,
                         fallbackTitle = channel?.title ?: "",
                         modifier = Modifier
-                            .size(width = 96.dp, height = 60.dp)
+                            .size(width = 160.dp, height = 96.dp)
                             .testTag("info_card_logo"),
-                        width = 96.dp,
-                        height = 60.dp
+                        width = 160.dp,
+                        height = 96.dp
                     )
 
                     Spacer(modifier = Modifier.width(24.dp))
 
-                    Column(modifier = Modifier.weight(1f)) {
-                        // 频道号改成独立 overline，台名不再带 "N. " 前缀（§2.1）。
-                        if (channelNumber > 0) {
-                            Text(
-                                text = "频道 $channelNumber",
-                                style = MaterialTheme.typography.titleSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.80f),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.testTag("info_card_number")
-                            )
-                        }
+                    Column(modifier = Modifier.weight(0.44f)) {
                         Text(
                             text = channel?.title ?: "未知频道",
-                            style = MaterialTheme.typography.headlineLarge,
+                            style = MaterialTheme.typography.headlineLarge.copy(fontSize = 34.sp, lineHeight = 42.sp),
                             color = MaterialTheme.colorScheme.onSurface,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.testTag("info_card_title")
                         )
-
-                        if (!programTitle.isNullOrBlank()) {
-                            Spacer(modifier = Modifier.height(4.dp))
+                        Row(modifier = Modifier.height(16.dp).testTag("info_card_group")) {
                             Text(
-                                text = programTitle,
-                                style = MaterialTheme.typography.titleLarge,
-                                color = MaterialTheme.colorScheme.primary,
+                                text = smallMeta,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f),
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.testTag("info_card_program")
-                            )
-
-                            if (programProgress != null && catchupConfiguration == null) {
-                                BannerProgressBar(
-                                    progress = programProgress,
-                                    modifier = Modifier.testTag("info_card_progress")
-                                )
-                            }
-                        }
-
-                        if (techLine.isNotEmpty()) {
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = techLine,
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.70f),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.testTag("info_card_tech")
+                                modifier = Modifier.testTag("info_card_number")
                             )
                         }
                     }
+
+                    Spacer(modifier = Modifier.width(28.dp))
+
+                    Column(modifier = Modifier.weight(0.56f)) {
+                        Text(
+                            text = programText,
+                            style = MaterialTheme.typography.titleLarge,
+                            color = if (programTitle.isNullOrBlank()) {
+                                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f)
+                            } else {
+                                MaterialTheme.colorScheme.primary
+                            },
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.testTag("info_card_program")
+                        )
+                        if (programTime.isNotEmpty()) {
+                            Text(
+                                text = programTime,
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier
+                                    .height(16.dp)
+                                    .testTag("info_card_program_time")
+                            )
+                        }
+                        if (progressValue != null) {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            BannerProgressBar(
+                                progress = progressValue,
+                                modifier = Modifier.testTag("info_card_progress")
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                // ── 技术行（单行 12sp α0.60；编码·音频·HDR + 溢出徽标） ────────────
+                if (techText.isNotEmpty()) {
+                    Text(
+                        text = techText,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.60f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(16.dp)
+                            .testTag("info_card_tech")
+                    )
                 }
 
                 // ── 底部：最近观看快跳（≤6；空/回看/快进中整条不渲染） ──────────────
@@ -260,7 +311,7 @@ fun ChannelInfoBanner(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(start = 32.dp, end = 32.dp, bottom = 8.dp)
+                            .padding(start = 40.dp, end = 40.dp, bottom = 8.dp)
                     ) {
                         Text(
                             text = "最近观看",
@@ -290,7 +341,7 @@ fun ChannelInfoBanner(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(start = 32.dp, end = 32.dp, bottom = 16.dp)
+                            .padding(start = 40.dp, end = 40.dp, bottom = 16.dp)
                     ) {
                         Spacer(modifier = Modifier.weight(1f))
                         EntryHint()
@@ -347,7 +398,7 @@ private fun RecentStrip(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 32.dp, end = 32.dp)
+            .padding(start = 40.dp, end = 40.dp)
             .testTag("info_card_recent_row")
     ) {
         items.forEachIndexed { index, item ->
@@ -406,76 +457,7 @@ data class CatchupConfiguration(
     val positionMs: Long
 )
 
-private val catchupTimeFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
-
-@Composable
-private fun CatchupProgressRow(
-    startMillis: Long,
-    endMillis: Long,
-    positionMs: Long
-) {
-    val total = (endMillis - startMillis).coerceAtLeast(1L)
-    val progress = (positionMs.toFloat() / total.toFloat()).coerceIn(0f, 1f)
-    val zone = ZoneId.systemDefault()
-    val startText = catchupTimeFormatter.format(Instant.ofEpochMilli(startMillis).atZone(zone))
-    val endText = catchupTimeFormatter.format(Instant.ofEpochMilli(endMillis).atZone(zone))
-
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(start = 32.dp, end = 32.dp, top = 20.dp, bottom = 4.dp)
-    ) {
-        Text(
-            text = startText,
-            style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.9f)
-        )
-
-        Spacer(modifier = Modifier.width(16.dp))
-
-        Box(
-            modifier = Modifier
-                .weight(1f)
-                .height(12.dp)
-        ) {
-            // Track
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(4.dp)
-                    .align(Alignment.Center)
-                    .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.22f), RoundedCornerShape(0.dp))
-            )
-
-            // Progress Fill
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth(progress)
-                    .height(4.dp)
-                    .align(Alignment.CenterStart)
-                    .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(0.dp))
-            )
-
-            // Dot
-            val bias = if (progress.isNaN()) -1f else (progress * 2) - 1
-            Box(
-                modifier = Modifier
-                    .size(12.dp)
-                    .align(BiasAlignment(bias.coerceIn(-1f, 1f), 0f))
-                    .background(Color.White, CircleShape)
-            )
-        }
-
-        Spacer(modifier = Modifier.width(16.dp))
-
-        Text(
-            text = endText,
-            style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.9f)
-        )
-    }
-}
+// t24：v3 把回看进度并入右侧节目行（三态同高），独立 CatchupProgressRow 已删除。
 
 @Composable
 fun TechSpecText(text: String) {

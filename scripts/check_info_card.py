@@ -148,12 +148,48 @@ def main() -> int:
     if re.search(r"onInfoCardFocusedChanged\(infoCardState == InfoCardPolicy\.State\.FOCUSED\)", activity):
         problems.append("PlayerActivity.kt: F1 mirror must not be derived from state (node focus only)")
 
+    # 7) t24 (INFO_CARD_V3): big logo / same-row name / right program / badges / tech line / fixed heights / single line.
+    if "160.dp" not in banner or "96.dp" not in banner:
+        problems.append("ChannelInfoBanner.kt: logo must be >=160x96dp (v3)")
+    if "info_card_logo" not in banner:
+        problems.append("ChannelInfoBanner.kt: info_card_logo tag missing")
+    if "34.sp" not in banner or "headlineLarge.copy" not in banner:
+        problems.append("ChannelInfoBanner.kt: channel name must be headlineLarge.copy(fontSize = 34.sp)")
+    for tag in ("info_card_badges", "info_card_tech", "info_card_program_time", "info_card_number", "info_card_group"):
+        if tag not in banner:
+            problems.append("ChannelInfoBanner.kt: missing v3 tag " + tag)
+    for fn in ("fun resolutionTier(", "fun frameRateLabel(", "fun bitrateLabel(", "fun channelLabel(",
+               "fun badgeCandidates(", "fun planBadges(", "fun videoCodecLabel(", "fun audioCodecLabel(",
+               "fun dynamicRangeLabel(", "fun techLine(", "fun programTitleOrPlaceholder(", "fun programTimeLine(",
+               "fun smallMetaLine("):
+        if fn not in policy:
+            problems.append("InfoCardPolicy.kt: missing v3 pure function " + fn)
+    for token in ('SD("SD")', 'HD("HD")', 'FHD("FHD")', 'UHD("4K")', "fps", "Mbps", "\u5355\u58f0\u9053",
+                  "H.264", "H.265", "AV1", "SDR", "HDR10", "HLG"):
+        if token not in policy:
+            problems.append("InfoCardPolicy.kt: missing v3 mapping token " + token)
+    if banner.count("maxLines = 1") < 8:
+        problems.append("ChannelInfoBanner.kt: v3 needs >=8 single-line texts")
+    if "TextOverflow.Ellipsis" not in banner:
+        problems.append("ChannelInfoBanner.kt: TextOverflow.Ellipsis missing")
+    for bad in ("basicMarquee", "LazyRow", "animateContentSize", "wrapContentHeight"):
+        if bad in banner:
+            problems.append("ChannelInfoBanner.kt: forbidden v3 token " + bad)
+    for h in (".height(24.dp)", ".height(16.dp)", ".height(96.dp)"):
+        if h not in banner:
+            problems.append("ChannelInfoBanner.kt: fixed row height missing " + h)
+    if "bitrate <= 0) return null" not in policy or "channelCount <= 0" not in policy:
+        problems.append("InfoCardPolicy.kt: unknown badges must be hidden (<= 0 -> null)")
+    if 'else -> "SDR"' not in policy:
+        problems.append("InfoCardPolicy.kt: dynamicRange must default to SDR")
+
+
     if problems:
         for p in problems:
             print(f"check_info_card: FAIL {p}")
         return 1
 
-    print("check_info_card: OK (policy + 96x60/headlineLarge + recent strip + tags + focus guard + defaults)")
+    print("check_info_card: OK (v3 big logo/name row/badges/tech + v2 strip + focus guard + defaults)")
     return 0
 
 
