@@ -144,6 +144,13 @@ def main() -> int:
         for banned in ("FocusMarqueeText(", "ThinProgressBar(", "无信息", "SubcomposeLayout"):
             if banned in row:
                 problems.append("DrawerChannelItem still contains " + banned + " (t42 lean row)")
+    # t46: single frame-paced reveal pump (target + 2 rows/frame), no one-shot bulk growth
+    for token in ("revealTarget", "snapshotFlow { revealTarget }", "drawer_row_subtitle",
+                  "row_focus idx=", "via=key"):
+        if token not in drawer_code:
+            problems.append("PlayerDrawer.kt: missing t46 token " + token)
+    if "revealedRows = next" in drawer_code:
+        problems.append("PlayerDrawer.kt: one-shot reveal growth is back (t46 requires frame-paced pump)")
     if "drawer_reveal_grow" not in drawer_code:
         problems.append("PlayerDrawer.kt: scroll-driven reveal grow missing (t39)")
     if "drawer_compose frames=" not in drawer_code:

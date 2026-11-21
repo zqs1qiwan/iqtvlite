@@ -53,6 +53,7 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
@@ -224,6 +225,9 @@ fun PlayerDrawer(
     // 避免"120ms 后一次性大块组合"造成的 300+ms 巨帧（t28 实测 5 个 332–368ms）。
     var contentReady by remember { mutableStateOf(PerfPolicy.DRAWER_DEFER_CONTENT_MS <= 0L) }
     var revealedRows by remember { mutableIntStateOf(0) }
+    // t46：**唯一增长入口** —— 任何触发（打开 / 滚动 / 焦点）只抬高目标值，
+    // 由下面的“泵”每帧 +2 行推进；不再一次性赋值（t45 的 301–393ms 巨帧就是一次性 +16/+28 造成的）。
+    var revealTarget by remember { mutableIntStateOf(0) }
     val showContent = visible && contentReady
     LaunchedEffect(visible) {
         if (!visible) {
@@ -334,29 +338,36 @@ fun PlayerDrawer(
     // 这样打开只需 2 个"轻"帧，50th 回到 ≤16ms 才有戏；列表行为与"全量揭示"完全一致（LazyColumn 本就只组合可见项）。
     LaunchedEffect(visible, channels.size, initialScrollIndex) {
         if (!visible || !PerfPolicy.DRAWER_INCREMENTAL_ROWS) return@LaunchedEffect
-        val started = android.os.SystemClock.elapsedRealtime()
-        // t42：恢复 t37 的**打开节奏**（每帧 +2 行），但只补到“有界开窗目标”，
-        // 而不是像 t37 那样一路补满 147 行（72 帧）——两者取优点：
-        //   t37 优点：单帧只 2 行（巨帧 1、50th 40ms）；t40 优点：总帧数少。
+        // t46：打开只**设定目标**（有界开窗），实际推进交给分帧泵（每帧 +2 行）。
         val openTarget = (initialScrollIndex + PerfPolicy.DRAWER_LOOKAHEAD_ROWS + PerfPolicy.DRAWER_SCREEN_ROWS)
             .coerceIn(PerfPolicy.DRAWER_FIRST_FRAME_ROWS, channels.size)
         revealedRows = PerfPolicy.DRAWER_FIRST_FRAME_ROWS.coerceIn(0, channels.size)
-        var frames = 1
+        revealTarget = openTarget
         PerfTrace.d {
-            "drawer_compose frames=1 rows=${channels.size} target=$openTarget ms=0 " +
-                "lastFrameRows=$revealedRows first=${PerfPolicy.DRAWER_FIRST_FRAME_ROWS} step=${PerfPolicy.DRAWER_ROWS_PER_FRAME}"
+            "drawer_compose target=$openTarget first=${PerfPolicy.DRAWER_FIRST_FRAME_ROWS} " +
+                "step=${PerfPolicy.DRAWER_ROWS_PER_FRAME} rows=${channels.size}"
         }
-        while (revealedRows < openTarget) {
-            val before = revealedRows
-            androidx.compose.runtime.withFrameNanos { }
-            revealedRows = (before + PerfPolicy.DRAWER_ROWS_PER_FRAME).coerceAtMost(openTarget)
-            frames++
-            if (revealedRows >= openTarget) {
-                PerfTrace.d {
-                    "drawer_compose frames=$frames rows=${channels.size} target=$openTarget " +
-                        "ms=${android.os.SystemClock.elapsedRealtime() - started} " +
-                        "lastFrameRows=${revealedRows - before} first=${PerfPolicy.DRAWER_FIRST_FRAME_ROWS} " +
-                        "step=${PerfPolicy.DRAWER_ROWS_PER_FRAME}"
+    }
+
+    // t46：**分帧泵** —— 每帧只 +2 行，直到追上 revealTarget；新目标到来时继续推进。
+    // 这样“打开 28 行”和“滚动再 +16 行”都不会一次性组合，巨帧消失。
+    LaunchedEffect(visible, channels.size) {
+        if (!visible || !PerfPolicy.DRAWER_INCREMENTAL_ROWS) return@LaunchedEffect
+        val started = android.os.SystemClock.elapsedRealtime()
+        var frames = 0
+        snapshotFlow { revealTarget }.collect { target ->
+            while (revealedRows < target) {
+                val before = revealedRows
+                androidx.compose.runtime.withFrameNanos { }
+                revealedRows = (before + PerfPolicy.DRAWER_ROWS_PER_FRAME).coerceAtMost(target)
+                frames++
+                if (frames == 1 || revealedRows >= target) {
+                    PerfTrace.d {
+                        "drawer_compose frames=$frames rows=${channels.size} target=$target " +
+                            "ms=${android.os.SystemClock.elapsedRealtime() - started} " +
+                            "lastFrameRows=${revealedRows - before} first=${PerfPolicy.DRAWER_FIRST_FRAME_ROWS} " +
+                            "step=${PerfPolicy.DRAWER_ROWS_PER_FRAME}"
+                    }
                 }
             }
         }
@@ -368,11 +379,11 @@ fun PlayerDrawer(
         if (!visible || !PerfPolicy.DRAWER_INCREMENTAL_ROWS) return@LaunchedEffect
         snapshotFlow { channelListState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0 }
             .collect { lastVisible ->
-                if (lastVisible >= revealedRows - PerfPolicy.DRAWER_ROWS_PER_FRAME) {
+                if (lastVisible >= revealTarget - PerfPolicy.DRAWER_ROWS_PER_FRAME) {
                     val next = (lastVisible + PerfPolicy.DRAWER_LOOKAHEAD_ROWS).coerceIn(0, channels.size)
-                    if (next > revealedRows) {
-                        revealedRows = next
-                        PerfTrace.d { "drawer_reveal_grow rows=$revealedRows lastVisible=$lastVisible" }
+                    if (next > revealTarget) {
+                        revealTarget = next
+                        PerfTrace.d { "drawer_reveal_grow target=$revealTarget lastVisible=$lastVisible" }
                     }
                 }
             }
@@ -388,9 +399,15 @@ fun PlayerDrawer(
      */
     val onRowFocusedScroll: (Int) -> Unit = { idx ->
         if (PerfPolicy.DRAWER_INCREMENTAL_ROWS) {
-            val need = idx + PerfPolicy.DRAWER_LOOKAHEAD_ROWS
-            if (idx >= revealedRows) revealedRows = need.coerceIn(0, channels.size)
+            // t46：只抬高目标（分帧泵每帧 +2 行推进），然后等该行真的长出来再滚（最多 ~30 帧）。
+            val need = (idx + PerfPolicy.DRAWER_LOOKAHEAD_ROWS).coerceIn(0, channels.size)
+            if (need > revealTarget) revealTarget = need
             drawerScope.launch {
+                var waited = 0
+                while (idx >= revealedRows && waited < 30) {
+                    androidx.compose.runtime.withFrameNanos { }
+                    waited++
+                }
                 androidx.compose.runtime.withFrameNanos { }
                 val visible = channelListState.layoutInfo.visibleItemsInfo
                 val first = visible.firstOrNull()?.index ?: 0
@@ -842,23 +859,25 @@ fun PlayerDrawer(
                         }
                         onClose()
                         true
-                    } else if (it.key == Key.DirectionUp && activeColumn == DrawerColumn.Channels && channelCount > 0) {
-                        val index = focusedIndex
-                        if (index == 0) {
-                            focusedChannelUrl = channels.last().url
-                            pendingFocusToChannels = true
+                    } else if ((it.key == Key.DirectionUp || it.key == Key.DirectionDown) &&
+                        activeColumn == DrawerColumn.Channels && channelCount > 0
+                    ) {
+                        // t46：**频道列内自己处理 UP/DOWN**（不再交给默认焦点搜索）。
+                        // 默认焦点搜索在“下一行还没被揭示”时会跳到右侧节目单，导致 t45 观测到的
+                        // “快按后 DOWN×15 可见行仍 1–12”。这里显式改 focusedChannelUrl：
+                        // → focusTargetIndex/focusTargetUrl 变化 → 该行挂上 requester → 现有 effect 聚焦；
+                        // → onRowFocusedScroll 抬高 revealTarget 并按帧补行，然后滚动跟随。
+                        val down = it.key == Key.DirectionDown
+                        val base = focusedIndex ?: channelListState.firstVisibleItemIndex.coerceIn(0, channelCount - 1)
+                        val next = if (down) (base + 1) % channelCount
+                        else if (base - 1 < 0) channelCount - 1 else base - 1
+                        if (next == base) {
                             true
                         } else {
-                            false
-                        }
-                    } else if (it.key == Key.DirectionDown && activeColumn == DrawerColumn.Channels && channelCount > 0) {
-                        val index = focusedIndex
-                        if (index == channelCount - 1) {
-                            focusedChannelUrl = channels.first().url
+                            focusedChannelUrl = channels[next].url
                             pendingFocusToChannels = true
+                            PerfTrace.d { "row_focus idx=$next via=key down=$down" }
                             true
-                        } else {
-                            false
                         }
                     } else if (it.key == Key.DirectionLeft && activeColumn == DrawerColumn.Channels) {
                         if (!showGroups) showGroups = true
@@ -1211,6 +1230,15 @@ private fun DrawerChannelItem(
     var focused by remember { mutableStateOf(false) }
     // t27（D3）：行标题预格式化（避免每帧字符串拼接）。
     val label = remember(index, channel.title) { "$index. ${channel.title}" }
+    // t46：聚焦行日志（确认副标题真的渲染 + 供 t47 归因滚动落点）。
+    LaunchedEffect(focused) {
+        if (focused) {
+            PerfTrace.d {
+                "row_focus idx=$index subtitle=${!nowProgram?.title.isNullOrBlank()} " +
+                    "title=${nowProgram?.title.orEmpty()}"
+            }
+        }
+    }
     val bg = when {
         focused -> MaterialTheme.colorScheme.surfaceVariant
         else -> Color.Transparent
@@ -1266,7 +1294,9 @@ private fun DrawerChannelItem(
                     style = MaterialTheme.typography.bodySmall,
                     fontSize = 11.sp,
                     lineHeight = 14.sp,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f)
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f),
+                    // t46：给验收一个可断言的语义节点（t45 在语义树里没观测到副标题）。
+                    modifier = Modifier.testTag("drawer_row_subtitle")
                 )
                 val progress = nowProgram?.progress
                 if (progress != null) {
