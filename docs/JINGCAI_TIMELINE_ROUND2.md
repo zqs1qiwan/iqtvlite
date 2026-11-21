@@ -73,4 +73,11 @@ JVM 测试（`JingcaiTimelineTest`，t54 新增 4 例）：
 
 | 项 | 值 |
 |---|---|
-| 提交 / CI | 见 t54 任务输出（本文件随实现提交，定稿后补 run 号） |
+| 提交 | `3ef11d1`（r5 主体）→ `375b123`（D/E 计数与诊断字段，修编译）→ `3241d72`（测试 Byte 字面量）→ `e0eabb6`（PMT 夹具 pointer_field + 模式集合期望） |
+| CI run（绿） | **#195**，sha `e0eabb6`，push，conclusion `success` |
+| 构建 | `BUILD SUCCESSFUL in 3m 10s`；`:app:testDebugUnitTest`（**337 用例**，含 t54 新增 5 例）+ `:app:lintDebug` + 双包 assemble |
+| 门禁 | **`check_jingcai_timeline: OK (… A/B/AUTO/D/E + probe/F/G/H)`**；其余七门禁全 OK；pair gate `{0,0,0}` |
+| 包 | `tv.iqtvlite.app.validation`，versionCode **10195** |
+| app sha256 | `29eb7f5cf260ca6f4df272c155e0a05aa63a5a63a9e1ad3a75c7970abb5c94ac` |
+| test sha256 | `7b531016771c354537456de58753a883ccd35a99d478d7a80a0eeb576288e819` |
+| 产物 | `iqtvlite-test-apk`（artifact id 14727825291，10,475,492 B ≪30MB） |
