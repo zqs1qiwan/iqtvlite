@@ -90,4 +90,11 @@ adb logcat -d -s IQTV-PERF | grep -E 'drawer_open|drawer_close|drawer_compose'
 
 | 项 | 值 |
 |---|---|
-| 提交 / CI | 见 t36 任务输出（本文件随实现提交，定稿后补 run 号） |
+| 提交 | `5b77d72`（perf(drawer) r6: 回退 subList + 去加速 + 保留 56dp/关闭埋点 + 焦点跟随） |
+| CI run（绿） | **#170**，sha `5b77d72`，push，conclusion `success` |
+| 构建 | `BUILD SUCCESSFUL in 4m 36s`；`:app:testDebugUnitTest` + `:app:lintDebug` + `assembleDebug` + `assembleDebugAndroidTest` |
+| 包 | `tv.iqtvlite.app.validation`，versionCode **10170**，versionName `2.2.0-tivimini-5b77d726-validation` |
+| app sha256 | `adb9e78c1ff80b255eb600d06dc1a065725d79642f491c376be247a595aa696b` |
+| test sha256 | `4d51901f3410b7092f4ca0a0081d0eaf2e23bae3139a102c2fb2ce932bc4699a` |
+| 门禁 | logo / info_card / settings_ia / settings_scroll / **perf_policy（含 t36 断言）** / player_threading / refresh_paths 全 OK；pair gate `{0,0,0}` |
+| 产物 | `iqtvlite-test-apk`（artifact id 14715151557，10,451,821 B ≪30MB） |
