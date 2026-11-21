@@ -87,4 +87,11 @@ adb logcat -v time -s IQTV-PERF | grep -E 'drawer_open ms=|drawer_close ms=|draw
 
 | 项 | 值 |
 |---|---|
-| 提交 / CI | 见 t33 任务输出（本文件随实现提交，定稿后补 run 号） |
+| 提交 | `cd09f10`（perf(drawer) r5: first-frame 6 + 2 rows/frame + 加速 + 固定 56dp 行 + 占位 + drawer_close 埋点） |
+| CI run（绿） | **#168**，sha `cd09f10`，push，conclusion `success` |
+| 构建 | `BUILD SUCCESSFUL in 4m 21s`；`:app:testDebugUnitTest`（含更新后的 PerfPolicyTest / 新增加速用例）+ `:app:lintDebug` + `assembleDebug` + `assembleDebugAndroidTest` |
+| 包 | `tv.iqtvlite.app.validation`，versionCode **10168**，versionName `2.2.0-tivimini-cd09f10f-validation` |
+| app sha256 | `b46c2e7504672a23f66f50af7b66e188e261cf7e6421a98b71aa7296ca2168dd` |
+| test sha256 | `38928043d26b944f808f3f33359231fdd35404d7b27c320633e672170bb92742` |
+| 门禁 | logo / info_card / settings_ia / settings_scroll / **perf_policy（含 t33 新断言）** / player_threading / refresh_paths 全 OK；pair gate `{0,0,0}` |
+| 产物 | `iqtvlite-test-apk`（artifact id 14713223884，10,449,965 B ≪30MB） |
