@@ -118,9 +118,11 @@ def main() -> int:
         problems.append("PlayerDrawer.kt: missing the 'drawer_open ms=' perf line")
     # t29: per-frame incremental row reveal (no 120ms "empty then burst")
     for token in ("PerfPolicy.DRAWER_INCREMENTAL_ROWS", "PerfPolicy.nextRevealedRows", "revealedRows",
-                  "DrawerPlaceholderRow()", "PerfPolicy.DRAWER_ROW_HEIGHT_DP", "drawer_close ms="):
+                  "channels.subList(0, revealedRows", "PerfPolicy.DRAWER_ROW_HEIGHT_DP", "drawer_close ms="):
         if token not in drawer_code:
             problems.append("PlayerDrawer.kt: missing incremental reveal token " + token)
+    if "focusedChannelUrl, revealedRows" not in drawer_code:
+        problems.append("PlayerDrawer.kt: focused row must be revealed + scrolled into view (t36 DOWN-follow)")
     if "drawer_compose frames=" not in drawer_code:
         problems.append("PlayerDrawer.kt: missing drawer_compose probe")
     if "const val DRAWER_ROWS_PER_FRAME = 2" not in policy:

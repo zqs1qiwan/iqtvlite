@@ -50,11 +50,6 @@ object PerfPolicy {
     /** 之后每帧追加多少行（t33：3→2，把单帧成本再压一半）。 */
     const val DRAWER_ROWS_PER_FRAME = 2
 
-    /** 超时加速：揭示开始后超过这些毫秒就加大每帧步长，避免极端情况拖到 2.7s。 */
-    const val DRAWER_REVEAL_FAST_MS = 600L
-    const val DRAWER_REVEAL_FASTER_MS = 1_200L
-    const val DRAWER_ROWS_PER_FRAME_FAST = 6
-    const val DRAWER_ROWS_PER_FRAME_FASTER = 12
 
     /** 抽屉行固定高度（t33：固定行高 + 未揭示行占位，避免逐行测量/文字重排）。 */
     const val DRAWER_ROW_HEIGHT_DP = 56
@@ -68,22 +63,16 @@ object PerfPolicy {
     /** 打开后延迟多少毫秒才开始组合（0 = 从第 0 帧就开始；分帧模式下不再需要 120ms）。 */
     const val DRAWER_DEFER_CONTENT_MS = 0L
 
-    /** 已就绪行数：首帧给 [DRAWER_FIRST_FRAME_ROWS]，之后每帧 +[DRAWER_ROWS_PER_FRAME]，到 total 为止。 */
-    fun nextRevealedRows(current: Int, total: Int): Int = nextRevealedRows(current, total, elapsedMs = 0L)
-
     /**
-     * 带超时加速的版本（t33）：正常每帧 [DRAWER_ROWS_PER_FRAME] 行；揭示已耗时 >600ms 后
-     * 加速到 6 行/帧、>1200ms 加速到 12 行/帧，保证极端情况下不会拖到 2.7s（t30 观测到的风险）。
+     * 已就绪行数：首帧给 [DRAWER_FIRST_FRAME_ROWS]，之后每帧 +[DRAWER_ROWS_PER_FRAME]，到 total 为止。
+     *
+     * t36：**去掉超时加速**。t34 真机证明加速会把单帧组合量抬到 6–12 行，反而制造 300ms 级大帧；
+     * 现在恒定 2 行/帧，靠“焦点跟随”按需提前揭示，而不是靠加速追进度。
      */
-    fun nextRevealedRows(current: Int, total: Int, elapsedMs: Long): Int {
+    fun nextRevealedRows(current: Int, total: Int): Int {
         if (total <= 0) return 0
         if (current <= 0) return DRAWER_FIRST_FRAME_ROWS.coerceAtMost(total)
-        val step = when {
-            elapsedMs >= DRAWER_REVEAL_FASTER_MS -> DRAWER_ROWS_PER_FRAME_FASTER
-            elapsedMs >= DRAWER_REVEAL_FAST_MS -> DRAWER_ROWS_PER_FRAME_FAST
-            else -> DRAWER_ROWS_PER_FRAME
-        }
-        return (current + step).coerceAtMost(total)
+        return (current + DRAWER_ROWS_PER_FRAME).coerceAtMost(total)
     }
 
     /** t27（D1）：列表 overscan —— 0 表示严格只组合可见区（不给 LazyColumn 额外预组合）。 */

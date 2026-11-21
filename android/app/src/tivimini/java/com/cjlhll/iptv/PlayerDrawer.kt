@@ -248,7 +248,8 @@ fun PlayerDrawer(
             val before = revealedRows
             androidx.compose.runtime.withFrameNanos { }
             val elapsed = android.os.SystemClock.elapsedRealtime() - started
-            revealedRows = PerfPolicy.nextRevealedRows(before, channels.size, elapsed)
+            // t36：恒定 2 行/帧（不再按耗时加速；t34 证明加速会制造大帧）。
+            revealedRows = PerfPolicy.nextRevealedRows(before, channels.size)
             frames++
             if (frames == 1 || revealedRows >= channels.size) {
                 PerfTrace.d {
@@ -353,6 +354,18 @@ fun PlayerDrawer(
         if (!visible || revealedRows < channels.size || activeColumn != DrawerColumn.Channels) return@LaunchedEffect
         val target = focusedChannelUrl ?: selectedChannelUrl
         val idx = target?.let { channelIndexByUrl[it] } ?: return@LaunchedEffect
+        if (idx !in channelListState.layoutInfo.visibleItemsInfo.map { it.index }) {
+            runCatching { channelListState.scrollToItem((idx - 2).coerceAtLeast(0)) }
+        }
+    }
+
+    // t36：**焦点行始终可见** —— 方向键把焦点移到还没揭示的行时，先把它揭示出来，再保证滚动跟随。
+    // （t34 的 DOWN×8 后可见行仍 1–6，就是“焦点下移但列表没跟上”的表现。）
+    LaunchedEffect(visible, focusedChannelUrl, revealedRows, channels.size) {
+        if (!visible || !PerfPolicy.DRAWER_INCREMENTAL_ROWS) return@LaunchedEffect
+        val url = focusedChannelUrl ?: return@LaunchedEffect
+        val idx = channelIndexByUrl[url] ?: return@LaunchedEffect
+        if (idx >= revealedRows) revealedRows = (idx + 1).coerceAtMost(channels.size)
         if (idx !in channelListState.layoutInfo.visibleItemsInfo.map { it.index }) {
             runCatching { channelListState.scrollToItem((idx - 2).coerceAtLeast(0)) }
         }
@@ -888,16 +901,14 @@ fun PlayerDrawer(
                             modifier = Modifier.fillMaxSize(),
                             state = channelListState
                         ) {
-                            // t33：item 数量恒为全量 —— 滚动/焦点/scrollToItem 不受揭示进度影响；
-                            // 未揭示的行只画固定高度占位（无文本测量/无 logo），已揭示的才组合真实行。
+                            // t36（回退 t33 的 E3）：只把**已揭示的行**交给列表（subList），
+                            // 未揭示的行根本不存在 → 每帧只测量已揭示项（t34 的 Draw ×10 由此消除）。
+                            // 56dp 固定行高保留；焦点跟随由下面的 LaunchedEffect 保证。
                             itemsIndexed(
-                                channels,
+                                channels.subList(0, revealedRows.coerceIn(0, channels.size)),
                                 key = { index, ch -> "${index}:${ch.url}" },
                                 contentType = { _, _ -> "channel" },
                             ) { index, ch ->
-                                if (index >= revealedRows) {
-                                    DrawerPlaceholderRow()
-                                } else {
                                 composedUrls.add(ch.url)
                                 DrawerChannelItem(
                                     channel = ch,
@@ -921,7 +932,6 @@ fun PlayerDrawer(
                                         onSelectChannel(ch)
                                     }
                                 )
-                                }
                             }
                         }
                     }
@@ -1130,16 +1140,6 @@ private fun DrawerGroupItem(
             color = MaterialTheme.colorScheme.onSurface
         )
     }
-}
-
-/** t33：未揭示行的固定高度占位（纯粹占位，没有文本测量/图片解码，单帧成本可忽略）。 */
-@Composable
-private fun DrawerPlaceholderRow() {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(PerfPolicy.DRAWER_ROW_HEIGHT_DP.dp)
-    )
 }
 
 @Composable
