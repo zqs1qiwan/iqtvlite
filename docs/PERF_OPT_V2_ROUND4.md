@@ -109,4 +109,12 @@ t28 数据（同包 CI10164，默认参数）：
 
 | 项 | 值 |
 |---|---|
-| 提交 / CI | 见 t29 任务输出（本文件随实现提交，定稿后补 run 号） |
+| 提交 | `ac70990`（分帧增量组合）→ `28a1fa5`（滚动校正移到 `channelListState` 声明之后，修编译） |
+| CI run（绿） | **#166**，sha `28a1fa5`，push，conclusion `success` |
+| 构建 | `BUILD SUCCESSFUL in 3m 14s`；`:app:testDebugUnitTest` + `:app:lintDebug` + `assembleDebug` + `assembleDebugAndroidTest` |
+| 包 | `tv.iqtvlite.app.validation`，versionCode **10166**，versionName `2.2.0-tivimini-28a1fa5f-validation` |
+| app sha256 | `2ed54d140142a2aa4dbb89552a54e9a7da6508c4e365753e7e35ccfde5a690d9` |
+| test sha256 | `766f56a96675ec6e84577cfe82deaa4b226a9d486d00ffda280feec5af80cba4` |
+| 门禁 | logo / info_card / settings_ia / settings_scroll / **perf_policy（含 t29 新断言）** / player_threading / refresh_paths 全 OK；pair gate `{0,0,0}` |
+| 产物 | `iqtvlite-test-apk`（artifact id 14711762225，10,447,538 B ≪30MB） |
+| 修复过程 | `#165` 编译错：补行后的滚动校正引用了后面才声明的 `channelListState`/`channelIndexByUrl` → 移到声明之后的新 `LaunchedEffect` → `#166` 全绿 |
