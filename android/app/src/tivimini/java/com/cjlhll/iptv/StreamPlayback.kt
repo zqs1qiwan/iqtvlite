@@ -92,7 +92,7 @@ object StreamPlayback {
     private fun armWatchdog(player: ExoPlayer, context: Context, channelId: Long) {
         val watchdog = watchdogs.getOrPut(player) { FirstFrameWatchdogPolicy.Watchdog() }
         val gen = watchdog.arm("$channelId")
-        watchdogScope.launch {
+        watchdogScope.launch(Dispatchers.Main) {
             delay(watchdog.timeoutMillis())
             // Pausing sets playWhenReady = false; a paused zap must not be retried. (A rebuffer keeps
             // playWhenReady true, so buffering still counts as "should be playing".)
@@ -113,7 +113,7 @@ object StreamPlayback {
                     } catch (e: Exception) {
                         // a failed retry must never crash playback
                     }
-                    watchdogScope.launch {
+                    watchdogScope.launch(Dispatchers.Main) {
                         delay(watchdog.timeoutMillis())
                         if (player.playWhenReady &&
                             watchdog.onTimeout(gen) == FirstFrameWatchdogPolicy.Action.GIVE_UP
