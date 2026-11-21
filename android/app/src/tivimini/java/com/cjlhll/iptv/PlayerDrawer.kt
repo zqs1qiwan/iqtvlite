@@ -256,15 +256,8 @@ fun PlayerDrawer(
                 }
             }
         }
-        // t29：补行完成后再校正一次滚动（首帧只有 10 行时，scrollToItem(选中行) 会先被钳住）。
-        if (activeColumn == DrawerColumn.Channels) {
-            val target = focusedChannelUrl ?: selectedChannelUrl
-            val idx = target?.let { channelIndexByUrl[it] }
-            if (idx != null && idx !in channelListState.layoutInfo.visibleItemsInfo.map { it.index }) {
-                runCatching { channelListState.scrollToItem((idx - 2).coerceAtLeast(0)) }
-            }
-        }
     }
+
     LaunchedEffect(visible) {
         if (visible) {
             perfOpenAt[0] = android.os.SystemClock.elapsedRealtime()
@@ -338,6 +331,17 @@ fun PlayerDrawer(
     val channelListState = rememberLazyListState(
         initialFirstVisibleItemIndex = initialScrollIndex
     )
+
+    // t29（D4）：分帧补行完成后校正一次滚动 —— 首帧只有 10 行时 scrollToItem(选中行) 会被钳住，
+    // 补满后需要把选中行带回可视区（否则长列表深处选中的频道看不到焦点）。
+    LaunchedEffect(visible, revealedRows, channels.size) {
+        if (!visible || revealedRows < channels.size || activeColumn != DrawerColumn.Channels) return@LaunchedEffect
+        val target = focusedChannelUrl ?: selectedChannelUrl
+        val idx = target?.let { channelIndexByUrl[it] } ?: return@LaunchedEffect
+        if (idx !in channelListState.layoutInfo.visibleItemsInfo.map { it.index }) {
+            runCatching { channelListState.scrollToItem((idx - 2).coerceAtLeast(0)) }
+        }
+    }
 
     val programListState = rememberLazyListState()
     val dateListState = rememberLazyListState()
