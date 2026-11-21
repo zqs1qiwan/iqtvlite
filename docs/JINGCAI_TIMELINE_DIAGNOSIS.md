@@ -170,3 +170,17 @@ t15 的设计在 t49 落地为可编译、可门禁的代码（此前 WIP 只在
 | test sha256 | `7d9a4ecfefca8c73bcadb385f0d0cd8a36ea6e4033c32df6fc109f9683948d38` |
 | 产物 | `iqtvlite-test-apk`（artifact id 14722398320，10,465,889 B ≪30MB） |
 | 回退 | 设置行切回「关闭」即全局回退；代码级 `git revert` 本提交回到 t16 状态；无 Prefs 迁移 |
+
+## 睛彩最终结论（t55，2026-11-22 修订）
+36 次运行交叉验证：
+- **睛彩本流**（v_pid=101/201/301，null 13.9–23.2%，PMT 极稀疏 pmt_interval=-1、PCR 在独立 PID 0x68）：**15 次，first_frame 0/15（0%）**；
+- **另一路服务**（v_pid=4113，null 0–5.5%）：19 次，first_frame 19/19（100%）；
+- OFF/F/G/H 成功率 5/9、5/9、5/9、6/9 —— 差异完全由"这次收到哪一路"决定，与实验无关。
+
+**纠正长期误读**：「睛彩有时能播」实际是另一路服务（v_pid=4113）被投递，并非睛彩本流。
+
+**Probe 与 PC 基准一致**：null≈20%、PES 非 0、A/V −0.12~+0.40s、PID 表  x65/0x66。
+
+**判定**：网关对同一 URL 间歇投递两路不同服务；睛彩本流 PMT 极稀疏、PCR 独立 —— 属**源侧/网关**问题，**App 侧无需再改**。A–H 全部默认关，PROBE/DIAG/buffer/timeline 保留作现场取证。
+
+**Probe 已知小缺陷**：cc_err 把 null PID 0x1FFF 也计入（cc_err≈null包数−1），不代表丢包；后续应跳过 null PID 并拆分 video/audio/other。

@@ -1,0 +1,47 @@
+11-22 06:58:10.138 12250 12250 D IQTV-METRICS: prepare session=c7583001598850122915-l590536782-s84 at=60076881
+11-22 06:58:10.150 12250 12250 D IQTV-METRICS: audio_tracks session=c7583001598850122915-l590536782-s84 groups=0 volume=1.0 suppression=0 playWhenReady=true audioSessionId=1001
+11-22 06:58:10.152 12250 12250 D IQTV-METRICS: state session=c7583001598850122915-l590536782-s84 state=2 rebuffers=0 rebuffer_ms=0 dropped=0
+11-22 06:58:10.314 12250 12250 D IQTV-METRICS: audio_track_released session=c7583001598850122915-l590536782-s84 encoding=2 rate=48000 channelConfig=12 bufferBytes=96000 tunneling=false offload=false
+11-22 06:58:10.791 12250 28833 D IQTV-JINGCAI-PROBE: pmt_pid=256 pcr_pid=4113 pcr=yes streams=1b@1011,03@1100 v_pid=4113 a_pid=4352 vpts=13544.393 apts=13544.585 av=-0.192 pid_top=1011:2632,1100:115,1fff:48,0000:1,0100:1 cc_err=0 packets=2798 null_pct=1.72 pes_len_zero=14 pes_len_nonzero=23 pmt_interval=-1
+11-22 06:58:11.091 12250 12250 D IQTV-METRICS: audio_enabled session=c7583001598850122915-l590536782-s84 volume=1.0 suppression=0 playWhenReady=true audioSessionId=1001
+11-22 06:58:11.093 12250 12250 D IQTV-METRICS: audio_track session=c7583001598850122915-l590536782-s84 group=1 track=0 supported=true selected=true renderer_format_support=4 mime=audio/mpeg-L2 codecs=unknown rate=48000 channels=2 language=unknown bitrate=-1
+11-22 06:58:11.094 12250 12250 D IQTV-METRICS: audio_tracks session=c7583001598850122915-l590536782-s84 groups=1 volume=1.0 suppression=0 playWhenReady=true audioSessionId=1001
+11-22 06:58:11.097 12250 12250 D IQTV-METRICS: format session=c7583001598850122915-l590536782-s84 mime=video/avc width=1920 height=1080 fps=-1.0
+11-22 06:58:11.100 12250 12250 D IQTV-METRICS: audio_decoder session=c7583001598850122915-l590536782-s84 name=ffmpegLavc60.3.100-mp3 init_ms=3
+11-22 06:58:11.101 12250 12250 D IQTV-METRICS: audio_format session=c7583001598850122915-l590536782-s84 mime=audio/mpeg-L2 codecs=unknown rate=48000 channels=2 language=unknown bitrate=-1
+11-22 06:58:11.124 12250 12250 D IQTV-METRICS: audio_track_initialized session=c7583001598850122915-l590536782-s84 encoding=2 rate=48000 channelConfig=12 bufferBytes=96000 tunneling=false offload=false
+11-22 06:58:11.293 12250 12250 D IQTV-METRICS: first_frame session=c7583001598850122915-l590536782-s84 ttff_ms=1155 rendered_at=60078027
+11-22 06:58:11.297 12250 12250 D IQTV-ZAP: zap=1173ms prepare=35ms firstFrame=1138ms fmt=938ms dec=0ms render=200ms
+11-22 06:58:11.335 12250 12250 D IQTV-METRICS: state session=c7583001598850122915-l590536782-s84 state=3 rebuffers=0 rebuffer_ms=0 dropped=0
+11-22 06:58:11.371 12250 12250 D IQTV-METRICS: audio_advancing session=c7583001598850122915-l590536782-s84 playout_start_ms=1795301891303 since_prepare_ms=1234
+11-22 06:58:14.883 12250 12250 D IQTV-METRICS: prepare session=c7583001598850122915-l590536782-s85 at=60081624
+11-22 06:58:14.896 12250 12250 D IQTV-METRICS: audio_tracks session=c7583001598850122915-l590536782-s85 groups=0 volume=1.0 suppression=0 playWhenReady=true audioSessionId=1001
+11-22 06:58:14.898 12250 12250 D IQTV-METRICS: state session=c7583001598850122915-l590536782-s85 state=2 rebuffers=0 rebuffer_ms=0 dropped=0
+11-22 06:58:15.013 12250 12250 D IQTV-METRICS: audio_track_released session=c7583001598850122915-l590536782-s85 encoding=2 rate=48000 channelConfig=12 bufferBytes=96000 tunneling=false offload=false
+11-22 06:58:15.261 12250 12250 D IQTV-METRICS: audio_enabled session=c7583001598850122915-l590536782-s85 volume=1.0 suppression=0 playWhenReady=true audioSessionId=1001
+11-22 06:58:15.263 12250 12250 D IQTV-METRICS: audio_track session=c7583001598850122915-l590536782-s85 group=1 track=0 supported=true selected=true renderer_format_support=4 mime=audio/mpeg-L2 codecs=unknown rate=48000 channels=2 language=unknown bitrate=-1
+11-22 06:58:15.263 12250 12250 D IQTV-METRICS: audio_tracks session=c7583001598850122915-l590536782-s85 groups=1 volume=1.0 suppression=0 playWhenReady=true audioSessionId=1001
+11-22 06:58:15.269 12250 12250 D IQTV-METRICS: format session=c7583001598850122915-l590536782-s85 mime=video/avc width=1920 height=1080 fps=-1.0
+11-22 06:58:15.298 12250 12250 D IQTV-METRICS: audio_decoder session=c7583001598850122915-l590536782-s85 name=ffmpegLavc60.3.100-mp3 init_ms=3
+11-22 06:58:15.299 12250 12250 D IQTV-METRICS: audio_format session=c7583001598850122915-l590536782-s85 mime=audio/mpeg-L2 codecs=unknown rate=48000 channels=2 language=unknown bitrate=-1
+11-22 06:58:15.299 12250 12250 D IQTV-METRICS: audio_track_initialized session=c7583001598850122915-l590536782-s85 encoding=2 rate=48000 channelConfig=12 bufferBytes=96000 tunneling=false offload=false
+11-22 06:58:15.330 12250 12250 D IQTV-METRICS: first_frame session=c7583001598850122915-l590536782-s85 ttff_ms=449 rendered_at=60082051
+11-22 06:58:15.480 12250 28884 D IQTV-JINGCAI-PROBE: pmt_pid=256 pcr_pid=4113 pcr=yes streams=1b@1011,03@1100 v_pid=4113 a_pid=4352 vpts=13549.145 apts=13549.241 av=-0.096 pid_top=1011:2695,1100:100,0000:2,0100:2,0011:1 cc_err=0 packets=2800 null_pct=0.00 pes_len_zero=12 pes_len_nonzero=20 pmt_interval=2335
+11-22 06:58:15.658 12250 12250 D IQTV-METRICS: state session=c7583001598850122915-l590536782-s85 state=3 rebuffers=0 rebuffer_ms=0 dropped=0
+11-22 06:58:15.743 12250 12250 D IQTV-METRICS: audio_advancing session=c7583001598850122915-l590536782-s85 playout_start_ms=1795301895719 since_prepare_ms=862
+11-22 06:58:18.092 12250 12250 D IQTV-METRICS: prepare session=c8016856357870179675-l2489133392-s86 at=60084835
+11-22 06:58:18.096 12250 12250 D IQTV-METRICS: audio_tracks session=c8016856357870179675-l2489133392-s86 groups=0 volume=1.0 suppression=0 playWhenReady=true audioSessionId=1001
+11-22 06:58:18.097 12250 12250 D IQTV-METRICS: state session=c8016856357870179675-l2489133392-s86 state=2 rebuffers=0 rebuffer_ms=0 dropped=0
+11-22 06:58:18.214 12250 12250 D IQTV-METRICS: audio_track_released session=c8016856357870179675-l2489133392-s86 encoding=2 rate=48000 channelConfig=12 bufferBytes=96000 tunneling=false offload=false
+11-22 06:58:18.580 12250 12250 D IQTV-METRICS: audio_enabled session=c8016856357870179675-l2489133392-s86 volume=1.0 suppression=0 playWhenReady=true audioSessionId=1001
+11-22 06:58:18.585 12250 12250 D IQTV-METRICS: audio_track session=c8016856357870179675-l2489133392-s86 group=1 track=0 supported=true selected=true renderer_format_support=4 mime=audio/mpeg-L2 codecs=unknown rate=48000 channels=2 language=unknown bitrate=-1
+11-22 06:58:18.585 12250 12250 D IQTV-METRICS: audio_tracks session=c8016856357870179675-l2489133392-s86 groups=1 volume=1.0 suppression=0 playWhenReady=true audioSessionId=1001
+11-22 06:58:18.616 12250 12250 D IQTV-METRICS: format session=c8016856357870179675-l2489133392-s86 mime=video/avc width=1920 height=1080 fps=-1.0
+11-22 06:58:18.618 12250 12250 D IQTV-METRICS: audio_decoder session=c8016856357870179675-l2489133392-s86 name=ffmpegLavc60.3.100-mp3 init_ms=4
+11-22 06:58:18.619 12250 12250 D IQTV-METRICS: audio_format session=c8016856357870179675-l2489133392-s86 mime=audio/mpeg-L2 codecs=unknown rate=48000 channels=2 language=unknown bitrate=-1
+11-22 06:58:18.625 12250 12250 D IQTV-METRICS: audio_track_initialized session=c8016856357870179675-l2489133392-s86 encoding=2 rate=48000 channelConfig=12 bufferBytes=96000 tunneling=false offload=false
+11-22 06:58:18.700 12250 28949 D IQTV-JINGCAI-PROBE: pmt_pid=256 pcr_pid=4113 pcr=yes streams=1b@1011,03@1100 v_pid=4113 a_pid=4352 vpts=13449.906 apts=13450.074 av=-0.168 pid_top=1011:2663,1100:95,1fff:35,0000:2,0100:2 cc_err=0 packets=2798 null_pct=1.25 pes_len_zero=11 pes_len_nonzero=19 pmt_interval=1113
+11-22 06:58:18.732 12250 12250 D IQTV-METRICS: first_frame session=c8016856357870179675-l2489133392-s86 ttff_ms=640 rendered_at=60085471
+11-22 06:58:18.739 12250 12250 D IQTV-ZAP: zap=658ms prepare=21ms firstFrame=637ms fmt=516ms dec=0ms render=121ms
+11-22 06:58:18.932 12250 12250 D IQTV-METRICS: state session=c8016856357870179675-l2489133392-s86 state=3 rebuffers=0 rebuffer_ms=0 dropped=0
+11-22 06:58:19.021 12250 12250 D IQTV-METRICS: audio_advancing session=c8016856357870179675-l2489133392-s86 playout_start_ms=1795301898983 since_prepare_ms=929

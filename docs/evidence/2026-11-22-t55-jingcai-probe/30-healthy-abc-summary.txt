@@ -1,0 +1,3 @@
+mode=f set=True zap='zap=464ms prepare=13ms firstFrame=451ms fmt=388ms dec=0ms render=63ms' ff=True s3=True jingcaiLog=False
+mode=g set=True zap='' ff=True s3=True jingcaiLog=False
+mode=h set=True zap='' ff=True s3=True jingcaiLog=False

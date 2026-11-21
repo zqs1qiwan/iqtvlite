@@ -1,0 +1,8 @@
+I/Baiguotv(27516): Identity refresh idsChanged=true tokenChanged=true
+I/Baiguotv(27516): Identity warm ok id=446552… tokenChanged=false warmed=3/3
+W/hongguotv-artwo(27516): type=1400 audit(0.0:43020): avc: granted { write } for name="ion" dev="tmpfs" ino=2111 scontext=u:r:untrusted_app:s0:c56,c256,c512,c768 tcontext=u:object_r:ion_device:s0 tclass=chr_file
+W/hongguotv-artwo(27516): type=1400 audit(0.0:43021): avc: granted { write } for path="/dev/ion" dev="tmpfs" ino=2111 scontext=u:r:untrusted_app:s0:c56,c256,c512,c768 tcontext=u:object_r:ion_device:s0 tclass=chr_file
+W/hongguotv-artwo(27516): type=1400 audit(0.0:43022): avc: granted { write } for name="ion" dev="tmpfs" ino=2111 scontext=u:r:untrusted_app:s0:c56,c256,c512,c768 tcontext=u:object_r:ion_device:s0 tclass=chr_file
+W/hongguotv-artwo(27516): type=1400 audit(0.0:43023): avc: granted { write } for path="/dev/ion" dev="tmpfs" ino=2111 scontext=u:r:untrusted_app:s0:c56,c256,c512,c768 tcontext=u:object_r:ion_device:s0 tclass=chr_file
+W/hongguotv-artwo(27516): type=1400 audit(0.0:43024): avc: granted { write } for name="ion" dev="tmpfs" ino=2111 scontext=u:r:untrusted_app:s0:c56,c256,c512,c768 tcontext=u:object_r:ion_device:s0 tclass=chr_file
+W/hongguotv-artwo(27516): type=1400 audit(0.0:43025): avc: granted { write } for path="/dev/ion" dev="tmpfs" ino=2111 scontext=u:r:untrusted_app:s0:c56,c256,c512,c768 tcontext=u:object_r:ion_device:s0 tclass=chr_file
