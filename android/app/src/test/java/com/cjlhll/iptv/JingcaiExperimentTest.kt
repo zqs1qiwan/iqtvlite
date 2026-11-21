@@ -30,6 +30,11 @@ class JingcaiExperimentTest {
             JingcaiExperiment.Mode.B,
             JingcaiExperiment.Mode.AUTO,
             JingcaiExperiment.Mode.C,
+            JingcaiExperiment.Mode.D,
+            JingcaiExperiment.Mode.E,
+            JingcaiExperiment.Mode.F,
+            JingcaiExperiment.Mode.G,
+            JingcaiExperiment.Mode.H,
             JingcaiExperiment.Mode.OFF,
         )
         expected.forEach { want ->
@@ -40,10 +45,26 @@ class JingcaiExperimentTest {
 
     @Test
     fun timelineExperimentsAreTheOnlyPacketRewriters() {
-        assertEquals(setOf(JingcaiExperiment.Mode.A, JingcaiExperiment.Mode.B, JingcaiExperiment.Mode.AUTO),
-            JingcaiExperiment.Mode.entries.filter { JingcaiExperiment.touchesPacketBytes(it) }.toSet())
+        // t54：D（彻底去 PCR）/ E（PES 时间戳归零）/ G（丢前导字节）也是包级改写，全部默认关。
+        assertEquals(
+            setOf(
+                JingcaiExperiment.Mode.A, JingcaiExperiment.Mode.B, JingcaiExperiment.Mode.AUTO,
+                JingcaiExperiment.Mode.D, JingcaiExperiment.Mode.E, JingcaiExperiment.Mode.G,
+            ),
+            JingcaiExperiment.Mode.entries.filter { JingcaiExperiment.touchesPacketBytes(it) }.toSet(),
+        )
         assertTrue(JingcaiExperiment.timebaseRebase(JingcaiExperiment.Mode.C))
         assertFalse(JingcaiExperiment.touchesPacketBytes(JingcaiExperiment.Mode.C))
+    }
+
+    @Test
+    fun t54DelayedStartAndLeadingDropAreSeparateKnobs() {
+        // F 只改“何时开始播”，G 只改“吐出字节的起点”，两者互斥且都不影响健康频道。
+        assertEquals(true, JingcaiExperiment.delayedStart(JingcaiExperiment.Mode.F))
+        assertEquals(false, JingcaiExperiment.delayedStart(JingcaiExperiment.Mode.G))
+        assertEquals(true, JingcaiExperiment.dropLeadingBytes(JingcaiExperiment.Mode.G))
+        assertEquals(false, JingcaiExperiment.dropLeadingBytes(JingcaiExperiment.Mode.F))
+        assertEquals(1_200L, JingcaiExperiment.DELAYED_START_MS)
     }
 
     @Test
@@ -73,8 +94,11 @@ class JingcaiExperimentTest {
     @Test
     fun everyExperimentTouchesExactlyOneKnob() {
         // C 是“时基归零”的设计占位（不实现字节改写），单独在 timelineExperimentsAreTheOnlyPacketRewriters 校验。
+        // C = 时基归零设计占位；t54 的 F（延迟起播）/ H（新 DataSource 重建）不靠代码开关改字节/提取器，
+        // 单独在下面两条断言里校验，不参与“一个旋钮”统计。
         val modes = JingcaiExperiment.Mode.entries.filter {
-            it != JingcaiExperiment.Mode.OFF && it != JingcaiExperiment.Mode.C
+            it != JingcaiExperiment.Mode.OFF && it != JingcaiExperiment.Mode.C &&
+                it != JingcaiExperiment.Mode.F && it != JingcaiExperiment.Mode.H
         }
         modes.forEach { m ->
             val knobs = listOf(

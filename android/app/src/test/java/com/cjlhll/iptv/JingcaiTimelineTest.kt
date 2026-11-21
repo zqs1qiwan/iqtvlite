@@ -340,6 +340,7 @@ class JingcaiTimelineTest {
         p[1] = 0x40.toByte()
         p[2] = 0x00.toByte()
         p[3] = 0x10.toByte()
+        p[4] = 0x00.toByte() // pointer_field：PMT section 紧跟其后
         val s = 5
         p[s] = 0x02.toByte()
         p[s + 1] = 0xB0.toByte()
