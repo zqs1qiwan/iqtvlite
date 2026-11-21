@@ -211,6 +211,10 @@ object JingcaiTimeline {
         val pesLenZero: Int = 0,
         val pesLenNonZero: Int = 0,
         val pmtIntervalPackets: Int = -1,
+        // t56：CC 错误拆分（null PID 不计；视频/音频单独统计）
+        val ccVideo: Int = 0,
+        val ccAudio: Int = 0,
+        val ccOther: Int = 0,
     ) {
         /** null 包占比（%）；PC 对照：睛彩 ≈20%、CCTV ≈1.6%。 */
         val nullRatioPct: Double get() = if (packets <= 0) 0.0 else nullPackets * 100.0 / packets
@@ -236,7 +240,9 @@ object JingcaiTimeline {
         append(" pid_top=").append(
             p.pidTop.joinToString(",") { String.format(java.util.Locale.US, "%04x:%d", it.first, it.second) },
         )
-        append(" cc_err=").append(p.ccErrors).append(" packets=").append(p.packets)
+        append(" cc_err=").append(p.ccErrors)
+        append(" cc_v=").append(p.ccVideo).append(" cc_a=").append(p.ccAudio)
+        append(" cc_other=").append(p.ccOther).append(" packets=").append(p.packets)
         append(" null_pct=").append(String.format(java.util.Locale.US, "%.2f", p.nullRatioPct))
         append(" pes_len_zero=").append(p.pesLenZero).append(" pes_len_nonzero=").append(p.pesLenNonZero)
         append(" pmt_interval=").append(p.pmtIntervalPackets)
@@ -403,6 +409,7 @@ object JingcaiTimeline {
         var pmtGapCount = 0
         val counts = HashMap<Int, Int>()
         val lastCc = HashMap<Int, Int>()
+        val ccByPid = HashMap<Int, Int>()
         var i = 0
         while (i + TS_SIZE <= len) {
             if ((bytes[i].toInt() and 0xFF) != TS_SYNC) {
@@ -431,10 +438,14 @@ object JingcaiTimeline {
                 }
             }
             if (pid == PID_NULL) nullPackets++
-            if (hasPayload(bytes, off)) {
+            // t56：null PID（0x1FFF）的 CC 不参与校验（它不是真实流，CC 不连续是常态）。
+            if (hasPayload(bytes, off) && pid != PID_NULL) {
                 val cc = bytes[off + 3].toInt() and 0x0F
                 val prev = lastCc[pid]
-                if (prev != null && cc != ((prev + 1) and 0x0F)) ccErrors++
+                if (prev != null && cc != ((prev + 1) and 0x0F)) {
+                    ccErrors++
+                    ccByPid[pid] = (ccByPid[pid] ?: 0) + 1
+                }
                 lastCc[pid] = cc
             }
             // PES 声明长度分布：睛彩非 0、CCTV 0（PC 对照结论）。
@@ -481,6 +492,9 @@ object JingcaiTimeline {
             pesLenZero = pesLenZero,
             pesLenNonZero = pesLenNonZero,
             pmtIntervalPackets = if (pmtGapCount > 0) pmtGaps / pmtGapCount else -1,
+            ccVideo = if (videoPid >= 0) ccByPid[videoPid] ?: 0 else 0,
+            ccAudio = if (audioPid >= 0) ccByPid[audioPid] ?: 0 else 0,
+            ccOther = ccByPid.filterKeys { it != videoPid && it != audioPid }.values.sum(),
         )
     }
 

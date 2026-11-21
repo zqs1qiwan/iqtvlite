@@ -29,8 +29,8 @@ class PerfPolicyTest {
         // t29（D4）：不再延迟——从第 0 帧起分帧增量组合，首屏 10 行、每帧 +3 行。
         assertEquals("去掉 120ms 延迟，从第 0 帧开始", 0L, PerfPolicy.DRAWER_DEFER_CONTENT_MS)
         assertTrue(PerfPolicy.DRAWER_INCREMENTAL_ROWS)
-        assertEquals("t39：首帧 3 行（消掉最后 1 个 304ms 巨帧）", 3, PerfPolicy.DRAWER_FIRST_FRAME_ROWS)
-        assertEquals("t36：每帧恒 2 行（不加速）", 2, PerfPolicy.DRAWER_ROWS_PER_FRAME)
+        assertEquals("t56：首帧 2 行", 2, PerfPolicy.DRAWER_FIRST_FRAME_ROWS)
+        assertEquals("t56：每帧恒 1 行（单帧成本压到 ~15ms）", 1, PerfPolicy.DRAWER_ROWS_PER_FRAME)
         assertEquals("t36：固定行高保留", 56, PerfPolicy.DRAWER_ROW_HEIGHT_DP)
         assertEquals("D1：不额外预组合（严格可见区）", 0, PerfPolicy.DRAWER_OVERSCAN_ITEMS)
     }
@@ -100,11 +100,11 @@ class PerfPolicyTest {
 
     @Test
     fun revealedRowsGrowPerFrameAndStopAtTotal() {
-        // 首帧：0 → 3（t39 首屏更轻）
-        assertEquals(3, PerfPolicy.nextRevealedRows(0, 147))
-        // 之后每帧 +2
-        assertEquals(5, PerfPolicy.nextRevealedRows(3, 147))
-        assertEquals(7, PerfPolicy.nextRevealedRows(5, 147))
+        // 首帧：0 → 2（t56）
+        assertEquals(2, PerfPolicy.nextRevealedRows(0, 147))
+        // 之后每帧 +1
+        assertEquals(3, PerfPolicy.nextRevealedRows(2, 147))
+        assertEquals(4, PerfPolicy.nextRevealedRows(3, 147))
         // 到顶后钳住
         assertEquals(147, PerfPolicy.nextRevealedRows(146, 147))
         assertEquals(147, PerfPolicy.nextRevealedRows(147, 147))
@@ -113,9 +113,9 @@ class PerfPolicyTest {
         assertEquals(2, PerfPolicy.nextRevealedRows(0, 2))
         assertEquals(2, PerfPolicy.nextRevealedRows(1, 2))
         // t39：焦点前跳用的 lookahead 一次多揭示若干行（保证连续 DOWN 不撞末尾）
-        assertEquals(16, PerfPolicy.DRAWER_LOOKAHEAD_ROWS)
+        assertEquals(12, PerfPolicy.DRAWER_LOOKAHEAD_ROWS)
         assertEquals(12, PerfPolicy.DRAWER_SCREEN_ROWS)
-        assertEquals("t52 最终：首屏窗口回退 18→28（t47 最佳）", 28, PerfPolicy.DRAWER_OPEN_WINDOW_ROWS)
+        assertEquals("t56：首屏窗口 20", 20, PerfPolicy.DRAWER_OPEN_WINDOW_ROWS)
     }
 
     @Test

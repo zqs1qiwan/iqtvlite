@@ -45,10 +45,10 @@ object PerfPolicy {
     const val DRAWER_INCREMENTAL_ROWS = true
 
     /** 首帧先组合多少行（t39：6→3，专门消掉 t37 残留的 304ms 巨帧；3 行仍足以"有内容"）。 */
-    const val DRAWER_FIRST_FRAME_ROWS = 3
+    const val DRAWER_FIRST_FRAME_ROWS = 2
 
     /** 之后每帧追加多少行（t33：3→2，把单帧成本再压一半）。 */
-    const val DRAWER_ROWS_PER_FRAME = 2
+    const val DRAWER_ROWS_PER_FRAME = 1
 
 
     /** 抽屉行固定高度（t33：固定行高，避免逐行测量/文字重排）。 */
@@ -58,7 +58,7 @@ object PerfPolicy {
      * t39（滚动跟随）：焦点走到底部时一次多揭示几行，保证连续 DOWN 不会“撞到列表末尾”。
      * （之前只按 +2/帧补行，快速连按时目标行还没长出来 → 焦点停在原地。）
      */
-    const val DRAWER_LOOKAHEAD_ROWS = 16
+    const val DRAWER_LOOKAHEAD_ROWS = 12
 
     /** t39：一屏大约行数（56dp 行 × 12 ≈ 672dp 可视高度）。 */
     const val DRAWER_SCREEN_ROWS = 12
@@ -69,7 +69,7 @@ object PerfPolicy {
      * - t48/t50（=18）：实测**更差**（巨帧 3→4、50th 53→85–89ms、Draw 2.5→16.5ms），故回退。
      * 说明：窗口越小 → 单帧帧数虽少，但每帧累积的重组/测量在弱机上反而更贵，28 是实测拐点。
      */
-    const val DRAWER_OPEN_WINDOW_ROWS = 28
+    const val DRAWER_OPEN_WINDOW_ROWS = 20
 
     /**
      * t44：**只在聚焦行**显示节目副标题 + 2dp 进度（信息不减法的折中）。

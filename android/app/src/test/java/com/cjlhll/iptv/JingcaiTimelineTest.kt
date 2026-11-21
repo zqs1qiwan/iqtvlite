@@ -380,4 +380,48 @@ class JingcaiTimelineTest {
         assertEquals(-1, JingcaiTimeline.firstPatOffset(ByteArray(376), 376))
     }
 
+    // ── t56：CC 错误拆分（null PID 不参与校验）────────────────────────────
+    private fun packetWithCc(pid: Int, cc: Int): ByteArray {
+        val p = ByteArray(188) { 0xFF.toByte() }
+        p[0] = 0x47.toByte()
+        p[1] = ((pid shr 8) and 0x1F).toByte()
+        p[2] = (pid and 0xFF).toByte()
+        p[3] = (0x10 or (cc and 0x0F)).toByte() // payload only + CC
+        return p
+    }
+
+    @Test
+    fun probeSplitsCcErrorsAndIgnoresNullPid() {
+        // PMT：视频 0x1B@0x0100、音频 0x03@0x0101
+        val pmt = ByteArray(188) { 0xFF.toByte() }
+        pmt[0] = 0x47.toByte(); pmt[1] = 0x40.toByte(); pmt[2] = 0x00.toByte(); pmt[3] = 0x10.toByte()
+        pmt[4] = 0x00.toByte()
+        val s = 5
+        pmt[s] = 0x02.toByte(); pmt[s + 1] = 0xB0.toByte(); pmt[s + 2] = 0x17.toByte()
+        pmt[s + 3] = 0x00.toByte(); pmt[s + 4] = 0x01.toByte()
+        pmt[s + 5] = 0xC1.toByte(); pmt[s + 6] = 0x00.toByte(); pmt[s + 7] = 0x00.toByte()
+        pmt[s + 8] = 0x01.toByte(); pmt[s + 9] = 0x04.toByte()
+        pmt[s + 10] = 0xF0.toByte(); pmt[s + 11] = 0x00.toByte()
+        pmt[s + 12] = 0x1B.toByte(); pmt[s + 13] = 0x01.toByte(); pmt[s + 14] = 0x00.toByte()
+        pmt[s + 15] = 0xF0.toByte(); pmt[s + 16] = 0x00.toByte()
+        pmt[s + 17] = 0x03.toByte(); pmt[s + 18] = 0x01.toByte(); pmt[s + 19] = 0x01.toByte()
+        pmt[s + 20] = 0xF0.toByte(); pmt[s + 21] = 0x00.toByte()
+
+        val buf = pmt +
+            packetWithCc(0x0100, 0) + packetWithCc(0x0100, 5) +   // 视频 1 次跳变
+            packetWithCc(0x0101, 0) + packetWithCc(0x0101, 7) +   // 音频 1 次跳变
+            packetWithCc(0x0200, 0) + packetWithCc(0x0200, 9) +   // 其它 1 次跳变
+            packetWithCc(0x1FFF, 0) + packetWithCc(0x1FFF, 9)     // null：必须忽略
+
+        val probe = JingcaiTimeline.probeTs(buf, buf.size)
+        assertEquals(1, probe.ccVideo)
+        assertEquals(1, probe.ccAudio)
+        assertEquals(1, probe.ccOther)
+        assertEquals("null PID 的 CC 不连续不得计入", 3, probe.ccErrors)
+        val line = JingcaiTimeline.probeLine(probe)
+        assertTrue(line.contains("cc_v=1"))
+        assertTrue(line.contains("cc_a=1"))
+        assertTrue(line.contains("cc_other=1"))
+    }
+
 }
