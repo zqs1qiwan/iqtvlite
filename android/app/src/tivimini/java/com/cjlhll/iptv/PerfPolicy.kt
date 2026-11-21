@@ -64,6 +64,13 @@ object PerfPolicy {
     const val DRAWER_SCREEN_ROWS = 12
 
     /**
+     * t44：**只在聚焦行**显示节目副标题 + 2dp 进度（信息不减法的折中）。
+     * 非聚焦行保持 t42 的精简行（台标 + 序号 + 台名，约 2 个节点），聚焦行每帧最多 1 行。
+     * 回退：改 false → 回到 t42 的“全行无副标题”。
+     */
+    const val DRAWER_FOCUSED_SUBTITLE = true
+
+    /**
      * 分帧组合的每帧上限保护：一帧内最多再追加这么多"帧"，避免主线程被长循环占住。
      * （实际由 withFrameNanos 驱动，每帧只跑一次。）
      */

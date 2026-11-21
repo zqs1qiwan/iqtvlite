@@ -127,6 +127,13 @@ def main() -> int:
     if "const val DRAWER_LOOKAHEAD_ROWS = 16" not in policy or "const val DRAWER_SCREEN_ROWS = 12" not in policy:
         problems.append("PerfPolicy.kt: DRAWER_LOOKAHEAD_ROWS=16 / DRAWER_SCREEN_ROWS=12 required (t39)")
     # t42: lean channel row (logo + number + name only) and bounded open window with step=2
+    # t44: subtitle only on the focused row (guarded by `focused`), heavy widgets still banned.
+    if "PerfPolicy.DRAWER_FOCUSED_SUBTITLE" not in drawer_code:
+        problems.append("PlayerDrawer.kt: focused-subtitle flag missing (t44)")
+    if "val programTitle = if (PerfPolicy.DRAWER_FOCUSED_SUBTITLE && focused)" not in drawer_code:
+        problems.append("PlayerDrawer.kt: subtitle must be gated on focused (t44)")
+    if "const val DRAWER_FOCUSED_SUBTITLE = true" not in policy:
+        problems.append("PerfPolicy.kt: DRAWER_FOCUSED_SUBTITLE must default true (t44)")
     if "openTarget" not in drawer_code:
         problems.append("PlayerDrawer.kt: bounded open window (openTarget) missing (t42)")
     # the channel row must not carry the EPG subtitle / marquee / progress bar any more
@@ -134,7 +141,7 @@ def main() -> int:
     row_end = drawer_code.find("private fun ThinProgressBar(", row_start)
     if row_start != -1 and row_end > row_start:
         row = drawer_code[row_start:row_end]
-        for banned in ("FocusMarqueeText(", "ThinProgressBar(", "nowProgram", "无信息"):
+        for banned in ("FocusMarqueeText(", "ThinProgressBar(", "无信息", "SubcomposeLayout"):
             if banned in row:
                 problems.append("DrawerChannelItem still contains " + banned + " (t42 lean row)")
     if "drawer_reveal_grow" not in drawer_code:

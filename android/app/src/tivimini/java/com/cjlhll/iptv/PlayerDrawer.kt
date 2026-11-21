@@ -54,6 +54,7 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 
@@ -968,6 +969,7 @@ fun PlayerDrawer(
                                     channel = ch,
                                     index = channelNumbers[ch.url] ?: (index + 1),
                                     selected = (ch.url == selectedChannelUrl),
+                                    nowProgram = nowProgramByChannelUrl[ch.url],
                                     focusRequester = if (ch.url == focusTargetUrl) selectedChannelRequester else null,
                                     onFocused = {
                                         activeColumn = DrawerColumn.Channels
@@ -1201,6 +1203,7 @@ private fun DrawerChannelItem(
     channel: Channel,
     index: Int,
     selected: Boolean,
+    nowProgram: NowProgramUi?,
     focusRequester: FocusRequester?,
     onFocused: () -> Unit,
     onClick: () -> Unit
@@ -1243,17 +1246,57 @@ private fun DrawerChannelItem(
             height = 40.dp
         )
         Spacer(modifier = Modifier.width(12.dp))
-        // t42（单行成本减法）：行内只留「台标 + 序号 + 台名」。
-        // 去掉 EPG 副标题 / 跑马灯 / 进度条 / “无信息”占位（这些都是每行额外的
-        // 组合节点 + 文本测量 + draw，实测单行成本 12–15ms；减法后目标 ~4ms）。
-        Text(
-            text = label,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            style = MaterialTheme.typography.titleMedium,
-            color = contentColor,
-            modifier = Modifier.weight(1f, fill = true)
-        )
+        // t42（单行成本减法）：非聚焦行只留「台标 + 序号 + 台名」（约 2 个节点，零副文本成本）。
+        // t44（信息不减法）：**只有聚焦行**才组合节目副标题 + 2dp 进度 —— 每帧最多 1 行，
+        // 且聚焦切换时旧行立即释放；不用 FocusMarqueeText/ThinProgressBar（避免动画节点与额外 draw）。
+        val programTitle = if (PerfPolicy.DRAWER_FOCUSED_SUBTITLE && focused) nowProgram?.title else null
+        if (!programTitle.isNullOrBlank()) {
+            Column(modifier = Modifier.weight(1f, fill = true)) {
+                Text(
+                    text = label,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = contentColor
+                )
+                Text(
+                    text = programTitle,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.bodySmall,
+                    fontSize = 11.sp,
+                    lineHeight = 14.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f)
+                )
+                val progress = nowProgram?.progress
+                if (progress != null) {
+                    // 2dp 进度：两个 Box（底 + 前景 fillMaxWidth(fraction)），不引入 SubcomposeLayout。
+                    Box(
+                        modifier = Modifier
+                            .padding(top = 2.dp)
+                            .fillMaxWidth()
+                            .height(2.dp)
+                            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.18f))
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth(progress.coerceIn(0f, 1f))
+                                .fillMaxHeight()
+                                .background(MaterialTheme.colorScheme.primary)
+                        )
+                    }
+                }
+            }
+        } else {
+            Text(
+                text = label,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                style = MaterialTheme.typography.titleMedium,
+                color = contentColor,
+                modifier = Modifier.weight(1f, fill = true)
+            )
+        }
     }
 }
 
