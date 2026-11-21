@@ -26,11 +26,23 @@ object JingcaiExperiment {
         E1("e1", "E1 TS搜索4MB"),
         E2("e2", "E2 系统HTTP源"),
         E3("e3", "E3 禁用字幕注入"),
+        // t15：PCR/PTS 时间轴错位实验（默认关，单变量）。
+        A("a", "A 丢PCR-only包"),
+        B("b", "B PMT PCR→0x1FFF"),
+        AUTO("auto", "自动时间轴修复(>60s)"),
+        C("c", "C 时基归零(设计)"),
     }
 
     fun parse(id: String?): Mode = Mode.entries.firstOrNull { it.id == id } ?: Mode.OFF
 
     fun next(current: Mode): Mode = Mode.entries[(current.ordinal + 1) % Mode.entries.size]
+
+    /** t15：时间轴实验（A/B/AUTO）需要包级改写，其余模式（含 C 设计占位）一律零改动。 */
+    fun touchesPacketBytes(mode: Mode): Boolean =
+        mode == Mode.A || mode == Mode.B || mode == Mode.AUTO
+
+    /** t15：实验 C 只是设计占位，不实现字节改写（见 docs §6）。 */
+    fun timebaseRebase(mode: Mode): Boolean = mode == Mode.C
 
     /** E1 only changes the extractor's timestamp search window. */
     fun tsSearchBytes(mode: Mode): Int =
@@ -42,15 +54,23 @@ object JingcaiExperiment {
     /** E3 removes the CEA608 caption tracks and the in-extraction subtitle parsing. */
     fun injectCaptions(mode: Mode): Boolean = mode != Mode.E3
 
-    /** t231 diagnostic line, printed once when a channel produced no first frame. */
+    /**
+     * t231/t15 诊断行，打印一次（无首帧时）。
+     *
+     * t15（PERF/DIAG-01）：**bytesRead 必须来自 DataSource 实读计数**——直播流永远不会有
+     * `onLoadCompleted`，旧实现只累加 `loadEventInfo.bytesLoaded` 导致 bytes=0 的误判。
+     */
     fun diagnosticLine(
         mode: Mode,
-        bytesLoaded: Long,
+        bytesRead: Long,
+        firstByteMs: Long,
         downstreamFormat: String?,
         firstFrame: Boolean,
         playbackState: Int,
+        code: String = "-",
     ): String {
         val fmt = downstreamFormat ?: "none"
-        return "mode=${mode.id} bytes=$bytesLoaded format=$fmt firstFrame=$firstFrame state=$playbackState"
+        return "mode=${mode.id} bytesRead=$bytesRead firstByteMs=$firstByteMs format=$fmt " +
+            "firstFrame=$firstFrame state=$playbackState code=$code"
     }
 }

@@ -107,11 +107,19 @@ object StreamPlayback {
         val extractors = androidx.media3.extractor.DefaultExtractorsFactory()
             .setTsSubtitleFormats(captions)
             .setTsExtractorTimestampSearchBytes(JingcaiExperiment.tsSearchBytes(experiment))
-        // t20：实读字节计数（直播永不 complete，不能用 onLoadCompleted.bytesLoaded）。
+        // t20/t38：实读字节计数（直播永不 complete，不能用 onLoadCompleted.bytesLoaded）。
+        // t38：时间轴实验（A/B/AUTO）额外做包级改写；其余模式 pipeline = null（纯计数、零改写）。
         JingcaiDiag.reset(experiment)
+        val pipeline = if (!JingcaiExperiment.touchesPacketBytes(experiment)) null
+        else JingcaiTsPipeline(experiment) { line ->
+            if (android.util.Log.isLoggable(JingcaiExperiment.TAG, android.util.Log.DEBUG)) {
+                android.util.Log.d(JingcaiExperiment.TAG, line)
+            }
+        }
+        JingcaiDiag.bindPipeline(pipeline)
         val upstreamFactory = DefaultDataSource.Factory(context, http)
         val countingFactory = androidx.media3.datasource.DataSource.Factory {
-            CountingDataSource(upstreamFactory.createDataSource())
+            JingcaiTsDataSource(upstreamFactory.createDataSource(), pipeline)
         }
         val factory = DefaultMediaSourceFactory(countingFactory, extractors,
             androidx.media3.extractor.text.DefaultSubtitleParserFactory())
@@ -248,15 +256,30 @@ object StreamPlayback {
         private var loaderBytes = 0L
         private var downstream = "none"
 
-        fun diagnosticLine(mode: JingcaiExperiment.Mode): String =
+        fun diagnosticLine(mode: JingcaiExperiment.Mode): String {
             // t20：bytes 取「onLoadCompleted 累计」与「DataSource 实读」的较大者（直播恒无 complete）。
-            JingcaiExperiment.diagnosticLine(
+            val line = JingcaiExperiment.diagnosticLine(
                 mode,
                 maxOf(loaderBytes, JingcaiDiag.bytesRead()),
                 downstream,
                 firstFrame,
                 player.playbackState,
             )
+            // t38：追加时间轴一行（pcr/pts/offset/mode），无 pipeline 时省略。
+            val tm = JingcaiDiag.timelineLine()
+            return if (tm == null) line else "$line :: $tm"
+        }
+
+        /** t38（时间轴诊断，无首帧时打印一次）：播放位置/缓冲/窗口/状态 + pcr/pts/offset。 */
+        fun timelineDiagnosticLine(): String {
+            val windows = runCatching { player.currentTimeline.windowCount }.getOrDefault(-1)
+            val pos = runCatching { player.currentPosition }.getOrDefault(-1L)
+            val buffered = runCatching { player.bufferedPosition }.getOrDefault(-1L)
+            val duration = runCatching { player.duration }.getOrDefault(-1L)
+            return "format=$downstream currentPosition=$pos bufferedPosition=$buffered " +
+                "duration=$duration windowCount=$windows state=${player.playbackState} " +
+                (JingcaiDiag.timelineLine() ?: "timeline=none")
+        }
         private val enabled get() = BuildConfig.DEBUG && Log.isLoggable(TAG, Log.DEBUG)
         fun begin(prepared: PreparedPlayback, callback: (PlaybackFailure) -> Unit) {
             binding = prepared

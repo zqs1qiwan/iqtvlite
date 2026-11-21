@@ -195,7 +195,7 @@ def main() -> int:
         if token not in act:
             problems.append("PlayerActivity.kt: LoadControl must use " + token)
 
-    if "CountingDataSource(" not in (SRC / "StreamPlayback.kt").read_text(encoding="utf-8"):
+    if "JingcaiTsDataSource(" not in (SRC / "StreamPlayback.kt").read_text(encoding="utf-8"):
         problems.append("StreamPlayback/PlayerActivity: real DataSource byte counting must be installed")
 
     if problems:

@@ -22,14 +22,28 @@ class JingcaiExperimentTest {
             assertEquals(m, JingcaiExperiment.parse(m.id))
         }
         var m = JingcaiExperiment.Mode.OFF
-        m = JingcaiExperiment.next(m)
-        assertEquals(JingcaiExperiment.Mode.E1, m)
-        m = JingcaiExperiment.next(m)
-        assertEquals(JingcaiExperiment.Mode.E2, m)
-        m = JingcaiExperiment.next(m)
-        assertEquals(JingcaiExperiment.Mode.E3, m)
-        m = JingcaiExperiment.next(m)
-        assertEquals("cycle wraps back to OFF", JingcaiExperiment.Mode.OFF, m)
+        val expected = listOf(
+            JingcaiExperiment.Mode.E1,
+            JingcaiExperiment.Mode.E2,
+            JingcaiExperiment.Mode.E3,
+            JingcaiExperiment.Mode.A,
+            JingcaiExperiment.Mode.B,
+            JingcaiExperiment.Mode.AUTO,
+            JingcaiExperiment.Mode.C,
+            JingcaiExperiment.Mode.OFF,
+        )
+        expected.forEach { want ->
+            m = JingcaiExperiment.next(m)
+            assertEquals(want, m)
+        }
+    }
+
+    @Test
+    fun timelineExperimentsAreTheOnlyPacketRewriters() {
+        assertEquals(setOf(JingcaiExperiment.Mode.A, JingcaiExperiment.Mode.B, JingcaiExperiment.Mode.AUTO),
+            JingcaiExperiment.Mode.entries.filter { JingcaiExperiment.touchesPacketBytes(it) }.toSet())
+        assertTrue(JingcaiExperiment.timebaseRebase(JingcaiExperiment.Mode.C))
+        assertFalse(JingcaiExperiment.touchesPacketBytes(JingcaiExperiment.Mode.C))
     }
 
     @Test
@@ -58,12 +72,16 @@ class JingcaiExperimentTest {
 
     @Test
     fun everyExperimentTouchesExactlyOneKnob() {
-        val modes = JingcaiExperiment.Mode.entries.filter { it != JingcaiExperiment.Mode.OFF }
+        // C 是“时基归零”的设计占位（不实现字节改写），单独在 timelineExperimentsAreTheOnlyPacketRewriters 校验。
+        val modes = JingcaiExperiment.Mode.entries.filter {
+            it != JingcaiExperiment.Mode.OFF && it != JingcaiExperiment.Mode.C
+        }
         modes.forEach { m ->
             val knobs = listOf(
                 JingcaiExperiment.tsSearchBytes(m) != JingcaiExperiment.TS_SEARCH_BYTES_DEFAULT,
                 JingcaiExperiment.usePlatformHttpDataSource(m),
                 !JingcaiExperiment.injectCaptions(m),
+                JingcaiExperiment.touchesPacketBytes(m),
             ).count { it }
             assertEquals("${m.id} must change exactly one knob", 1, knobs)
         }
@@ -72,13 +90,13 @@ class JingcaiExperimentTest {
     @Test
     fun theDiagnosticLineIsStable() {
         assertEquals(
-            "mode=off bytes=0 format=none firstFrame=false state=2",
-            JingcaiExperiment.diagnosticLine(JingcaiExperiment.Mode.OFF, 0L, null, false, 2)
+            "mode=off bytesRead=0 firstByteMs=-1 format=none firstFrame=false state=2 code=-",
+            JingcaiExperiment.diagnosticLine(JingcaiExperiment.Mode.OFF, 0L, -1L, null, false, 2)
         )
         assertEquals(
-            "mode=e1 bytes=4096 format=video/avc/1920x1080@25.0 firstFrame=true state=3",
+            "mode=e1 bytesRead=4096 firstByteMs=123 format=video/avc/1920x1080@25.0 firstFrame=true state=3 code=-",
             JingcaiExperiment.diagnosticLine(
-                JingcaiExperiment.Mode.E1, 4096L, "video/avc/1920x1080@25.0", true, 3
+                JingcaiExperiment.Mode.E1, 4096L, 123L, "video/avc/1920x1080@25.0", true, 3
             )
         )
     }
