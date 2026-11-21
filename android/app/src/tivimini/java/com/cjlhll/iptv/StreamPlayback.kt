@@ -64,12 +64,28 @@ object StreamPlayback {
         val channelId = channel.id.takeIf { it != 0L } ?: RustBridge.stableId(RustBridge.stableId(0, Prefs.getLiveSource(context)), channel.tvgId ?: channel.url)
         val id = "c${channelId}-l${channel.url.hashCode().toUInt()}-s${sequence.incrementAndGet()}"
         val headers = request.httpHeaders()
-        val http = OkHttpDataSource.Factory(NetUtil.ipv4OkHttpClient).setUserAgent(headers.getValue("User-Agent")).setDefaultRequestProperties(headers)
-        val captions = listOf(androidx.media3.common.Format.Builder()
-            .setSampleMimeType(androidx.media3.common.MimeTypes.APPLICATION_CEA608).setAccessibilityChannel(1).setLanguage("en").build())
-        val extractors = androidx.media3.extractor.DefaultExtractorsFactory().setTsSubtitleFormats(captions).setTsExtractorTimestampSearchBytes(1_000_000)
+        // t231: one at a time, all default OFF (see JingcaiExperiment).
+        val experiment = JingcaiExperiment.parse(Prefs.getJingcaiExperiment(context))
+        val http: androidx.media3.datasource.DataSource.Factory =
+            if (JingcaiExperiment.usePlatformHttpDataSource(experiment)) {
+                androidx.media3.datasource.DefaultHttpDataSource.Factory()
+                    .setUserAgent(headers.getValue("User-Agent"))
+                    .setDefaultRequestProperties(headers)
+            } else {
+                OkHttpDataSource.Factory(NetUtil.ipv4OkHttpClient)
+                    .setUserAgent(headers.getValue("User-Agent"))
+                    .setDefaultRequestProperties(headers)
+            }
+        val captions = if (JingcaiExperiment.injectCaptions(experiment)) {
+            listOf(androidx.media3.common.Format.Builder()
+                .setSampleMimeType(androidx.media3.common.MimeTypes.APPLICATION_CEA608).setAccessibilityChannel(1).setLanguage("en").build())
+        } else emptyList()
+        val extractors = androidx.media3.extractor.DefaultExtractorsFactory()
+            .setTsSubtitleFormats(captions)
+            .setTsExtractorTimestampSearchBytes(JingcaiExperiment.tsSearchBytes(experiment))
         val factory = DefaultMediaSourceFactory(DefaultDataSource.Factory(context, http), extractors,
-            androidx.media3.extractor.text.DefaultSubtitleParserFactory()).experimentalParseSubtitlesDuringExtraction(true)
+            androidx.media3.extractor.text.DefaultSubtitleParserFactory())
+            .experimentalParseSubtitlesDuringExtraction(JingcaiExperiment.injectCaptions(experiment))
         val item = MediaItem.Builder().setUri(streamUrl).setMediaId(id).build()
         val prepared = intent.prepared(request.copy(channel=channel.copy(id=channelId)), id)
         metrics.begin(prepared, onFailure)
@@ -86,7 +102,7 @@ object StreamPlayback {
             )
         }
         // t225/t228: arm BEFORE prepare — a fast first frame must never arrive un-armed (ARM-01).
-        armWatchdog(player, context, channelId)
+        armWatchdog(player, context, channelId, experiment)
         ZapTrace.onPrepare(android.os.SystemClock.elapsedRealtime())
         player.prepare()
         player.play()
@@ -94,7 +110,7 @@ object StreamPlayback {
     }
 
     /** t225/t228: arm a generation-stamped watchdog right before every prepare. */
-    private fun armWatchdog(player: ExoPlayer, context: Context, channelId: Long) {
+    private fun armWatchdog(player: ExoPlayer, context: Context, channelId: Long, experiment: JingcaiExperiment.Mode) {
         // drop any timer of the previous channel before starting a new generation
         watchdogJobs.remove(player)?.forEach { it.cancel() }
         val watchdog = watchdogs.getOrPut(player) { FirstFrameWatchdogPolicy.Watchdog() }
@@ -129,6 +145,12 @@ object StreamPlayback {
                         if (player.playWhenReady &&
                             watchdog.onTimeout(gen) == FirstFrameWatchdogPolicy.Action.GIVE_UP
                         ) {
+                            // t231: one diagnostic line per failed channel (DEBUG gated).
+                            if (BuildConfig.DEBUG && Log.isLoggable(JingcaiExperiment.TAG, Log.DEBUG)) {
+                                sessions[player]?.let { m ->
+                                    Log.d(JingcaiExperiment.TAG, m.diagnosticLine(experiment))
+                                }
+                            }
                             android.widget.Toast.makeText(
                                 context,
                                 FirstFrameWatchdogPolicy.GIVE_UP_MESSAGE,
@@ -172,6 +194,12 @@ object StreamPlayback {
         private var bufferingMs = 0L
         private var rebufferCount = 0
         private var droppedFrames = 0
+        // t231 diagnosis state
+        private var loaderBytes = 0L
+        private var downstream = "none"
+
+        fun diagnosticLine(mode: JingcaiExperiment.Mode): String =
+            JingcaiExperiment.diagnosticLine(mode, loaderBytes, downstream, firstFrame, player.playbackState)
         private val enabled get() = BuildConfig.DEBUG && Log.isLoggable(TAG, Log.DEBUG)
         fun begin(prepared: PreparedPlayback, callback: (PlaybackFailure) -> Unit) {
             binding = prepared
@@ -303,6 +331,19 @@ object StreamPlayback {
             if (!matches(eventTime)) return
             binding?.let { onFailure(PlaybackFailure(it)) }
         }
+        override fun onLoadCompleted(eventTime: AnalyticsListener.EventTime, loadEventInfo: androidx.media3.exoplayer.source.LoadEventInfo, mediaLoadData: androidx.media3.exoplayer.source.MediaLoadData) {
+            // t231: how much the loader actually pulled before giving up / stalling.
+            loaderBytes += loadEventInfo.bytesLoaded
+        }
+
+        override fun onDownstreamFormatChanged(eventTime: AnalyticsListener.EventTime, mediaLoadData: androidx.media3.exoplayer.source.MediaLoadData) {
+            // t231: the first format the extractor emitted (null when it never produced one).
+            if (downstream == "none") {
+                val f = mediaLoadData.trackFormat
+                downstream = if (f == null) "none" else "${f.sampleMimeType}/${f.width}x${f.height}@${f.frameRate}"
+            }
+        }
+
         override fun onRenderedFirstFrame(eventTime: AnalyticsListener.EventTime, output: Any, renderTimeMs: Long) {
             // t228 (RETRY-01): notify the watchdog FIRST — a retry does not call begin(), so
             // `firstFrame` is still true and the old early-return swallowed the retry's success,

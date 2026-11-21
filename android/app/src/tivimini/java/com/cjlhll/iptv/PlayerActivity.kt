@@ -538,6 +538,8 @@ fun VideoPlayerScreen(
     var zapPreconnectEnabled by remember { mutableStateOf(Prefs.getZapPreconnectEnabled(context)) }
     // t220: multicast pre-warm experiment (default off).
     var multicastPrewarmEnabled by remember { mutableStateOf(Prefs.getMulticastPrewarmEnabled(context)) }
+    // t231: 睛彩 diagnosis experiment (default off).
+    var jingcaiExperiment by remember { mutableStateOf(JingcaiExperiment.parse(Prefs.getJingcaiExperiment(context))) }
     // t193 (REMOTE-INSTANT-01): every habits change reaches the Activity immediately, without any
     // pause/resume cycle — the settings drawer lives in the same Activity.
     SideEffect { onRemoteSettingsChanged(remoteHabits) }
@@ -1559,6 +1561,17 @@ fun VideoPlayerScreen(
             audioSelectable = AudioTrackUi.canSelect(audioTracks),
             playbackBufferLabel = LoadControlTuning.tierLabel(playbackBufferMin),
             zapPreconnectEnabled = zapPreconnectEnabled,
+            jingcaiExperimentLabel = jingcaiExperiment.label,
+            onCycleJingcaiExperiment = {
+                val next = JingcaiExperiment.next(jingcaiExperiment)
+                Prefs.setJingcaiExperiment(context, next.id)
+                jingcaiExperiment = next
+                android.widget.Toast.makeText(
+                    context,
+                    "睛彩诊断实验：${next.label}（重新选台后生效）",
+                    android.widget.Toast.LENGTH_SHORT
+                ).show()
+            },
             multicastPrewarmEnabled = multicastPrewarmEnabled,
             onToggleMulticastPrewarm = {
                 val next = !multicastPrewarmEnabled

@@ -78,6 +78,9 @@ fun SettingsDrawer(
     // t220: multicast pre-warm experiment (default off)
     multicastPrewarmEnabled: Boolean = false,
     onToggleMulticastPrewarm: () -> Unit = {},
+    // t231: 睛彩 diagnosis experiment (off / e1 / e2 / e3)
+    jingcaiExperimentLabel: String = "关闭",
+    onCycleJingcaiExperiment: () -> Unit = {},
     onAudioTrackClick: () -> Unit = {},
     // t186 (F1): remote habits
     remoteUpDownLabel: String = "换台",
@@ -258,6 +261,18 @@ fun SettingsDrawer(
                         focusRequester = null,
                         tag = "settings_multicast_prewarm",
                         onClick = onToggleMulticastPrewarm
+                    )
+                    SettingsItem(
+                        text = "睛彩诊断实验：$jingcaiExperimentLabel",
+                        focusRequester = null,
+                        tag = "settings_jingcai_experiment",
+                        onClick = onCycleJingcaiExperiment
+                    )
+                    Text(
+                        text = "单个实验逐一切换（默认关闭，改回「关闭」即恢复原行为）：E1 TS 时间戳搜索 1MB→4MB；E2 改用系统 HTTP 数据源；E3 禁用 CEA608 字幕注入。仅供 117/118/119 定位用。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(start = 16.dp, top = 2.dp, bottom = 6.dp)
                     )
                     Text(
                         text = "仅对 rtp/udp 组播源生效：预加入相邻频道的组播组并读取少量首个数据包（上限 3MB / 2.5 秒），用于提前完成组播加入。默认关闭；如内存/稳定性变差请关回。",

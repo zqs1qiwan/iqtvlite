@@ -36,6 +36,8 @@ object Prefs {
     private const val KEY_ZAP_PRECONNECT = "zap_preconnect_enabled"
     // t220: multicast pre-warm experiment (default OFF).
     private const val KEY_MULTICAST_PREWARM = "multicast_prewarm_enabled"
+    // t231: 睛彩 app-side experiment selector (default "off" → behaviour unchanged).
+    private const val KEY_JINGCAI_EXPERIMENT = "jingcai_experiment"
 
     private fun getPrefs(context: Context): SharedPreferences {
         return context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
@@ -206,6 +208,14 @@ object Prefs {
     /** t220: multicast pre-warm is a second opt-in experiment; default OFF. */
     fun getMulticastPrewarmEnabled(context: Context): Boolean =
         getPrefs(context).getBoolean(KEY_MULTICAST_PREWARM, false)
+
+    /** t231: "off" | "e1" | "e2" | "e3" — one experiment at a time, default off. */
+    fun getJingcaiExperiment(context: Context): String =
+        getPrefs(context).getString(KEY_JINGCAI_EXPERIMENT, "off") ?: "off"
+
+    fun setJingcaiExperiment(context: Context, id: String) {
+        getPrefs(context).edit().putString(KEY_JINGCAI_EXPERIMENT, id).apply()
+    }
 
     fun setMulticastPrewarmEnabled(context: Context, enabled: Boolean) {
         getPrefs(context).edit().putBoolean(KEY_MULTICAST_PREWARM, enabled).apply()
