@@ -89,10 +89,15 @@
 
 | 项 | 值 |
 |---|---|
-| 提交 | 见 t16 任务输出（本文件随修复一起提交） |
-| 门禁 | `check_info_card` / `check_settings_ia` / `check_settings_scroll` / `check_logo_webp` / `check_perf_policy` 全 OK；JVM 单测含新增 `InfoCardFocusTest`（7 例） |
-| CI | 见任务输出：run 号 / versionCode / app+test sha256 / artifact id |
-| 回退 | `git revert` 本提交即回到 t8 复审状态；无 Prefs 迁移、无数据结构变化 |
+| 提交 | `9dd333b`（fix(info-card): heal focus loss … + drop dead onEpgSettingsClick + tighten gates (t16)） |
+| CI run（绿） | **#153**，sha `9dd333b`，event `push`，conclusion `success` |
+| 构建 | `BUILD SUCCESSFUL in 3m 26s`；`:app:testDebugUnitTest`（含新增 `InfoCardFocusTest` 7 例）+ `:app:lintDebug` + `assembleDebug` + `assembleDebugAndroidTest` |
+| 包 | `tv.iqtvlite.app.validation`，versionCode **10153**，versionName `2.2.0-tivimini-9dd333b1-validation` |
+| `app-debug.apk` sha256 | `66c2832ba5180917a29a6ba6670dcd5fac38984afd66ee6faaa11e03fe4eb8ca` |
+| `app-debug-androidTest.apk` sha256 | `af9dc08efddcbfd9277a0908b19eaf20ace5a068a7903bb28e3b17aa4f98d1fb` |
+| 门禁 | `check_logo_webp` / `check_info_card` / `check_settings_ia` / `check_settings_scroll` / **`check_perf_policy`** 全 OK；pair gate `{"missing_types":0,"missing_methods":0,"missing_fields":0}` |
+| 产物 | `iqtvlite-test-apk`（artifact id 14706781173，10,434,614 B）；`iqtvlite-android-reports`（id 14706930825） |
+| 回退 | `git revert 9dd333b` 即回到 t8 复审状态；无 Prefs 迁移、无数据结构变化 |
 
 > 不改已验收功能：信息卡外观/三态/最近观看/技术行、设置二级 IA、播放/零拷贝/台标/自动更新均未改动。
 > 只新增纯逻辑 + 焦点聚合/回调 + BACK 兜底 + 死代码清理（约 30 行量级）。
