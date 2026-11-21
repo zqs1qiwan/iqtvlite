@@ -287,4 +287,12 @@ object ColdStartPolicy {
 
     /** 只有当这次 rebuffer 发生在起播后的这个窗口内才归因于"冷启"（用于文档/诊断）。 */
     const val COLD_START_WINDOW_MS = 6_000L
+
+    /**
+     * t27（冷启 rebuffer 实验 ③）：首帧前多等多少毫秒缓冲再 play（0 = 立即 play，旧行为）。
+     * t22 证据：`rebuffer_begin bufferMs=696 since_first_frame=303ms`、`bytesPerSec=364KB/s`（需 ~1MB/s）
+     * → 初期补流爬升慢。设为 300–500 后可在补流前多攒一点缓冲；**默认 0，A/B 时改这一处**。
+     * 必须同时报 TTFF（基准 p50 957ms），劣化 >10% 即不采纳。
+     */
+    const val PREBUFFER_BEFORE_PLAY_MS = 0L
 }

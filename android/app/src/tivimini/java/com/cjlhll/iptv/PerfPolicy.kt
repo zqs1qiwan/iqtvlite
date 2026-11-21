@@ -31,11 +31,16 @@ object PerfPolicy {
     const val DRAWER_OPAQUE_CONTAINER = true
 
     /**
-     * t20（E1）：打开抽屉后隔多少毫秒才组合列表内容（0 = 立即组合，旧行为）。
-     * 非 0 时，开合的第一帧只画面板/标题，列表内容延迟组合，把重活移出打开那一帧。
-     * 默认 0（保持观感/交互不变）；需要 A/B 时改这一处。
+     * t27（D2）：打开抽屉后隔多少毫秒才组合列表内容。
+     *
+     * t22 真机证据：`drawer_open 314–408ms`、framestats 3–4 个 300–385ms 巨帧 → 打开那一帧在
+     * 组合/绘制抽屉内容。D2 让「面板先出、内容后到」：第一帧只画容器（极轻），内容在 120ms 后
+     * 组合。默认 120ms；与 D1（懒组合）可叠加，A/B 时改 0 即恢复旧行为。
      */
-    const val DRAWER_DEFER_CONTENT_MS = 0L
+    const val DRAWER_DEFER_CONTENT_MS = 120L
+
+    /** t27（D1）：列表 overscan —— 0 表示严格只组合可见区（不给 LazyColumn 额外预组合）。 */
+    const val DRAWER_OVERSCAN_ITEMS = 0
 
     /**
      * 打开抽屉后延迟多久再启动"紧急台标预取"（毫秒）。

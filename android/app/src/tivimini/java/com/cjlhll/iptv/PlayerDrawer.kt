@@ -213,12 +213,15 @@ fun PlayerDrawer(
     // 只在 log.tag.IQTV-PERF DEBUG 时输出一行（academy 用它做"改前/改后同口径"对比，
     // 不依赖 uiautomator 的 dump 尺寸判据）。
     val perfOpenAt = remember { longArrayOf(0L) }
+    // t27（D1/D3）：统计“打开时真正组合了多少行”（旧日志 rows=channels.size 是总数，误导验收）。
+    val composedUrls = remember { HashSet<String>() }
     // t20（E1）：关闭时不组合列表；DRAWER_DEFER_CONTENT_MS>0 时先画面板再组合列表。
     var contentReady by remember { mutableStateOf(PerfPolicy.DRAWER_DEFER_CONTENT_MS <= 0L) }
     val showContent = visible && contentReady
     LaunchedEffect(visible) {
         if (!visible) {
             contentReady = false
+            composedUrls.clear()
         } else if (PerfPolicy.DRAWER_DEFER_CONTENT_MS > 0L) {
             contentReady = false
             delay(PerfPolicy.DRAWER_DEFER_CONTENT_MS)
@@ -240,7 +243,7 @@ fun PlayerDrawer(
         if (started > 0L) {
             val ms = android.os.SystemClock.elapsedRealtime() - started
             PerfTrace.d {
-                "drawer_open ms=$ms rows=${channels.size} groups=${groups.size} group=$selectedGroup"
+                "drawer_open ms=$ms total=${channels.size} composed=${composedUrls.size} groups=${groups.size} group=$selectedGroup"
             }
         }
     }
@@ -821,7 +824,12 @@ fun PlayerDrawer(
                             modifier = Modifier.fillMaxSize(),
                             state = channelListState
                         ) {
-                            itemsIndexed(channels, key = { index, ch -> "${index}:${ch.url}" }) { index, ch ->
+                            itemsIndexed(
+                                channels,
+                                key = { index, ch -> "${index}:${ch.url}" },
+                                contentType = { _, _ -> "channel" },
+                            ) { index, ch ->
+                                composedUrls.add(ch.url)
                                 DrawerChannelItem(
                                     channel = ch,
                                     index = channelNumbers[ch.url] ?: (index + 1),
@@ -1066,6 +1074,8 @@ private fun DrawerChannelItem(
     onClick: () -> Unit
 ) {
     var focused by remember { mutableStateOf(false) }
+    // t27（D3）：行标题预格式化（避免每帧字符串拼接）。
+    val label = remember(index, channel.title) { "$index. ${channel.title}" }
     val bg = when {
         focused -> MaterialTheme.colorScheme.surfaceVariant
         else -> Color.Transparent
@@ -1101,7 +1111,7 @@ private fun DrawerChannelItem(
         Spacer(modifier = Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f, fill = true)) {
             Text(
-                text = "$index. ${channel.title}",
+                text = label,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 style = MaterialTheme.typography.titleMedium,

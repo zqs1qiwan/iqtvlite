@@ -135,7 +135,16 @@ object StreamPlayback {
         armWatchdog(player, context, channelId, experiment)
         if (zapTracking) ZapTrace.onPrepare(android.os.SystemClock.elapsedRealtime())
         player.prepare()
-        player.play()
+        // t27（冷启 rebuffer 实验③）：默认 0 = 立即 play（旧行为）；>0 时先攒缓冲再 play。
+        val prebuffer = ColdStartPolicy.PREBUFFER_BEFORE_PLAY_MS
+        if (prebuffer > 0L) {
+            player.playWhenReady = false
+            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                runCatching { player.play() }
+            }, prebuffer)
+        } else {
+            player.play()
+        }
         return prepared
     }
 

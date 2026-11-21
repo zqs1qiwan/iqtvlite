@@ -26,8 +26,9 @@ class PerfPolicyTest {
     @Test
     fun drawerUsesOpaqueContainerToAvoidFullLayerAlphaBlend() {
         assertTrue("E4：抽屉容器必须不透明（避免每帧整层 alpha 合成）", PerfPolicy.DRAWER_OPAQUE_CONTAINER)
-        // E1 的延迟组合默认关闭（保持观感），需要 A/B 时再调。
-        assertEquals(0L, PerfPolicy.DRAWER_DEFER_CONTENT_MS)
+        // t27（D2）：默认打开后 120ms 再组合列表内容（面板先出、内容后到），可 A/B 改 0。
+        assertTrue(PerfPolicy.DRAWER_DEFER_CONTENT_MS in 100L..200L)
+        assertEquals("D1：不额外预组合（严格可见区）", 0, PerfPolicy.DRAWER_OVERSCAN_ITEMS)
     }
 
     @Test
