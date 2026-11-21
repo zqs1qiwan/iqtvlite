@@ -864,7 +864,7 @@ fun VideoPlayerScreen(
 
     DisposableEffect(Unit) {
         setSettingsDrawerOpenController { settingsDrawerOpen = it }
-        setSettingsBackHandlerController { handler -> settingsBackHandler = handler }
+        // t13：抽屉自己通过 onBackHandlerReady 注册二级 BACK 处理器（见 SettingsDrawer 调用点）。
         setQualityDialogOpenController { qualityDialogOpen = it }
         setInfoBannerOpenController { open ->
             // t4：Activity 侧的旧入口（OK 习惯 SHOW_INFO / 回看 UP-DOWN）仍然只表达“显示卡片”。
@@ -874,7 +874,7 @@ fun VideoPlayerScreen(
         }
         onDispose {
             setSettingsDrawerOpenController(null)
-            setSettingsBackHandlerController { _ -> settingsBackHandler = null }
+            setSettingsBackHandlerController(null)
             setQualityDialogOpenController(null)
             setInfoBannerOpenController(null)
         }
