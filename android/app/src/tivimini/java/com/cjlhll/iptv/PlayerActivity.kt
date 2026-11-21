@@ -254,13 +254,32 @@ class PlayerActivity : ComponentActivity() {
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (event.action == KeyEvent.ACTION_UP && event.keyCode in KeyEvent.KEYCODE_0..KeyEvent.KEYCODE_9) return true
         if (event.action == KeyEvent.ACTION_DOWN) {
+            // t223: an open overlay must never leave the digit OSD on top of it.
+            if (!DigitOsdPolicy.visibleWhen(
+                    isDrawerOpen || isSettingsDrawerOpen || isQualityDialogOpen ||
+                        isRecentChannelsOpen || isAudioDialogOpen
+                ) && digits.isNotEmpty() && event.keyCode !in KeyEvent.KEYCODE_0..KeyEvent.KEYCODE_9
+            ) {
+                numberJob?.cancel()
+                digits = ""
+            }
             if (event.keyCode in KeyEvent.KEYCODE_0..KeyEvent.KEYCODE_9 && !isDrawerOpen && !isSettingsDrawerOpen && !isQualityDialogOpen && !isRecentChannelsOpen && !isAudioDialogOpen) {
                 if (event.repeatCount == 0) {
-                    if (digits.length < 6) digits += (event.keyCode-KeyEvent.KEYCODE_0).toString()
+                    digits = DigitOsdPolicy.append(digits, event.keyCode - KeyEvent.KEYCODE_0)
+                    // t223: EVERY digit (including an append) restarts the 3 s timer, in both modes.
                     numberJob?.cancel()
-                    // t186: 直接跳台 auto-submits after the OSD timeout; 需确认 waits for OK.
-                    if (RemoteHabits.onDigit(remote) == RemoteHabits.DigitAction.DIRECT) {
-                        numberJob = lifecycleScope.launch { delay(3000); submitNumber() }
+                    val digitMode = remote.digits
+                    numberJob = lifecycleScope.launch {
+                        delay(DigitOsdPolicy.TIMEOUT_MS)
+                        when (DigitOsdPolicy.timeoutAction(digitMode)) {
+                            // 直接跳台: submit after the timeout (unchanged behaviour)
+                            DigitOsdPolicy.TimeoutAction.SUBMIT -> submitNumber()
+                            // 需确认: only hide the OSD — the user committed nothing, so no jump
+                            DigitOsdPolicy.TimeoutAction.CLEAR -> {
+                                digits = ""
+                                android.util.Log.d("IQTV-DIGITS", "osd timeout cleared")
+                            }
+                        }
                     }
                 }
                 return true
