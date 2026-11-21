@@ -67,6 +67,14 @@ object StreamPlayback {
         // t204 (ZAP-TIMING-01): the stopwatch is armed at the USER entry (PlayerActivity.playChannel);
         // preparation only records its own timestamp, so the measurement is the real key-to-first-frame
         // latency rather than prepare-to-first-frame.
+        if (android.util.Log.isLoggable("IQTV-ZAP", android.util.Log.DEBUG)) {
+            // t216: the very first autoplay has no user zap; arm it here so cold start also produces a
+            // ZAP line. A user entry has already armed the clock, so this is a no-op then.
+            ZapTrace.armIfUnarmed(
+                ZapTrace.zapKey(channelId, channel.url),
+                android.os.SystemClock.elapsedRealtime()
+            )
+        }
         ZapTrace.onPrepare(android.os.SystemClock.elapsedRealtime())
         player.prepare()
         player.play()

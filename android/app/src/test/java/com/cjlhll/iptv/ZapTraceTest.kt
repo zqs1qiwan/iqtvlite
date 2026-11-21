@@ -116,6 +116,61 @@ class ZapTraceTest {
     }
 
     @Test
+    fun theFirstAutoplayAlsoReportsALineWithoutAnyKeyPress() {
+        // t216: cold start autoplay never went through a user entry → no key → summaryLineOnce()
+        // returned null and there was no ZAP line at all.
+        ZapTrace.reset()
+        ZapTrace.armIfUnarmed(ZapTrace.zapKey(5L, "http://src/auto"), 20_000L)
+        ZapTrace.onPrepare(20_050L)
+        ZapTrace.onInputFormatChanged(20_170L)
+        ZapTrace.onVideoDecoderInitialized(20_800L)
+        ZapTrace.onFirstFrame(21_500L)
+        assertEquals(
+            "zap=1500ms prepare=50ms firstFrame=1450ms fmt=120ms dec=630ms render=700ms",
+            ZapTrace.summaryLineOnce()
+        )
+
+        // a user entry that already armed the clock keeps its own origin
+        ZapTrace.reset()
+        ZapTrace.onZapRequested(ZapTrace.groupKey(1), 30_000L)
+        ZapTrace.armIfUnarmed(ZapTrace.zapKey(5L, "http://src/auto"), 30_400L) // must be ignored
+        assertEquals(0L, ZapTrace.prepareDelayMs().let { if (it < 0) 0L else it })
+        ZapTrace.onPrepare(30_400L)
+        assertEquals("user arm stays the origin", 400L, ZapTrace.prepareDelayMs())
+    }
+
+    @Test
+    fun theSecondZapStillReportsTheThreeStages() {
+        // t216: onZap() used to leave formatAt/decoderAt from the previous channel, so from the second
+        // zap on the stage split was silently dropped (fmt/dec/render = -1 → base line only).
+        fun zapAndReport(base: Long, group: Int): String? {
+            ZapTrace.onZapRequested(ZapTrace.groupKey(group), base)
+            ZapTrace.onPrepare(base + 200L)
+            ZapTrace.onInputFormatChanged(base + 320L)
+            ZapTrace.onVideoDecoderInitialized(base + 900L)
+            ZapTrace.onFirstFrame(base + 1_500L)
+            return ZapTrace.summaryLineOnce()
+        }
+
+        val first = zapAndReport(10_000L, 1)
+        assertEquals(
+            "zap=1500ms prepare=200ms firstFrame=1300ms fmt=120ms dec=580ms render=600ms",
+            first
+        )
+
+        // a completely different channel afterwards must produce the full line again
+        val second = zapAndReport(30_000L, 2)
+        assertEquals(
+            "the second zap must keep its own stage split",
+            "zap=1500ms prepare=200ms firstFrame=1300ms fmt=120ms dec=580ms render=600ms",
+            second
+        )
+        assertEquals(120L, ZapTrace.formatDelayMs())
+        assertEquals(580L, ZapTrace.decoderDelayMs())
+        assertEquals(600L, ZapTrace.renderDelayMs())
+    }
+
+    @Test
     fun withoutDecoderEventsTheLineStaysCompact() {
         ZapTrace.reset()
         ZapTrace.onZapRequested(ZapTrace.groupKey(2), 10_000L)

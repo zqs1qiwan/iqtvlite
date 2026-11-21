@@ -51,6 +51,18 @@ object ZapTrace {
      */
     fun groupKey(groupIndex: Int): String = "g$groupIndex"
 
+    /** t216: true once a zap key is set and the clock is running. */
+    fun isArmed(): Boolean = zapKey != null && zapAt > 0L
+
+    /**
+     * t216: arm only when nothing armed the clock yet — the **first autoplay** (cold start) has no
+     * user key press, so without this fallback it produced no ZAP line at all (summaryLineOnce()
+     * needs a key). A user entry always arms first, so this never overrides it.
+     */
+    fun armIfUnarmed(key: String, now: Long) {
+        if (!isArmed()) onZapRequested(key, now)
+    }
+
     /**
      * t204 (ZAP-TIMING-01): arm the stopwatch at the USER's zap entry (key press / click), so the
      * measurement starts when the user acts, not when ExoPlayer happens to prepare. Re-arming with the
@@ -67,6 +79,11 @@ object ZapTrace {
         zapAt = now
         prepareAt = 0L
         firstFrameAt = 0L
+        // t216: the stage marks MUST be cleared here too — otherwise from the second zap on the stale
+        // formatAt/decoderAt (< the new prepareAt) make formatDelayMs()/decoderDelayMs() return -1 and
+        // summaryLine() silently falls back to the short (no fmt/dec/render) form.
+        formatAt = 0L
+        decoderAt = 0L
         lastZapMs = -1L
     }
 
