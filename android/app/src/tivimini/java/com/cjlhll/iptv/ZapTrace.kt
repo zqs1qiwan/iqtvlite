@@ -21,6 +21,13 @@ object ZapTrace {
     @Volatile
     private var firstFrameAt = 0L
 
+    // t213: fine-grained stages inside the prepare→first-frame window.
+    @Volatile
+    private var formatAt = 0L
+
+    @Volatile
+    private var decoderAt = 0L
+
     @Volatile
     private var lastZapMs = -1L
 
@@ -75,6 +82,25 @@ object ZapTrace {
         prepareAt = now
     }
 
+    /** t213: the first input format was reported (demuxer produced a format). */
+    fun onInputFormatChanged(now: Long) {
+        if (formatAt == 0L) formatAt = now
+    }
+
+    /** t213: `onVideoDecoderInitialized` — MediaCodec create+configure finished. */
+    fun onVideoDecoderInitialized(now: Long) {
+        if (decoderAt == 0L) decoderAt = now
+    }
+
+    /** t213: prepare→format (demux/network first format). -1 when unknown. */
+    fun formatDelayMs(): Long = if (prepareAt > 0L && formatAt >= prepareAt) formatAt - prepareAt else -1L
+
+    /** t213: format→decoder-initialised (MediaCodec create/configure). -1 when unknown. */
+    fun decoderDelayMs(): Long = if (formatAt > 0L && decoderAt >= formatAt) decoderAt - formatAt else -1L
+
+    /** t213: decoder→first frame (first decode + Surface submit). -1 when unknown. */
+    fun renderDelayMs(): Long = if (decoderAt > 0L && firstFrameAt >= decoderAt) firstFrameAt - decoderAt else -1L
+
     /** `onRenderedFirstFrame` fired for the item prepared above. */
     fun onFirstFrame(now: Long): Long {
         firstFrameAt = now
@@ -112,13 +138,22 @@ object ZapTrace {
     fun summaryLine(): String? {
         val total = zapToFirstFrameMs()
         if (total < 0L) return null
-        return "zap=${total}ms prepare=${prepareDelayMs()}ms firstFrame=${firstFrameDelayMs()}ms"
+        val base = "zap=${total}ms prepare=${prepareDelayMs()}ms firstFrame=${firstFrameDelayMs()}ms"
+        // t213: append the intra-first-frame split when the decoder events were observed.
+        val fmt = formatDelayMs()
+        val dec = decoderDelayMs()
+        val render = renderDelayMs()
+        return if (fmt >= 0 && dec >= 0 && render >= 0) {
+            "$base fmt=${fmt}ms dec=${dec}ms render=${render}ms"
+        } else base
     }
 
     fun reset() {
         zapKey = null
         loggedKey = null
         zapAt = 0L
+        formatAt = 0L
+        decoderAt = 0L
         prepareAt = 0L
         firstFrameAt = 0L
         lastZapMs = -1L

@@ -74,6 +74,7 @@ object StreamPlayback {
     }
 
     private class Metrics(private val player: ExoPlayer) : AnalyticsListener {
+
         fun cancelSummary() { audioSummaryJob?.cancel(); audioSummaryJob = null }
 
         /** The session this listener is bound to (no Player access). */
@@ -228,9 +229,16 @@ object StreamPlayback {
         }
         override fun onVideoDecoderInitialized(eventTime: AnalyticsListener.EventTime, decoderName: String, initializedTimestampMs: Long, initializationDurationMs: Long) {
             if (matches(eventTime)) emit("decoder", "name=$decoderName init_ms=$initializationDurationMs")
+            // t213: stage mark for the first-frame breakdown (debug only).
+            if (android.util.Log.isLoggable("IQTV-ZAP", android.util.Log.DEBUG)) {
+                ZapTrace.onVideoDecoderInitialized(android.os.SystemClock.elapsedRealtime())
+            }
         }
         override fun onVideoInputFormatChanged(eventTime: AnalyticsListener.EventTime, format: androidx.media3.common.Format, decoderReuseEvaluation: androidx.media3.exoplayer.DecoderReuseEvaluation?) {
             if (matches(eventTime)) emit("format", "mime=${format.sampleMimeType} width=${format.width} height=${format.height} fps=${format.frameRate}")
+            if (android.util.Log.isLoggable("IQTV-ZAP", android.util.Log.DEBUG)) {
+                ZapTrace.onInputFormatChanged(android.os.SystemClock.elapsedRealtime())
+            }
         }
         override fun onDroppedVideoFrames(eventTime: AnalyticsListener.EventTime, droppedFrames: Int, elapsedMs: Long) {
             if (!matches(eventTime)) return

@@ -98,6 +98,36 @@ class ZapTraceTest {
     }
 
     @Test
+    fun theFirstFrameWindowIsSplitIntoFormatDecoderAndRender() {
+        // t213: prepare → format (demux/network) → decoder init (MediaCodec create/configure) → render.
+        ZapTrace.reset()
+        ZapTrace.onZapRequested(ZapTrace.groupKey(1), 10_000L)
+        ZapTrace.onPrepare(11_000L)
+        ZapTrace.onInputFormatChanged(11_120L)          // +120 ms
+        ZapTrace.onVideoDecoderInitialized(11_640L)     // +520 ms  ← the expensive part on v7a
+        ZapTrace.onFirstFrame(12_300L)                  // +660 ms  ← first decode + Surface submit
+        assertEquals(120L, ZapTrace.formatDelayMs())
+        assertEquals(520L, ZapTrace.decoderDelayMs())
+        assertEquals(660L, ZapTrace.renderDelayMs())
+        assertEquals(
+            "zap=2300ms prepare=1000ms firstFrame=1300ms fmt=120ms dec=520ms render=660ms",
+            ZapTrace.summaryLineOnce()
+        )
+    }
+
+    @Test
+    fun withoutDecoderEventsTheLineStaysCompact() {
+        ZapTrace.reset()
+        ZapTrace.onZapRequested(ZapTrace.groupKey(2), 10_000L)
+        ZapTrace.onPrepare(10_100L)
+        ZapTrace.onFirstFrame(10_900L)
+        assertEquals(-1L, ZapTrace.formatDelayMs())
+        assertEquals(-1L, ZapTrace.decoderDelayMs())
+        assertEquals(-1L, ZapTrace.renderDelayMs())
+        assertEquals("zap=900ms prepare=100ms firstFrame=800ms", ZapTrace.summaryLineOnce())
+    }
+
+    @Test
     fun aMultiVariantSelectionArmsOnceForAnyChosenVariant() {
         // t211 (ZAP-NESTED-01): playGroupAuto arms with the GROUP key, then probes selectedIndex 0/1/2.
         val groupKey = ZapTrace.groupKey(7)
