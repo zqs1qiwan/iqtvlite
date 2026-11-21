@@ -207,6 +207,26 @@ fun PlayerDrawer(
         autoProgramScrollKey = null
     }
 
+    // t7：抽屉开合的性能埋点 —— 记录 "key 到达 → 抽屉首帧" 的耗时，并给 atrace 打 section。
+    // 只在 log.tag.IQTV-PERF DEBUG 时输出一行（academy 用它做"改前/改后同口径"对比，
+    // 不依赖 uiautomator 的 dump 尺寸判据）。
+    val perfOpenAt = remember { longArrayOf(0L) }
+    LaunchedEffect(visible) {
+        if (visible) {
+            perfOpenAt[0] = android.os.SystemClock.elapsedRealtime()
+        }
+    }
+    LaunchedEffect(visible, channels.size, selectedChannelUrl) {
+        if (!visible) return@LaunchedEffect
+        // 等这一帧真正画完（withFrameNanos 返回时本帧已提交）。
+        androidx.compose.runtime.withFrameNanos { }
+        val started = perfOpenAt[0]
+        if (started > 0L) {
+            val ms = android.os.SystemClock.elapsedRealtime() - started
+            PerfTrace.d { "drawer_open ms=$ms channels=${channels.size} group=$selectedGroup" }
+        }
+    }
+
     val groupFocusTargetIndex = remember(groups, selectedGroup) {
         val i = groups.indexOf(selectedGroup)
         if (i >= 0) i else 0
@@ -268,25 +288,33 @@ fun PlayerDrawer(
     // t137/t145 PREFETCH: selected±8 first, then the full visible window (no truncation), and an
     // idle filler that also covers a selection past the first 60. CPU stays bounded because the
     // filler is deferred 1 s, batched 2-at-a-time with a gap, and cancelled on any scroll.
+    //
+    // t7（PERF-02）：紧急预取延后到开合动画结束（PerfPolicy.URGENT_PREFETCH_DELAY_MS）并截断到
+    // PerfPolicy.MAX_URGENT_PREFETCH 个。旧实现 200ms 后就丢出约 17 个解码任务，正好和开抽屉的
+    // 那几帧抢 CPU（弱机 4 核）。集合挑选逻辑抽到 PerfPolicy.urgentPrefetchIndices 单测。
     LaunchedEffect(visible, selectedGroup, channels, selectedChannelUrl) {
         if (!visible) return@LaunchedEffect
         val pxW = with(prefetchDensity) { 64.dp.roundToPx() }
         val pxH = with(prefetchDensity) { 40.dp.roundToPx() }
         snapshotFlow { channelListState.layoutInfo.visibleItemsInfo.map { it.index } }
             .collectLatest { visibleIdx ->
-                delay(200)
+                // 先让开合帧落下来，再开始解码（单变量：只改这一处延迟/上限）。
+                delay(PerfPolicy.URGENT_PREFETCH_DELAY_MS)
                 val selectedIdx = channels.indexOfFirst { it.url == selectedChannelUrl }
                     .let { if (it >= 0) it else channelListState.firstVisibleItemIndex }
 
-                val urgent = LinkedHashSet<Int>()
-                // 1) selection neighbourhood first (it may be far outside the viewport)
-                for (i in (selectedIdx - 8)..(selectedIdx + 8)) if (i in channels.indices) urgent.add(i)
-                // 2) the whole visible window, never truncated
-                visibleIdx.forEach { if (it in channels.indices) urgent.add(it) }
+                val urgent = PerfPolicy.urgentPrefetchIndices(
+                    selectedIndex = selectedIdx,
+                    visibleIndices = visibleIdx,
+                    channelCount = channels.size,
+                )
                 val urgentUrls = urgent
-                    .mapNotNull { channels[it].logoUrl?.trim()?.takeIf { u -> u.isNotBlank() } }
+                    .mapNotNull { channels.getOrNull(it)?.logoUrl?.trim()?.takeIf { u -> u.isNotBlank() } }
                     .distinct()
-                if (urgentUrls.isNotEmpty()) LogoLoader.prefetch(context, urgentUrls, pxW, pxH)
+                if (urgentUrls.isNotEmpty()) {
+                    PerfTrace.d { "drawer_prefetch urgent=${urgentUrls.size} visible=${visibleIdx.size}" }
+                    LogoLoader.prefetch(context, urgentUrls, pxW, pxH)
+                }
 
                 // idle filler: the selection's own band FIRST (PREFETCH-02b: a selection past
                 // index 60 must never be pushed out), then the head of the group.
@@ -778,6 +806,7 @@ fun PlayerDrawer(
                                     selected = (ch.url == selectedChannelUrl),
                                     nowProgram = nowProgramByChannelUrl[ch.url],
                                     focusRequester = if (ch.url == focusTargetUrl) selectedChannelRequester else null,
+                                    drawerVisible = visible,
                                     onFocused = {
                                         activeColumn = DrawerColumn.Channels
                                         if (!isFocusRestoring) {
@@ -856,6 +885,7 @@ fun PlayerDrawer(
                                             title = p.title,
                                             timeState = state,
                                             focusRequester = if (index == programWindow.focusIndex) selectedProgramRequester else null,
+                                            drawerVisible = visible,
                                             onFocused = {
                                                 activeColumn = DrawerColumn.Programs
                                                 showDates = true
@@ -1008,6 +1038,7 @@ private fun DrawerChannelItem(
     selected: Boolean,
     nowProgram: NowProgramUi?,
     focusRequester: FocusRequester?,
+    drawerVisible: Boolean,
     onFocused: () -> Unit,
     onClick: () -> Unit
 ) {
@@ -1058,7 +1089,8 @@ private fun DrawerChannelItem(
                     text = nowProgram?.title.orEmpty(),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f),
-                    focused = focused
+                    focused = focused,
+                    drawerVisible = drawerVisible
                 )
                 val progress = nowProgram?.progress
                 if (progress != null) {
@@ -1119,15 +1151,21 @@ private fun FocusMarqueeText(
     style: TextStyle,
     color: Color,
     focused: Boolean,
+    drawerVisible: Boolean,
     modifier: Modifier = Modifier
 ) {
+    // t7：跑马灯只在"抽屉可见 + 该行聚焦"时跑有限圈数。旧实现 iterations=Int.MAX_VALUE 会在抽屉
+    // 打开期间永久请求下一帧，弱机上每帧重合成 1080p 半透明层 → gfxinfo 33/33 全 janky。
+    val iterations = PerfPolicy.marqueeIterations(focused = focused, drawerVisible = drawerVisible)
     Text(
         text = text,
         maxLines = 1,
         overflow = if (focused) TextOverflow.Clip else TextOverflow.Ellipsis,
         style = style,
         color = color,
-        modifier = modifier.then(if (focused) Modifier.basicMarquee(iterations = Int.MAX_VALUE) else Modifier)
+        modifier = modifier.then(
+            if (iterations > 0) Modifier.basicMarquee(iterations = iterations) else Modifier
+        )
     )
 }
 
@@ -1178,6 +1216,7 @@ private fun DrawerProgramItem(
     title: String,
     timeState: ProgramTimeState,
     focusRequester: FocusRequester?,
+    drawerVisible: Boolean,
     onFocused: () -> Unit,
     onClick: () -> Unit
 ) {
@@ -1225,6 +1264,7 @@ private fun DrawerProgramItem(
             style = MaterialTheme.typography.bodyMedium,
             color = textColor,
             focused = focused,
+            drawerVisible = drawerVisible,
             modifier = Modifier.weight(1f, fill = true)
         )
     }

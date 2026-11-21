@@ -273,5 +273,18 @@ object ColdStartPolicy {
      */
     const val EPG_CACHE_FALLBACK_MS = 10_000L
 
+    /**
+     * t7（PERF-04 · 冷启 rebuffer）：首帧之后再过多久才开始读 EPG 缓存。
+     *
+     * 基线证据（t14）：首帧 3197ms，紧接着 **启动 rebuffer 1 次 / 4288ms**，而同一时刻
+     * `epgCache=22095ms` —— 22 秒的 XMLTV 解析正好压在起播后的缓冲恢复窗口上，抢走的 CPU 让
+     * 播放器补不上缓冲。这里把 EPG 缓存读取再推迟到首帧后 [EPG_POST_FIRST_FRAME_DELAY_MS]，
+     * 让起播那一秒先干净地跑完；只影响"抽屉/节目单晚 ~2s 有数据"，不影响播放。
+     *
+     * 回退：改成 0L（等于恢复旧行为）。
+     */
+    const val EPG_POST_FIRST_FRAME_DELAY_MS = 2_000L
 
+    /** 只有当这次 rebuffer 发生在起播后的这个窗口内才归因于"冷启"（用于文档/诊断）。 */
+    const val COLD_START_WINDOW_MS = 6_000L
 }

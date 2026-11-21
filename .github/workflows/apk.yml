@@ -147,6 +147,8 @@ jobs:
           # t13: 设置二级 IA 结构/零丢失/Back 层级门禁。
           python3 scripts/check_settings_ia.py
           python3 scripts/check_settings_scroll.py
+          # t7: 性能开关门禁（有限跑马灯 / 预取截断 / EPG 延迟 / trace）。
+          python3 scripts/check_perf_policy.py
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs "$APK"
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep -E 'package:|native-code:|sdkVersion|targetSdkVersion|application-label:'
           TEST_APK=android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk

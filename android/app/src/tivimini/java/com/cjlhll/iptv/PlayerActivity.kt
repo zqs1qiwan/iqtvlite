@@ -1122,11 +1122,18 @@ fun VideoPlayerScreen(
             kotlinx.coroutines.withTimeoutOrNull(ColdStartPolicy.EPG_CACHE_FALLBACK_MS) {
                 androidx.compose.runtime.snapshotFlow { firstFrameRendered }.first { it }
             }
+            // t7（PERF-04 · 冷启 rebuffer）：再等 2s 才开始 22 秒量级的 XMLTV 解析，避免它和
+            // 起播后的缓冲恢复抢 CPU（t14 基线：首帧 3197ms → 启动 rebuffer 4288ms，同时 epgCache=22095ms）。
+            if (ColdStartPolicy.EPG_POST_FIRST_FRAME_DELAY_MS > 0L) {
+                delay(ColdStartPolicy.EPG_POST_FIRST_FRAME_DELAY_MS)
+            }
             val t0 = System.currentTimeMillis()
             // t204 (EPG-CACHE-MAIN-01): the XMLTV cache read is disk + parse work; keep it off the
             // main thread so a slow/failed cache never blocks the UI (the fallback timer included).
             val cachedEpg = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                EpgRepository.load(context, epgSource, forceRefresh = false)
+                PerfTrace.section("IQTV-epg-cache-load") {
+                    EpgRepository.load(context, epgSource, forceRefresh = false)
+                }
             }
             if (android.util.Log.isLoggable(ZAP_TAG, android.util.Log.DEBUG)) {
                 android.util.Log.d(
@@ -1134,6 +1141,7 @@ fun VideoPlayerScreen(
                     "epgCache=${System.currentTimeMillis() - t0}ms firstFrame=$firstFrameRendered"
                 )
             }
+            PerfTrace.d { "epg_cache_load ms=${System.currentTimeMillis() - t0} firstFrame=$firstFrameRendered" }
             if (cachedEpg != null) {
                 epgData = cachedEpg
                 Log.i(epgLoadTag, "cache loaded. programs=${cachedEpg.programsByChannelId.size}")

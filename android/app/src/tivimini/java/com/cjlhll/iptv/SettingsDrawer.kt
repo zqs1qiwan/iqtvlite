@@ -228,18 +228,33 @@ fun SettingsDrawer(
         onDispose { onBackHandlerReadyState.value(null) }
     }
 
-    val rootSummaries = mapOf(
-        SettingsPage.PLAYBACK to SettingsSummary.playback(
-            bufferLabel = playbackBufferLabel,
-            anyExperimentOn = zapPreconnectEnabled || multicastPrewarmEnabled || jingcaiExperimentLabel != "关闭",
-        ),
-        SettingsPage.REMOTE to SettingsSummary.remote(remoteUpDownLabel, remoteOkLabel),
-        SettingsPage.AUDIO to SettingsSummary.audio(audioSummary),
-        SettingsPage.DATA to SettingsSummary.data(autoUpdatePlaylistLabel, autoUpdateEpgLabel),
-        SettingsPage.LOGO to SettingsSummary.logoFromCacheSummary(logoCacheSummary),
-        SettingsPage.ABOUT to SettingsSummary.about(BuildConfig.VERSION_CODE),
-    )
-    val rootEntries = SettingsIA.rootEntries(rootSummaries)
+    // t7（PERF-03）：一级摘要只在输入变化时重算，避免父级重组（信息卡计时 tick 等）时每帧做
+    // 字符串格式化 + 台标统计正则。
+    val rootSummaries = remember(
+        playbackBufferLabel,
+        zapPreconnectEnabled,
+        multicastPrewarmEnabled,
+        jingcaiExperimentLabel,
+        remoteUpDownLabel,
+        remoteOkLabel,
+        audioSummary,
+        autoUpdatePlaylistLabel,
+        autoUpdateEpgLabel,
+        logoCacheSummary,
+    ) {
+        mapOf(
+            SettingsPage.PLAYBACK to SettingsSummary.playback(
+                bufferLabel = playbackBufferLabel,
+                anyExperimentOn = zapPreconnectEnabled || multicastPrewarmEnabled || jingcaiExperimentLabel != "关闭",
+            ),
+            SettingsPage.REMOTE to SettingsSummary.remote(remoteUpDownLabel, remoteOkLabel),
+            SettingsPage.AUDIO to SettingsSummary.audio(audioSummary),
+            SettingsPage.DATA to SettingsSummary.data(autoUpdatePlaylistLabel, autoUpdateEpgLabel),
+            SettingsPage.LOGO to SettingsSummary.logoFromCacheSummary(logoCacheSummary),
+            SettingsPage.ABOUT to SettingsSummary.about(BuildConfig.VERSION_CODE),
+        )
+    }
+    val rootEntries = remember(rootSummaries) { SettingsIA.rootEntries(rootSummaries) }
 
     AnimatedVisibility(
         visible = visible,
