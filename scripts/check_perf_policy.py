@@ -77,8 +77,8 @@ def main() -> int:
     m = re.search(r"const val MARQUEE_ITERATIONS = (\d+)", policy)
     if not m:
         problems.append("PerfPolicy.kt: MARQUEE_ITERATIONS must be an integer literal")
-    elif not (1 <= int(m.group(1)) <= 3):
-        problems.append(f"PerfPolicy.kt: MARQUEE_ITERATIONS={m.group(1)} must be 1..3 (finite)")
+    elif not (0 <= int(m.group(1)) <= 3):
+        problems.append(f"PerfPolicy.kt: MARQUEE_ITERATIONS={m.group(1)} must be 0..3 (0 = no animation)")
     if "Int.MAX_VALUE" in drawer_code:
         problems.append("PlayerDrawer.kt: Int.MAX_VALUE marquee is forbidden (100% jank root cause)")
     if "PerfPolicy.marqueeIterations" not in drawer_code:
@@ -116,6 +116,12 @@ def main() -> int:
             problems.append(f"PerfTrace.kt: missing {token}")
     if "drawer_open ms=" not in drawer_code:
         problems.append("PlayerDrawer.kt: missing the 'drawer_open ms=' perf line")
+    if "if (showContent)" not in drawer_code:
+        problems.append("PlayerDrawer.kt: drawer list content must be gated by showContent (do not compose when closed)")
+    if "PerfPolicy.DRAWER_OPAQUE_CONTAINER" not in drawer_code:
+        problems.append("PlayerDrawer.kt: drawer container must honour PerfPolicy.DRAWER_OPAQUE_CONTAINER")
+    if "CountingDataSource(" not in (SRC / "StreamPlayback.kt").read_text(encoding="utf-8"):
+        problems.append("StreamPlayback/PlayerActivity: real DataSource byte counting must be installed")
 
     if problems:
         for p in problems:

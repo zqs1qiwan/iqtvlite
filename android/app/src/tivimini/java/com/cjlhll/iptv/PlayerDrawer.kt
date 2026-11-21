@@ -129,7 +129,9 @@ fun PlayerDrawer(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    val container = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f)
+    // t20（E4）：不透明容器，避免每帧对整层 1080p 面板做 alpha 合成（framestats 里 Draw 118–162ms）。
+    val container = if (PerfPolicy.DRAWER_OPAQUE_CONTAINER) MaterialTheme.colorScheme.surface
+    else MaterialTheme.colorScheme.surface.copy(alpha = 0.92f)
     val scrim = Color.Transparent
     val shape = RoundedCornerShape(0.dp)
     val prefetchDensity = LocalDensity.current
@@ -211,6 +213,20 @@ fun PlayerDrawer(
     // 只在 log.tag.IQTV-PERF DEBUG 时输出一行（academy 用它做"改前/改后同口径"对比，
     // 不依赖 uiautomator 的 dump 尺寸判据）。
     val perfOpenAt = remember { longArrayOf(0L) }
+    // t20（E1）：关闭时不组合列表；DRAWER_DEFER_CONTENT_MS>0 时先画面板再组合列表。
+    var contentReady by remember { mutableStateOf(PerfPolicy.DRAWER_DEFER_CONTENT_MS <= 0L) }
+    val showContent = visible && contentReady
+    LaunchedEffect(visible) {
+        if (!visible) {
+            contentReady = false
+        } else if (PerfPolicy.DRAWER_DEFER_CONTENT_MS > 0L) {
+            contentReady = false
+            delay(PerfPolicy.DRAWER_DEFER_CONTENT_MS)
+            contentReady = true
+        } else {
+            contentReady = true
+        }
+    }
     LaunchedEffect(visible) {
         if (visible) {
             perfOpenAt[0] = android.os.SystemClock.elapsedRealtime()
@@ -223,7 +239,9 @@ fun PlayerDrawer(
         val started = perfOpenAt[0]
         if (started > 0L) {
             val ms = android.os.SystemClock.elapsedRealtime() - started
-            PerfTrace.d { "drawer_open ms=$ms channels=${channels.size} group=$selectedGroup" }
+            PerfTrace.d {
+                "drawer_open ms=$ms rows=${channels.size} groups=${groups.size} group=$selectedGroup"
+            }
         }
     }
 
@@ -679,7 +697,7 @@ fun PlayerDrawer(
         val overlayModifier = if (visible) {
             Modifier
                 .fillMaxSize()
-                .background(scrim)
+                // t20（E4）：scrim 是 Transparent，画它等于每帧白送一个全屏 draw op；去掉。
                 .onPreviewKeyEvent {
                     if (it.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
 
@@ -745,6 +763,10 @@ fun PlayerDrawer(
                     .focusProperties { canFocus = visible }
                     .padding(0.dp)
             ) {
+                // t20（E1/E2）：抽屉**关闭时完全不组合列表内容**（此前 147 个布局节点会被父级
+                // 每帧重组/重绘拖进来）；打开时按 PerfPolicy.DRAWER_DEFER_CONTENT_MS 决定是否
+                // 先画面板再组合列表。默认 0 = 立即组合（观感不变）。
+                if (showContent) {
                 Row(modifier = Modifier.fillMaxHeight()) {
                     AnimatedVisibility(
                         visible = showGroups,
@@ -967,6 +989,7 @@ fun PlayerDrawer(
                             }
                         }
                     }
+                }
                 }
             }
         }

@@ -10,20 +10,32 @@ object PerfPolicy {
 
     // ── 1) 抽屉开合（基线 Janky 100% / 中位 46–48ms） ────────────────────────
     /**
-     * 跑马灯（`basicMarquee`）的最大圈数。
+     * 跑马灯（`basicMarquee`）的最大圈数。**0 = 完全不挂动画**。
      *
-     * 基线根因：焦点行的节目名用 `basicMarquee(iterations = Int.MAX_VALUE)`，抽屉一打开就**永远**
-     * 在请求下一帧；每帧都要把 1080p 的半透明抽屉层重新合成一次，弱机上单帧 46ms，于是
-     * gfxinfo 里出现"33/33 全 janky、直方图没有任何 ≤16ms 帧"。改成有限圈数后，动画跑完就不再
-     * invalidate，抽屉静止时不再有帧。
+     * 第一轮（t7）把它从 `Int.MAX_VALUE` 降到 2，但 t18 真机 A/B 显示 50th 反而 46→81–89ms：
+     * 因为只要还有一圈动画在跑，弱机每帧就要把整个抽屉层（约 147 个布局节点）重新录制一次
+     * （framestats：Draw 118–162ms/帧）。于是第二轮直接把动画关掉：抽屉静止后不再产生任何帧。
      *
-     * 回退：改回 `Int.MAX_VALUE`（一行）。
+     * 回退：改成 1..3 恢复“跑几圈就停”。
      */
-    const val MARQUEE_ITERATIONS = 2
+    const val MARQUEE_ITERATIONS = 0
 
-    /** 只有"抽屉打开 + 该行聚焦"时才跑跑马灯，其余一律不挂动画 modifier（避免隐藏态也动画）。 */
+    /** 只有"抽屉打开 + 该行聚焦"时才跑跑马灯；`MARQUEE_ITERATIONS=0` 时永远不跑。 */
     fun marqueeIterations(focused: Boolean, drawerVisible: Boolean): Int =
         if (focused && drawerVisible) MARQUEE_ITERATIONS else 0
+
+    /**
+     * t20（E4）：抽屉容器用**不透明** surface，而不是 `surface.copy(alpha=0.92f)`。
+     * 半透明层会迫使每一帧对 1080p 面板做整层 alpha 合成（弱机 GPU 上很贵）。
+     */
+    const val DRAWER_OPAQUE_CONTAINER = true
+
+    /**
+     * t20（E1）：打开抽屉后隔多少毫秒才组合列表内容（0 = 立即组合，旧行为）。
+     * 非 0 时，开合的第一帧只画面板/标题，列表内容延迟组合，把重活移出打开那一帧。
+     * 默认 0（保持观感/交互不变）；需要 A/B 时改这一处。
+     */
+    const val DRAWER_DEFER_CONTENT_MS = 0L
 
     /**
      * 打开抽屉后延迟多久再启动"紧急台标预取"（毫秒）。

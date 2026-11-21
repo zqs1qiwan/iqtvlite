@@ -107,7 +107,13 @@ object StreamPlayback {
         val extractors = androidx.media3.extractor.DefaultExtractorsFactory()
             .setTsSubtitleFormats(captions)
             .setTsExtractorTimestampSearchBytes(JingcaiExperiment.tsSearchBytes(experiment))
-        val factory = DefaultMediaSourceFactory(DefaultDataSource.Factory(context, http), extractors,
+        // t20：实读字节计数（直播永不 complete，不能用 onLoadCompleted.bytesLoaded）。
+        JingcaiDiag.reset(experiment)
+        val upstreamFactory = DefaultDataSource.Factory(context, http)
+        val countingFactory = androidx.media3.datasource.DataSource.Factory {
+            CountingDataSource(upstreamFactory.createDataSource())
+        }
+        val factory = DefaultMediaSourceFactory(countingFactory, extractors,
             androidx.media3.extractor.text.DefaultSubtitleParserFactory())
             .experimentalParseSubtitlesDuringExtraction(JingcaiExperiment.injectCaptions(experiment))
         val item = MediaItem.Builder().setUri(streamUrl).setMediaId(id).build()
@@ -184,9 +190,13 @@ object StreamPlayback {
                     }
                 }
                 ZapRebuildPolicy.Action.GIVE_UP -> {
-                    // t231: one diagnostic line per failed channel (DEBUG gated).
-                    if (BuildConfig.DEBUG && Log.isLoggable(JingcaiExperiment.TAG, Log.DEBUG)) {
-                        sessions[player]?.let { m -> Log.d(JingcaiExperiment.TAG, m.diagnosticLine(experiment)) }
+                    // t231/t20: one diagnostic line per failed channel (DEBUG gated).
+                    // giveup=1 + 时间轴/buffer 诊断（t20 加）：help acceptance grep 与归因。
+                    if (Log.isLoggable(JingcaiExperiment.TAG, Log.DEBUG)) {
+                        Log.d(JingcaiExperiment.TAG, "${ZapRebuildPolicy.logLine(ZapRebuildPolicy.Action.GIVE_UP, key)} giveup=1 stage=$stage")
+                        sessions[player]?.let { m -> Log.d(JingcaiExperiment.TAG, "diag ${m.diagnosticLine(experiment)}") }
+                        Log.d(JingcaiExperiment.TAG, "IQTV-DIAG ${JingcaiDiag.fields()}")
+                        sessions[player]?.let { m -> Log.d(JingcaiExperiment.TAG, "buffer ${m.bufferDiagnosticLine()}") }
                     }
                     android.widget.Toast.makeText(
                         context,
@@ -218,6 +228,8 @@ object StreamPlayback {
         private val session get() = binding?.mediaId ?: ""
         private var preparedAt = 0L
         private var firstFrame = false
+        private var firstFrameAt = 0L
+        private var rebufferBytesAtStart = 0L
         private var bufferStart = 0L
         private var bufferingMs = 0L
         private var rebufferCount = 0
@@ -227,7 +239,14 @@ object StreamPlayback {
         private var downstream = "none"
 
         fun diagnosticLine(mode: JingcaiExperiment.Mode): String =
-            JingcaiExperiment.diagnosticLine(mode, loaderBytes, downstream, firstFrame, player.playbackState)
+            // t20：bytes 取「onLoadCompleted 累计」与「DataSource 实读」的较大者（直播恒无 complete）。
+            JingcaiExperiment.diagnosticLine(
+                mode,
+                maxOf(loaderBytes, JingcaiDiag.bytesRead()),
+                downstream,
+                firstFrame,
+                player.playbackState,
+            )
         private val enabled get() = BuildConfig.DEBUG && Log.isLoggable(TAG, Log.DEBUG)
         fun begin(prepared: PreparedPlayback, callback: (PlaybackFailure) -> Unit) {
             binding = prepared
@@ -379,6 +398,7 @@ object StreamPlayback {
             onFirstFrameForWatchdog(player)
             if (!matches(eventTime) || firstFrame) return
             firstFrame = true
+            firstFrameAt = SystemClock.elapsedRealtime()
             emit("first_frame", "ttff_ms=${SystemClock.elapsedRealtime()-preparedAt} rendered_at=$renderTimeMs")
         }
         override fun onVideoDecoderInitialized(eventTime: AnalyticsListener.EventTime, decoderName: String, initializedTimestampMs: Long, initializationDurationMs: Long) {
@@ -402,9 +422,43 @@ object StreamPlayback {
         override fun onPlaybackStateChanged(eventTime: AnalyticsListener.EventTime, state: Int) {
             if (!matches(eventTime)) return
             val now = SystemClock.elapsedRealtime()
-            if (state == Player.STATE_BUFFERING && firstFrame && bufferStart == 0L) { bufferStart = now; rebufferCount++ }
-            if (state != Player.STATE_BUFFERING && bufferStart != 0L) { bufferingMs += now-bufferStart; bufferStart = 0L }
+            if (state == Player.STATE_BUFFERING && firstFrame && bufferStart == 0L) {
+                bufferStart = now
+                rebufferCount++
+                rebufferBytesAtStart = JingcaiDiag.bytesRead()
+                // t20（B · 冷启 rebuffer 真因）：rebuffer 前的 Loader 累计字节与 buffer 水位。
+                // 首帧后 0.95s 就 rebuffer → 说明起播缓冲不足/补流慢，与 EPG 读取无关。
+                emit(
+                    "rebuffer_begin",
+                    "bytesRead=${JingcaiDiag.bytesRead()} bufferMs=${safeBufferedMs()} " +
+                        "since_first_frame_ms=${if (firstFrameAt > 0) now - firstFrameAt else -1}",
+                )
+            }
+            if (state != Player.STATE_BUFFERING && bufferStart != 0L) {
+                val lasted = now - bufferStart
+                bufferingMs += lasted
+                bufferStart = 0L
+                val deltaBytes = (JingcaiDiag.bytesRead() - rebufferBytesAtStart).coerceAtLeast(0)
+                val bps = if (lasted > 0) deltaBytes * 1000L / lasted else 0L
+                // t20：rebuffer 期间的补流速率（字节/秒）与恢复后的 buffer 水位。
+                emit(
+                    "rebuffer_end",
+                    "lasted_ms=$lasted bytes=$deltaBytes bytesPerSec=$bps bufferMs=${safeBufferedMs()}",
+                )
+            }
             emit("state", "state=$state rebuffers=$rebufferCount rebuffer_ms=$bufferingMs dropped=$droppedFrames")
+        }
+
+        /** 播放器“已缓冲时长”（ms）；异常/未知返回 -1，绝不因诊断崩播放。 */
+        private fun safeBufferedMs(): Long = try { player.totalBufferedDuration } catch (e: Exception) { -1L }
+
+        /** t20：无首帧/放弃时的 buffer 诊断（需要主线程调用）。 */
+        fun bufferDiagnosticLine(): String {
+            val win = try { player.currentTimeline.windowCount } catch (e: Exception) { -1 }
+            val pos = try { player.currentPosition } catch (e: Exception) { -1L }
+            return "bufferMs=${safeBufferedMs()} currentPosition=$pos windowCount=$win " +
+                "state=${player.playbackState} rebuffers=$rebufferCount rebuffer_ms=$bufferingMs " +
+                "bytesRead=${JingcaiDiag.bytesRead()} firstByteMs=${JingcaiDiag.firstByteMs()}"
         }
     }
 }

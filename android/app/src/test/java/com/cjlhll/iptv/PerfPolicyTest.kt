@@ -14,12 +14,20 @@ class PerfPolicyTest {
     @Test
     fun marqueeIsBoundedAndOnlyRunsWhenVisibleAndFocused() {
         // 关键回归：绝不能回到 Int.MAX_VALUE（抽屉打开期间永久请求下一帧 → 100% janky）。
-        assertEquals(2, PerfPolicy.MARQUEE_ITERATIONS)
-        assertTrue("圈数必须有限且很小", PerfPolicy.MARQUEE_ITERATIONS in 1..3)
-        assertEquals(2, PerfPolicy.marqueeIterations(focused = true, drawerVisible = true))
-        assertEquals("抽屉关闭时不得挂动画", 0, PerfPolicy.marqueeIterations(focused = true, drawerVisible = false))
-        assertEquals("未聚焦行不得挂动画", 0, PerfPolicy.marqueeIterations(focused = false, drawerVisible = true))
-        assertEquals(0, PerfPolicy.marqueeIterations(focused = false, drawerVisible = false))
+        // t20：第二轮直接关掉动画（0），因为只要还有一圈在跑，弱机每帧都要重录制整个抽屉层
+        // （framestats Draw 118–162ms）。抽屉静止后不再产生任何帧。
+        assertEquals(0, PerfPolicy.MARQUEE_ITERATIONS)
+        assertTrue("圈数必须在 0..3（0 = 完全不挂动画）", PerfPolicy.MARQUEE_ITERATIONS in 0..3)
+        assertEquals("第二轮：聚焦行也不再跑马灯", 0, PerfPolicy.marqueeIterations(focused = true, drawerVisible = true))
+        assertEquals(0, PerfPolicy.marqueeIterations(focused = true, drawerVisible = false))
+        assertEquals(0, PerfPolicy.marqueeIterations(focused = false, drawerVisible = true))
+    }
+
+    @Test
+    fun drawerUsesOpaqueContainerToAvoidFullLayerAlphaBlend() {
+        assertTrue("E4：抽屉容器必须不透明（避免每帧整层 alpha 合成）", PerfPolicy.DRAWER_OPAQUE_CONTAINER)
+        // E1 的延迟组合默认关闭（保持观感），需要 A/B 时再调。
+        assertEquals(0L, PerfPolicy.DRAWER_DEFER_CONTENT_MS)
     }
 
     @Test
