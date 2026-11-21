@@ -267,4 +267,114 @@ class JingcaiTimelineTest {
         assertEquals(junk.size, n)
         assertTrue(out.copyOf(n).contentEquals(junk))
     }
+    // ── t54：Probe 与实验 D/E 的纯逻辑 ─────────────────────────────────────
+    /** 带 PTS 的 PES 起始包（含 adaptation 填充，保证 188 字节）。 */
+    private fun pesWithPts(pid: Int, streamId: Int, pts90k: Long, pesLen: Int): ByteArray {
+        val p = ByteArray(188) { 0xFF.toByte() }
+        p[0] = 0x47
+        p[1] = ((if (true) 0x40 else 0) or ((pid shr 8) and 0x1F)).toByte()
+        p[2] = (pid and 0xFF).toByte()
+        p[3] = 0x10
+        val po = 4
+        p[po] = 0x00; p[po + 1] = 0x00; p[po + 2] = 0x01
+        p[po + 3] = streamId.toByte()
+        p[po + 4] = ((pesLen shr 8) and 0xFF).toByte()
+        p[po + 5] = (pesLen and 0xFF).toByte()
+        p[po + 6] = 0x80.toByte()
+        p[po + 7] = 0x80.toByte() // PTS only ('10')
+        p[po + 8] = 0x05
+        val v = pts90k and 0x1FFFFFFFFL
+        p[po + 9] = (((0x2 shl 4) or (((v shr 30) and 0x07).toInt() shl 1) or 1)).toByte()
+        p[po + 10] = ((v shr 22) and 0xFF).toByte()
+        p[po + 11] = (((((v shr 15) and 0x7F).toInt() shl 1) or 1)).toByte()
+        p[po + 12] = ((v shr 7) and 0xFF).toByte()
+        p[po + 13] = (((v and 0x7F).toInt() shl 1) or 1).toByte()
+        return p
+    }
+
+    @Test
+    fun experimentERewritesPesPtsAndKeepsMarkerBits() {
+        val pkt = pesWithPts(0x0100, 0xE0, 64_307L * 90_000, 0)
+        assertEquals(64_307L * 90_000, JingcaiTimeline.readPesPts(pkt, 0))
+        val base = 64_307L * 90_000 - 2 * 90_000 // 让时间轴从 2s 开始
+        assertTrue(JingcaiTimeline.rewritePesTimestamps(pkt, 0, base))
+        assertEquals("PTS 必须减去基准", 2L * 90_000, JingcaiTimeline.readPesPts(pkt, 0))
+        // marker bits：PTS 首字节高 4 位 '0010'、且每个字段的 marker 位为 1
+        val po = 4
+        assertEquals(0x2, (pkt[po + 9].toInt() shr 4) and 0xF)
+        assertEquals(1, pkt[po + 9].toInt() and 0x1)
+        assertEquals(1, pkt[po + 11].toInt() and 0x1)
+        assertEquals(1, pkt[po + 13].toInt() and 0x1)
+        // 负偏差钳到 0（不会写出非法 33 位）
+        val pkt2 = pesWithPts(0x0100, 0xE0, 1_000L, 0)
+        assertTrue(JingcaiTimeline.rewritePesTimestamps(pkt2, 0, 999_000L))
+        assertEquals(0L, JingcaiTimeline.readPesPts(pkt2, 0))
+    }
+
+    @Test
+    fun probeReportsNullPacketRatioAndPesLengthDistribution() {
+        val video = pesWithPts(0x0100, 0xE0, 90_000L, 0)      // len == 0
+        val video2 = pesWithPts(0x0100, 0xE0, 180_000L, 1234) // len != 0
+        val nullPkt = ByteArray(188) { 0xFF.toByte() }.also {
+            it[0] = 0x47
+            it[1] = 0x1F
+            it[2] = 0xFF
+            it[3] = 0x10
+        }
+        val buf = video + video2 + nullPkt + nullPkt
+        val probe = JingcaiTimeline.probeTs(buf, buf.size)
+        assertEquals(4, probe.packets)
+        assertEquals(2, probe.nullPackets)
+        assertEquals(50.0, probe.nullRatioPct, 0.01)
+        assertEquals(1, probe.pesLenZero)
+        assertEquals(1, probe.pesLenNonZero)
+        assertTrue(JingcaiTimeline.probeLine(probe).contains("null_pct=50.00"))
+        assertTrue(JingcaiTimeline.probeLine(probe).contains("pes_len_nonzero=1"))
+    }
+
+    @Test
+    fun probeParsesPmtStreamsAndPcrPidFromAnyPid() {
+        // PMT：PCR_PID=0x0104，ES：0x1B@0x0100（视频）、0x03@0x0101（音频）
+        val p = ByteArray(188) { 0xFF.toByte() }
+        p[0] = 0x47
+        p[1] = 0x40
+        p[2] = 0x00
+        p[3] = 0x10
+        val s = 5
+        p[s] = 0x02
+        p[s + 1] = 0xB0.toByte()
+        p[s + 2] = 0x17 // sectionLength = 23 → 3 + 23 = 26，末 4 字节 CRC
+        p[s + 3] = 0x00; p[s + 4] = 0x01
+        p[s + 5] = 0xC1.toByte(); p[s + 6] = 0x00; p[s + 7] = 0x00
+        p[s + 8] = 0x01; p[s + 9] = 0x04 // PCR_PID
+        p[s + 10] = 0xF0.toByte(); p[s + 11] = 0x00
+        p[s + 12] = 0x1B; p[s + 13] = 0x01; p[s + 14] = 0x00; p[s + 15] = 0xF0.toByte(); p[s + 16] = 0x00
+        p[s + 17] = 0x03; p[s + 18] = 0x01; p[s + 19] = 0x01; p[s + 20] = 0xF0.toByte(); p[s + 21] = 0x00
+        assertEquals(0x0104, JingcaiTimeline.pmtPcrPidAt(p, 0))
+        val streams = JingcaiTimeline.pmtStreamsAt(p, 0)
+        assertEquals(2, streams.size)
+        assertEquals(0x1B, streams[0].streamType)
+        assertEquals(0x0100, streams[0].pid)
+        assertEquals(0x03, streams[1].streamType)
+        assertEquals(0x0101, streams[1].pid)
+    }
+
+    @Test
+    fun experimentGAlignsToFirstPatPacket() {
+        val junk = ByteArray(7) { 0x00 }
+        val pat = ByteArray(188) { 0xFF.toByte() }
+        pat[0] = 0x47
+        pat[1] = 0x40
+        pat[2] = 0x00
+        pat[3] = 0x10
+        pat[4] = 0x00 // pointer_field
+        pat[5] = 0x00 // table_id PAT
+        pat[6] = 0xB0.toByte()
+        pat[7] = 0x0D
+        val buf = junk + pat + pat
+        assertEquals("必须跳过前导字节定位到 PAT", junk.size, JingcaiTimeline.firstPatOffset(buf, buf.size))
+        // 没有 PAT → -1
+        assertEquals(-1, JingcaiTimeline.firstPatOffset(ByteArray(376), 376))
+    }
+
 }

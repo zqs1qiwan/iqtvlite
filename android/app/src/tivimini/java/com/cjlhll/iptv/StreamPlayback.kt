@@ -117,9 +117,24 @@ object StreamPlayback {
             }
         }
         JingcaiDiag.bindPipeline(pipeline)
+        // t54：TS Probe —— 只在 `iqtv_probe_ts=1` 时开启，旁路缓存前 2MB（只读、不改变输出）。
+        val probeEnabled = PerfTuning.probeTsEnabled(context)
+        val probeBuf = if (probeEnabled) java.io.ByteArrayOutputStream(2 * 1024 * 1024) else null
+        var probeLogged = false
+        val probe: ((ByteArray, Int) -> Unit)? = if (!probeEnabled || probeBuf == null) null else { bytes, n ->
+            if (!probeLogged) {
+                if (probeBuf.size() < 2 * 1024 * 1024) probeBuf.write(bytes, 0, n)
+                if (probeBuf.size() >= 512 * 1024) {
+                    probeLogged = true
+                    val arr = probeBuf.toByteArray()
+                    val line = JingcaiTimeline.probeLine(JingcaiTimeline.probeTs(arr, arr.size))
+                    android.util.Log.d("IQTV-JINGCAI-PROBE", line)
+                }
+            }
+        }
         val upstreamFactory = DefaultDataSource.Factory(context, http)
         val countingFactory = androidx.media3.datasource.DataSource.Factory {
-            JingcaiTsDataSource(upstreamFactory.createDataSource(), pipeline)
+            JingcaiTsDataSource(upstreamFactory.createDataSource(), pipeline, probe)
         }
         val factory = DefaultMediaSourceFactory(countingFactory, extractors,
             androidx.media3.extractor.text.DefaultSubtitleParserFactory())
@@ -145,7 +160,11 @@ object StreamPlayback {
         player.prepare()
         // t27（冷启 rebuffer 实验③）：默认 0 = 立即 play（旧行为）；>0 时先攒缓冲再 play。
         // t27/t28：prebuffer 支持运行时实验开关（settings global，未设置时=生产默认 0）。
-        val prebuffer = PerfTuning.prebufferMs(context).toLong()
+        // t54 实验 F：连接后延迟 1.2s 再播放（TTFF 由既有 ZAP 埋点照常报出）。
+        val prebuffer = maxOf(
+            PerfTuning.prebufferMs(context).toLong(),
+            if (JingcaiExperiment.delayedStart(experiment)) JingcaiExperiment.DELAYED_START_MS else 0L,
+        )
         if (prebuffer > 0L) {
             player.playWhenReady = false
             android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({

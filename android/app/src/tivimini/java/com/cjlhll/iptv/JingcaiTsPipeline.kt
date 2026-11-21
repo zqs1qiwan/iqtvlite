@@ -111,6 +111,29 @@ class JingcaiTsPipeline(
             } else if (rewritingPmt && JingcaiTimeline.packetPid(buf, p) == JingcaiTimeline.PID_PMT) {
                 if (JingcaiTimeline.rewritePmtPcrPid(buf, p, JingcaiTimeline.PID_NULL)) rewrotePmt++
             }
+            // t54 实验 D：彻底去 PCR —— 丢 PCR-only 包 + 剥离 adaptation field 的 PCR_flag。
+            if (!drop && mode == JingcaiExperiment.Mode.D) {
+                if (pcrPid >= 0 && JingcaiTimeline.isPcrOnlyPacket(buf, p, pcrPid)) {
+                    drop = true
+                    filtered++
+                } else if (JingcaiTimeline.stripPcrFlag(buf, p)) {
+                    strippedPcr++
+                }
+            }
+            // t54 实验 E：PTS/DTS 归零（基准 = 首个带 PTS 的 PES 包，通常是视频）。
+            if (!drop && mode == JingcaiExperiment.Mode.E) {
+                val pts = JingcaiTimeline.readPesPts(buf, p)
+                if (pts != null) {
+                    if (basePts90k < 0L) {
+                        basePts90k = pts
+                        logger("IQTV-JINGCAI mode=E base_pts=${String.format(java.util.Locale.US, "%.3f", pts / 90000.0)}s")
+                    }
+                    if (JingcaiTimeline.rewritePesTimestamps(buf, p, basePts90k)) {
+                        rewrittenPes++
+                        if (vPts == null) vPts = JingcaiTimeline.readPesPts(buf, p)
+                    }
+                }
+            }
             start += JingcaiTimeline.TS_SIZE
             if (!drop) {
                 System.arraycopy(buf, p, staging, written, JingcaiTimeline.TS_SIZE)

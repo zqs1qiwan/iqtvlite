@@ -35,6 +35,9 @@ object PerfTuning {
     const val KEY_MAX_BUFFER = "iqtv_max_buffer_ms"
     const val KEY_MIN_BUFFER = "iqtv_min_buffer_ms"
 
+    /** t54：TS Probe（1 = 打开，默认 0）。 */
+    const val KEY_PROBE_TS = "iqtv_probe_ts"
+
     /** prebuffer 允许范围（ms）；0 = 不等待（默认）。 */
     val PREBUFFER_RANGE = 0..2_000
 
@@ -81,6 +84,10 @@ object PerfTuning {
         LoadControlTuning.MAX_BUFFER_MS,
         MAX_BUFFER_RANGE,
     )
+
+    /** t54：TS Probe 开关（默认关）。`adb shell settings put global iqtv_probe_ts 1` 打开，看完即删。 */
+    fun probeTsEnabled(context: Context): Boolean =
+        parse(read(context, KEY_PROBE_TS), 0, 0..1) == 1
 
     private fun read(context: Context, key: String): String? = runCatching {
         Settings.Global.getString(context.contentResolver, key)

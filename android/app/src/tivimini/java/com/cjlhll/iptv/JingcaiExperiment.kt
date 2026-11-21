@@ -31,6 +31,12 @@ object JingcaiExperiment {
         B("b", "B PMT PCR→0x1FFF"),
         AUTO("auto", "自动时间轴修复(>60s)"),
         C("c", "C 时基归零(设计)"),
+        // t54：第 5 轮实验（默认关）。
+        D("d", "D 彻底去PCR(剥离adaptation)"),
+        E("e", "E PTS/DTS归零(重写PES头)"),
+        F("f", "F 延迟1.2s起播"),
+        G("g", "G 丢首个PAT前的前导字节"),
+        H("h", "H 失败后新DataSource重建"),
     }
 
     fun parse(id: String?): Mode = Mode.entries.firstOrNull { it.id == id } ?: Mode.OFF
@@ -39,7 +45,16 @@ object JingcaiExperiment {
 
     /** t15：时间轴实验（A/B/AUTO）需要包级改写，其余模式（含 C 设计占位）一律零改动。 */
     fun touchesPacketBytes(mode: Mode): Boolean =
-        mode == Mode.A || mode == Mode.B || mode == Mode.AUTO
+        mode == Mode.A || mode == Mode.B || mode == Mode.AUTO || mode == Mode.D ||
+            mode == Mode.E || mode == Mode.G
+
+    /** t54 实验 F：连接后延迟 [DELAYED_START_MS] 再读/播（验证「立刻读就崩」假设）。 */
+    fun delayedStart(mode: Mode): Boolean = mode == Mode.F
+
+    /** t54 实验 G：丢掉首个 PAT/PMT 之前的前导字节。 */
+    fun dropLeadingBytes(mode: Mode): Boolean = mode == Mode.G
+
+    const val DELAYED_START_MS = 1_200L
 
     /** t15：实验 C 只是设计占位，不实现字节改写（见 docs §6）。 */
     fun timebaseRebase(mode: Mode): Boolean = mode == Mode.C

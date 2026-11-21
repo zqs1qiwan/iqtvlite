@@ -29,6 +29,25 @@ def main() -> int:
     for p in (TIMELINE, PIPELINE, DS, DIAG, EXP, PLAYBACK, TEST):
         if not p.exists():
             problems.append(f"missing source file: {p.relative_to(ROOT).as_posix()}")
+    # t54: App-side TS probe + experiments D/E/F/G/H (all default off, pure logic in JingcaiTimeline)
+    timeline = (SRC / "JingcaiTimeline.kt").read_text(encoding="utf-8")
+    for token in ("probeTs", "probeLine", "firstPatOffset", "rewritePesTimestamps", "stripPcrFlag",
+                  "nullRatioPct", "pesLenZero", "pmtIntervalPackets"):
+        if token not in timeline:
+            problems.append("JingcaiTimeline.kt: missing t54 token " + token)
+    exp = (SRC / "JingcaiExperiment.kt").read_text(encoding="utf-8")
+    for token in ('D("d"', 'E("e"', 'F("f"', 'G("g"', 'H("h"', "delayedStart", "dropLeadingBytes", "DELAYED_START_MS"):
+        if token not in exp:
+            problems.append("JingcaiExperiment.kt: missing t54 token " + token)
+    play = (SRC / "StreamPlayback.kt").read_text(encoding="utf-8")
+    if "IQTV-JINGCAI-PROBE" not in play:
+        problems.append("StreamPlayback.kt: TS probe log line missing (t54)")
+    if "PerfTuning.probeTsEnabled(context)" not in play:
+        problems.append("StreamPlayback.kt: probe must be gated by iqtv_probe_ts (t54)")
+    if "JingcaiExperiment.delayedStart(experiment)" not in play:
+        problems.append("StreamPlayback.kt: experiment F delayed start not wired (t54)")
+
+
     if problems:
         for p in problems:
             print(f"check_jingcai_timeline: FAIL {p}")
@@ -89,7 +108,7 @@ def main() -> int:
             print(f"check_jingcai_timeline: FAIL {p}")
         return 1
 
-    print("check_jingcai_timeline: OK (pure TS/PMT/PCR policy, 60s gate, default off, real byte counting, A/B/AUTO only)")
+    print("check_jingcai_timeline: OK (pure TS/PMT/PCR policy, 60s gate, default off, real byte counting, A/B/AUTO/D/E + probe/F/G/H)")
     return 0
 
 

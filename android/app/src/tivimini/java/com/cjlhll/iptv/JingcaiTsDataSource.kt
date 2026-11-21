@@ -19,6 +19,8 @@ import androidx.media3.datasource.TransferListener
 class JingcaiTsDataSource(
     private val upstream: DataSource,
     private val pipeline: JingcaiTsPipeline?,
+    /** t54：TS Probe 旁路（只在开关打开时非 null；只读，不改变输出）。 */
+    private val probe: ((ByteArray, Int) -> Unit)? = null,
 ) : DataSource {
 
     private val scratch = ByteArray(64 * 1024)
@@ -33,7 +35,10 @@ class JingcaiTsDataSource(
         if (length == 0) return 0
         if (pipeline == null) {
             val n = upstream.read(buffer, offset, length)
-            if (n > 0) JingcaiDiag.onBytes(n)
+            if (n > 0) {
+                JingcaiDiag.onBytes(n)
+                if (probe != null) probe.invoke(buffer.copyOfRange(offset, offset + n), n)
+            }
             return n
         }
         var written = pipeline.pop(buffer, offset, length)
@@ -49,6 +54,7 @@ class JingcaiTsDataSource(
             pipeline.push(scratch, 0, n)
             written = pipeline.pop(buffer, offset, length)
         }
+        if (probe != null && written > 0) probe.invoke(buffer.copyOfRange(offset, offset + written), written)
         return written
     }
 
