@@ -124,10 +124,16 @@ object InfoCardPolicy {
         return "${Math.round(frameRate)}fps"
     }
 
-    /** 码率：Format.bitrate 单位为 bit/s；<=0 → null；8_300_000 → "8.3Mbps"。 */
+    /**
+     * 码率：Format.bitrate 单位为 bit/s；<=0 → null；8_300_000 → "8.3Mbps"、950_000 → "0.9Mbps"。
+     * 用 HALF_DOWN 保留一位小数（与规格 §10.1 的 950k→0.9 一致；Java 的 "%.1f" 会把它进位成 1.0）。
+     */
     fun bitrateLabel(bitrate: Int): String? {
         if (bitrate <= 0) return null
-        return String.format(java.util.Locale.ROOT, "%.1fMbps", bitrate / 1_000_000.0)
+        val mbps = java.math.BigDecimal(bitrate).divide(
+            java.math.BigDecimal(1_000_000), 1, java.math.RoundingMode.HALF_DOWN,
+        )
+        return "${mbps.toPlainString()}Mbps"
     }
 
     /** 声道：1→单声道、2→2ch、6→5.1、8→7.1、其它→Nch；<=0 → null。 */
