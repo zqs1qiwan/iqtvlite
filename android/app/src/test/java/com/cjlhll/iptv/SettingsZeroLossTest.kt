@@ -14,16 +14,47 @@ import java.io.File
 class SettingsZeroLossTest {
 
     private fun sourceDir(): File {
-        val candidates = listOf(
-            "src/tivimini/java/com/cjlhll/iptv",             // Gradle test working dir = android/app
-            "app/src/tivimini/java/com/cjlhll/iptv",         // working dir = android
-            "../app/src/tivimini/java/com/cjlhll/iptv",
-        ).map { File(it) }
-        return candidates.firstOrNull { it.isDirectory }
-            ?: error("cannot locate app sources; tried ${candidates.map { it.absolutePath }}")
+        val relative = "src/tivimini/java/com/cjlhll/iptv"
+        // Gradle 的 test working dir 通常是模块目录（android/app）；再兜底向上找几层。
+        var base: File? = File("").absoluteFile
+        repeat(5) {
+            val candidate = base?.let { File(it, relative) }
+            if (candidate != null && candidate.isDirectory) return candidate
+            base = base?.parentFile
+        }
+        error("cannot locate app sources from ${File("").absolutePath}")
     }
 
     private fun read(name: String): String = File(sourceDir(), name).readText(Charsets.UTF_8)
+
+    /** 去掉 // 与 /* *\/ 注释：注释里可以写"不引入 LazyColumn"这类说明，但代码里不能真的用。 */
+    private fun code(name: String): String {
+        val out = StringBuilder()
+        var inBlock = false
+        read(name).lineSequence().forEach { line ->
+            var s = line
+            if (inBlock) {
+                val end = s.indexOf("*/")
+                if (end < 0) return@forEach
+                s = s.substring(end + 2)
+                inBlock = false
+            }
+            val start = s.indexOf("/*")
+            if (start >= 0) {
+                val end = s.indexOf("*/", start + 2)
+                if (end < 0) {
+                    s = s.substring(0, start)
+                    inBlock = true
+                } else {
+                    s = s.substring(0, start) + s.substring(end + 2)
+                }
+            }
+            val lineComment = s.indexOf("//")
+            if (lineComment >= 0) s = s.substring(0, lineComment)
+            out.appendLine(s)
+        }
+        return out.toString()
+    }
 
     @Test
     fun baselineHasTwentyFourActionRows() {
@@ -46,7 +77,7 @@ class SettingsZeroLossTest {
 
     @Test
     fun drawerReallyRendersEveryNonRetiredRow() {
-        val drawer = read("SettingsDrawer.kt")
+        val drawer = code("SettingsDrawer.kt")
         SettingsPage.entries.flatMap { SettingsIA.itemTags(it) }
             .filterNot { it in SettingsIA.RETIRED_TAGS }
             .forEach { tag ->
@@ -62,18 +93,18 @@ class SettingsZeroLossTest {
 
     @Test
     fun retiredEpgSourceTagIsGoneFromTheUi() {
-        val drawer = read("SettingsDrawer.kt")
+        val drawer = code("SettingsDrawer.kt")
         assertTrue(
             "退役 tag settings_epg_source 不得再出现在抽屉 UI 里",
             !drawer.contains("\"settings_epg_source\""),
         )
-        // 合并后的行仍在，且只出现一次（一个手动刷新入口，t189 单路径）。
-        assertEquals(1, Regex("settings_refresh_epg").findAll(drawer).count())
+        // 合并后的行仍在，且只有一个 tag=（手动刷新入口仍是 t189 单路径）。
+        assertEquals(1, Regex("tag = \"settings_refresh_epg\"").findAll(drawer).count())
     }
 
     @Test
     fun newLogoRefreshTagExists() {
-        val drawer = read("SettingsDrawer.kt")
+        val drawer = code("SettingsDrawer.kt")
         assertTrue("新增 tag settings_logo_refresh", drawer.contains("\"settings_logo_refresh\""))
         assertTrue("settings_logo_refresh" in SettingsIA.itemTags(SettingsPage.LOGO))
     }
@@ -91,7 +122,7 @@ class SettingsZeroLossTest {
 
     @Test
     fun noLazyColumnWasIntroduced() {
-        val drawer = read("SettingsDrawer.kt")
+        val drawer = code("SettingsDrawer.kt")
         assertTrue("设置列表必须继续用 verticalScroll（不引入 LazyColumn）", !drawer.contains("LazyColumn"))
         assertTrue(drawer.contains("verticalScroll("))
         assertTrue(drawer.contains("bringIntoViewRequester("))
@@ -100,7 +131,7 @@ class SettingsZeroLossTest {
 
     @Test
     fun groupHeaderStaysALabel() {
-        val drawer = read("SettingsDrawer.kt")
+        val drawer = code("SettingsDrawer.kt")
         val idx = drawer.indexOf("private fun SettingsGroupHeader(")
         assertTrue("SettingsGroupHeader 必须保留（check_settings_scroll.py 依赖）", idx >= 0)
         val block = drawer.substring(idx, minOf(drawer.length, idx + 600))
@@ -109,7 +140,7 @@ class SettingsZeroLossTest {
 
     @Test
     fun settingsListTagIsALiteralSoTheStaticGateKeepsWorking() {
-        val drawer = read("SettingsDrawer.kt")
+        val drawer = code("SettingsDrawer.kt")
         assertTrue(
             "check_settings_scroll.py 按字面量查找 settings_list，抽屉里必须保留该字面量",
             drawer.contains("\"settings_list\""),

@@ -73,7 +73,9 @@ class SettingsSummaryTest {
 
     @Test
     fun clampTruncatesOnCharacterBoundaries() {
-        val long = "版本 2.2.0-tivimini-1a7697f6-validation"
+        // 39 个半角单位 → 超过 44 的只有更长的串；用版本名 + 额外尾巴确保触发截断。
+        val long = "版本 2.2.0-tivimini-1a7697f6-validation" + "-额外尾巴"
+        assertTrue("样本必须超宽才能测截断", SettingsSummary.displayUnits(long) > SettingsSummary.MAX_DISPLAY_UNITS)
         val clamped = SettingsSummary.clamp(long)
         assertTrue(SettingsSummary.fullWidthLength(clamped) <= 22)
         assertTrue("截断后补省略号", clamped.endsWith("…"))
@@ -85,7 +87,7 @@ class SettingsSummaryTest {
     @Test
     fun displayUnitsCountsCjkAsTwo() {
         assertEquals(4, SettingsSummary.displayUnits("设置"))
-        assertEquals(4, SettingsSummary.displayUnits("ab"))
+        assertEquals(2, SettingsSummary.displayUnits("ab"))
         assertEquals(3, SettingsSummary.displayUnits("a设"))
         assertEquals(2, SettingsSummary.fullWidthLength("设置"))
         assertEquals(2, SettingsSummary.fullWidthLength("abc"))
