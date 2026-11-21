@@ -42,7 +42,7 @@ android {
                 .filterIndexed { index, _ -> signingValues[index] == null }
                 .joinToString(", ")
     }
-    val signingKeystore = signingFile?.let { java.io.File(it) }
+    val signingKeystore = signingFile?.let { file(it) }
     require(signingKeystore == null || signingKeystore.isFile) {
         "Configured validation keystore does not exist: $signingKeystore"
     }
