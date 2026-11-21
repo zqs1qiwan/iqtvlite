@@ -105,4 +105,11 @@ D2 A/B：`DRAWER_DEFER_CONTENT_MS=120` vs `0`，其余不变。
 
 | 项 | 值 |
 |---|---|
-| 提交 / CI | 见 t27 任务输出（本文件随实现提交，定稿后补 run 号） |
+| 提交 | `58524d8`（perf(drawer) r3: defer composition 120ms + contentType/overscan=0 + truthful composed-rows probe; cold-start prebuffer experiment + PSS audit） |
+| CI run（绿） | **#162**，sha `58524d8`，push，conclusion `success` |
+| 构建 | `BUILD SUCCESSFUL in 4m 39s`；`:app:testDebugUnitTest` + `:app:lintDebug` + `assembleDebug` + `assembleDebugAndroidTest` |
+| 包 | `tv.iqtvlite.app.validation`，versionCode **10162**，versionName `2.2.0-tivimini-58524d81-validation` |
+| app sha256 | `285f117b6371f7c9630df6abbd08177f4de24e55964dace8530fc2167c5e2307` |
+| test sha256 | `f6551ef7512c81ec57c98197cb386fc3645ed1216423c51d93c271f6df53b115` |
+| 门禁 | logo / info_card / settings_ia / settings_scroll / perf_policy / player_threading / refresh_paths 全 OK；pair gate `{0,0,0}` |
+| 产物 | `iqtvlite-test-apk`（artifact id 14710415201，10,447,948 B ≪30MB） |
