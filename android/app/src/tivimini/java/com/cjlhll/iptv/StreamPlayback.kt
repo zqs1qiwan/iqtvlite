@@ -136,7 +136,8 @@ object StreamPlayback {
         if (zapTracking) ZapTrace.onPrepare(android.os.SystemClock.elapsedRealtime())
         player.prepare()
         // t27（冷启 rebuffer 实验③）：默认 0 = 立即 play（旧行为）；>0 时先攒缓冲再 play。
-        val prebuffer = ColdStartPolicy.PREBUFFER_BEFORE_PLAY_MS
+        // t27/t28：prebuffer 支持运行时实验开关（settings global，未设置时=生产默认 0）。
+        val prebuffer = PerfTuning.prebufferMs(context).toLong()
         if (prebuffer > 0L) {
             player.playWhenReady = false
             android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({

@@ -120,6 +120,28 @@ def main() -> int:
         problems.append("PlayerDrawer.kt: drawer list content must be gated by showContent (do not compose when closed)")
     if "PerfPolicy.DRAWER_OPAQUE_CONTAINER" not in drawer_code:
         problems.append("PlayerDrawer.kt: drawer container must honour PerfPolicy.DRAWER_OPAQUE_CONTAINER")
+    # t27/t28: cold-start experiments must be runtime switches (Settings.Global), defaults unchanged.
+    tuning = (SRC / "PerfTuning.kt")
+    if not tuning.exists():
+        problems.append("PerfTuning.kt: runtime experiment switches missing")
+    else:
+        tt = tuning.read_text(encoding="utf-8")
+        for key in ("iqtv_prebuffer_ms", "iqtv_after_rebuffer_ms", "iqtv_max_buffer_ms", "iqtv_min_buffer_ms"):
+            if key not in tt:
+                problems.append("PerfTuning.kt: missing settings key " + key)
+        for token in ("ColdStartPolicy.PREBUFFER_BEFORE_PLAY_MS", "LoadControlTuning.MIN_BUFFER_MS",
+                      "LoadControlTuning.BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS", "LoadControlTuning.MAX_BUFFER_MS"):
+            if token not in tt:
+                problems.append("PerfTuning.kt: default must come from " + token)
+        if "minOf(after, minBufferMs(context))" not in tt:
+            problems.append("PerfTuning.kt: afterRebuffer must be clamped by minBuffer (CI10077 invariant)")
+    if "PerfTuning.prebufferMs(context)" not in (SRC / "StreamPlayback.kt").read_text(encoding="utf-8"):
+        problems.append("StreamPlayback.kt: prebuffer must go through PerfTuning")
+    act = (SRC / "PlayerActivity.kt").read_text(encoding="utf-8")
+    for token in ("PerfTuning.minBufferMs(context)", "PerfTuning.maxBufferMs(context)", "PerfTuning.afterRebufferMs(context)"):
+        if token not in act:
+            problems.append("PlayerActivity.kt: LoadControl must use " + token)
+
     if "CountingDataSource(" not in (SRC / "StreamPlayback.kt").read_text(encoding="utf-8"):
         problems.append("StreamPlayback/PlayerActivity: real DataSource byte counting must be installed")
 

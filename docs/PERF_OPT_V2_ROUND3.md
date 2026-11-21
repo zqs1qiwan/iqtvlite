@@ -49,6 +49,30 @@
   `setTargetBufferBytes` / 提高 `MAX_BUFFER_MS`（6000→8000）让 loader 更早更多地预取（需 A/B）。
 - **铁律**：必须同时报 TTFF（基准 p50 957ms），TTFF 劣化 >10% 即不采纳；未 A/B 通过前**不改默认**。
 
+### 3.1 运行时开关（t28 一次安装内 A/B，无需重新出包）
+
+三个实验都改成 `Settings.Global` 运行时开关（`PerfTuning`），**未设置时=生产默认**（prebuffer 0 / minBuffer 2500 / maxBuffer 6000 / afterRebuffer 2000，与旧行为逐字节相同）：
+
+```bash
+# 实验③：首帧前多等 500ms 再 play（推荐先试这个；0/300/500 三档）
+adb shell settings put global iqtv_prebuffer_ms 500
+# 实验①：放宽 loader 最大缓冲（6000→8000，让它更早更多地预取）
+adb shell settings put global iqtv_max_buffer_ms 8000
+# 实验②：afterRebuffer 2000→3000（必须成对抬高 minBuffer，否则会被自动钳回，保障 CI10077 不变量）
+adb shell settings put global iqtv_min_buffer_ms 3500
+adb shell settings put global iqtv_after_rebuffer_ms 3000
+# 还原（每轮实验前都建议先删干净，避免串味）
+adb shell settings delete global iqtv_prebuffer_ms
+adb shell settings delete global iqtv_max_buffer_ms
+adb shell settings delete global iqtv_min_buffer_ms
+adb shell settings delete global iqtv_after_rebuffer_ms
+```
+
+- 取值域：prebuffer `0..2000`；minBuffer `2500..8000`；maxBuffer `6000..16000`；afterRebuffer `1000..4000` 且**再被 minBuffer 钳住**。
+- 非法/越界值一律回落默认（`PerfTuningTest` 已锁）。
+- 每换一次设置需 **重新 prepare（换台一次）** 才生效（LoadControl/prepare 时读取）。
+- 每档都要同报：`rebuffer_begin/end`、`bytesPerSec`、TTFF（基准 p50 957ms）。
+
 ---
 
 ## 4. PSS（71.8MB，目标 ≤65MB）——静态审计结论

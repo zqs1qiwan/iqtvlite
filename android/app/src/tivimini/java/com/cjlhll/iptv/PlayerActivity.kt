@@ -702,11 +702,12 @@ fun VideoPlayerScreen(
                 // >= bufferForPlaybackAfterRebuffer(2000) — an 800/…/1000 set crashed at start
                 // (USAB2-01 / CI10077), never set minBufferMs below afterRebuffer.
                 // t197: numbers live in LoadControlTuning so an A/B arm is one constant.
-                LoadControlTuning.minBufferMs(),
-                LoadControlTuning.maxBufferMs(),
+                // t27/t28：min/max/afterRebuffer 支持运行时实验开关（未设置时=生产默认）。
+                PerfTuning.minBufferMs(context),
+                PerfTuning.maxBufferMs(context),
                 // t205: start-up buffer comes from the user's tier (300/400/500, default 500).
                 LoadControlTuning.playbackBufferMinMs(Prefs.getPlaybackBufferMin(context)),
-                LoadControlTuning.playbackBufferAfterRebufferMs()
+                PerfTuning.afterRebufferMs(context)
             )
             .setBackBuffer(0, false)
             .setPrioritizeTimeOverSizeThresholds(true)
