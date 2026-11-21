@@ -132,7 +132,9 @@ jobs:
 
       - name: Build debug APK
         working-directory: android
-        run: ./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleDebugAndroidTest -PISOLATED_TEST_PACKAGE=${{ inputs.isolated_test_package || false }} --stacktrace
+        # t11: push 触发没有 inputs（默认空），必须回退到 dispatch 的默认 true（隔离验证包），
+        # 否则非隔离包不走 instrumentation-shared-keep.pro，pair gate 会因 R8 收缩而失败。
+        run: ./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleDebugAndroidTest -PISOLATED_TEST_PACKAGE=${{ github.event.inputs.isolated_test_package || 'true' }} --stacktrace
 
       - name: Verify APK contains Rust .so
         run: |
