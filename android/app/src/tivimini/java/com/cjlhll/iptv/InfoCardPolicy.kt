@@ -133,10 +133,10 @@ object InfoCardPolicy {
     /** 声道：1→单声道、2→2ch、6→5.1、8→7.1、其它→Nch；<=0 → null。 */
     fun channelLabel(channelCount: Int): String? = when {
         channelCount <= 0 -> null
-        1 -> "单声道"
-        2 -> "2ch"
-        6 -> "5.1"
-        8 -> "7.1"
+        channelCount == 1 -> "单声道"
+        channelCount == 2 -> "2ch"
+        channelCount == 6 -> "5.1"
+        channelCount == 8 -> "7.1"
         else -> "${channelCount}ch"
     }
 
