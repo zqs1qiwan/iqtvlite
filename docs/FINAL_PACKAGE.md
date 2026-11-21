@@ -11,7 +11,7 @@
 | 项 | 值 |
 |---|---|
 | 分支 | `integration/tivimini-baseline`（**未动 main、未打 tag**） |
-| 构建 | 见本文件 §6 receipt（versionCode / sha256 / artifact） |
+| 构建 | versionCode **10187**，`2.2.0-tivimini-1f206133-validation` |
 | 体积 | ≤30MB（实测约 10.4MB） |
 
 ---
@@ -67,4 +67,12 @@
 
 | 项 | 值 |
 |---|---|
-| 提交 / CI | 见 t52 任务输出（本文件随实现提交，定稿后补 run 号） |
+| 提交 | `1f20613`（release(final): OPEN_WINDOW 18→28 + 残影修复 + 睛彩实验） |
+| CI run（绿） | **#187**，sha `1f20613`，push，conclusion `success` |
+| 构建 | `BUILD SUCCESSFUL in 4m 25s`；`:app:testDebugUnitTest` + `:app:lintDebug` + `assembleDebug` + `assembleDebugAndroidTest` |
+| 包 | `tv.iqtvlite.app.validation`，versionCode **10187**，versionName `2.2.0-tivimini-1f206133-validation` |
+| app sha256 | `bfefb8cfb28204a88c7d228bbd9367eea08a3c4dc8117bb9675ca52ec7b7dabf` |
+| test sha256 | `d21f59dd8c1b01d186f42f5a0d948fbe742556cca20fef8b688d387521e9e68f` |
+| 门禁 | 八门禁全 OK（含 `check_perf_policy` 与 **`check_jingcai_timeline`**）；pair gate `{0,0,0}` |
+| 产物 | `iqtvlite-test-apk`（artifact id 14724666566，10,466,007 B ≪30MB） |
+| 设备复验 | 归 acceptance（t53）：抽屉残影/巨帧 3/50th 53ms、睛彩默认关、回归全项 |
