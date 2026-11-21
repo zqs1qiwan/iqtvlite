@@ -54,4 +54,11 @@
 
 | 项 | 值 |
 |---|---|
-| 提交 / CI | 见 t44 任务输出（本文件随实现提交，定稿后补 run 号） |
+| 提交 | `ee0360a`（feat(drawer): focused-row subtitle + 2dp progress） |
+| CI run（绿） | **#177**，sha `ee0360a`，push，conclusion `success` |
+| 构建 | `BUILD SUCCESSFUL in 3m 25s`；`:app:testDebugUnitTest` + `:app:lintDebug` + `assembleDebug` + `assembleDebugAndroidTest` |
+| 包 | `tv.iqtvlite.app.validation`，versionCode **10177**，versionName `2.2.0-tivimini-ee0360a3-validation` |
+| app sha256 | `d00649e492202241a5cc3fc7bea47da2b5dc52dc30c09fcca96191a9f8e31f72` |
+| test sha256 | `30d740e5a2a8d676fe5ededf71e346ae0fbfc2aa8a077c41918edba9bf61db3b` |
+| 门禁 | logo / info_card / settings_ia / settings_scroll / **perf_policy（t44：副标题必须 `&& focused` 门控；仍禁 FocusMarqueeText/ThinProgressBar/无信息/SubcomposeLayout）** / player_threading / refresh_paths 全 OK；pair gate `{0,0,0}` |
+| 产物 | `iqtvlite-test-apk`（artifact id 14717429985，10,454,714 B ≪30MB） |
