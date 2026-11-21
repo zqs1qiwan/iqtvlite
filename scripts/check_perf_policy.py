@@ -117,18 +117,23 @@ def main() -> int:
     if "drawer_open ms=" not in drawer_code:
         problems.append("PlayerDrawer.kt: missing the 'drawer_open ms=' perf line")
     # t29: per-frame incremental row reveal (no 120ms "empty then burst")
-    for token in ("PerfPolicy.DRAWER_INCREMENTAL_ROWS", "PerfPolicy.nextRevealedRows", "revealedRows",
-                  "channels.subList(0, revealedRows", "PerfPolicy.DRAWER_ROW_HEIGHT_DP", "drawer_close ms="):
+    for token in ("PerfPolicy.DRAWER_INCREMENTAL_ROWS", "revealedRows",
+                  "channels.subList(0, revealedRows", "PerfPolicy.DRAWER_ROW_HEIGHT_DP", "drawer_close ms=",
+                  "PerfPolicy.DRAWER_LOOKAHEAD_ROWS"):
         if token not in drawer_code:
             problems.append("PlayerDrawer.kt: missing incremental reveal token " + token)
-    if "focusedChannelUrl, revealedRows" not in drawer_code:
-        problems.append("PlayerDrawer.kt: focused row must be revealed + scrolled into view (t36 DOWN-follow)")
+    if "onRowFocusedScroll" not in drawer_code:
+        problems.append("PlayerDrawer.kt: focus-driven scroll follow missing (t39)")
+    if "const val DRAWER_LOOKAHEAD_ROWS = 16" not in policy or "const val DRAWER_SCREEN_ROWS = 12" not in policy:
+        problems.append("PerfPolicy.kt: DRAWER_LOOKAHEAD_ROWS=16 / DRAWER_SCREEN_ROWS=12 required (t39)")
+    if "drawer_reveal_grow" not in drawer_code:
+        problems.append("PlayerDrawer.kt: scroll-driven reveal grow missing (t39)")
     if "drawer_compose frames=" not in drawer_code:
         problems.append("PlayerDrawer.kt: missing drawer_compose probe")
     if "const val DRAWER_ROWS_PER_FRAME = 2" not in policy:
         problems.append("PerfPolicy.kt: DRAWER_ROWS_PER_FRAME must be 2 (t33)")
-    if "const val DRAWER_FIRST_FRAME_ROWS = 6" not in policy:
-        problems.append("PerfPolicy.kt: DRAWER_FIRST_FRAME_ROWS must be 4..6 (t33)")
+    if "const val DRAWER_FIRST_FRAME_ROWS = 3" not in policy:
+        problems.append("PerfPolicy.kt: DRAWER_FIRST_FRAME_ROWS must be 3 (t39)")
     if "const val DRAWER_ROW_HEIGHT_DP = 56" not in policy:
         problems.append("PerfPolicy.kt: DRAWER_ROW_HEIGHT_DP must be 56")
 

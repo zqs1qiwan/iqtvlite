@@ -44,15 +44,24 @@ object PerfPolicy {
      */
     const val DRAWER_INCREMENTAL_ROWS = true
 
-    /** 首帧先组合多少行（t33：10→6，让打开首帧更轻；仍保证"有内容"而不是空面板）。 */
-    const val DRAWER_FIRST_FRAME_ROWS = 6
+    /** 首帧先组合多少行（t39：6→3，专门消掉 t37 残留的 304ms 巨帧；3 行仍足以"有内容"）。 */
+    const val DRAWER_FIRST_FRAME_ROWS = 3
 
     /** 之后每帧追加多少行（t33：3→2，把单帧成本再压一半）。 */
     const val DRAWER_ROWS_PER_FRAME = 2
 
 
-    /** 抽屉行固定高度（t33：固定行高 + 未揭示行占位，避免逐行测量/文字重排）。 */
+    /** 抽屉行固定高度（t33：固定行高，避免逐行测量/文字重排）。 */
     const val DRAWER_ROW_HEIGHT_DP = 56
+
+    /**
+     * t39（滚动跟随）：焦点走到底部时一次多揭示几行，保证连续 DOWN 不会“撞到列表末尾”。
+     * （之前只按 +2/帧补行，快速连按时目标行还没长出来 → 焦点停在原地。）
+     */
+    const val DRAWER_LOOKAHEAD_ROWS = 16
+
+    /** t39：一屏大约行数（56dp 行 × 12 ≈ 672dp 可视高度）；用于打开时算“工作窗口”。 */
+    const val DRAWER_SCREEN_ROWS = 12
 
     /**
      * 分帧组合的每帧上限保护：一帧内最多再追加这么多"帧"，避免主线程被长循环占住。

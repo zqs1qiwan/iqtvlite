@@ -29,7 +29,7 @@ class PerfPolicyTest {
         // t29（D4）：不再延迟——从第 0 帧起分帧增量组合，首屏 10 行、每帧 +3 行。
         assertEquals("去掉 120ms 延迟，从第 0 帧开始", 0L, PerfPolicy.DRAWER_DEFER_CONTENT_MS)
         assertTrue(PerfPolicy.DRAWER_INCREMENTAL_ROWS)
-        assertEquals("t33/t36：首帧 6 行", 6, PerfPolicy.DRAWER_FIRST_FRAME_ROWS)
+        assertEquals("t39：首帧 3 行（消掉最后 1 个 304ms 巨帧）", 3, PerfPolicy.DRAWER_FIRST_FRAME_ROWS)
         assertEquals("t36：每帧恒 2 行（不加速）", 2, PerfPolicy.DRAWER_ROWS_PER_FRAME)
         assertEquals("t36：固定行高保留", 56, PerfPolicy.DRAWER_ROW_HEIGHT_DP)
         assertEquals("D1：不额外预组合（严格可见区）", 0, PerfPolicy.DRAWER_OVERSCAN_ITEMS)
@@ -100,19 +100,21 @@ class PerfPolicyTest {
 
     @Test
     fun revealedRowsGrowPerFrameAndStopAtTotal() {
-        // 首帧：0 → 6（t33 首屏更轻）
-        assertEquals(6, PerfPolicy.nextRevealedRows(0, 147))
+        // 首帧：0 → 3（t39 首屏更轻）
+        assertEquals(3, PerfPolicy.nextRevealedRows(0, 147))
         // 之后每帧 +2
-        assertEquals(8, PerfPolicy.nextRevealedRows(6, 147))
-        assertEquals(10, PerfPolicy.nextRevealedRows(8, 147))
+        assertEquals(5, PerfPolicy.nextRevealedRows(3, 147))
+        assertEquals(7, PerfPolicy.nextRevealedRows(5, 147))
         // 到顶后钳住
         assertEquals(147, PerfPolicy.nextRevealedRows(146, 147))
         assertEquals(147, PerfPolicy.nextRevealedRows(147, 147))
         // 空/小列表
         assertEquals(0, PerfPolicy.nextRevealedRows(0, 0))
-        assertEquals(5, PerfPolicy.nextRevealedRows(0, 5))
-        assertEquals(5, PerfPolicy.nextRevealedRows(4, 5))
-        assertEquals(3, PerfPolicy.nextRevealedRows(0, 3))
+        assertEquals(2, PerfPolicy.nextRevealedRows(0, 2))
+        assertEquals(2, PerfPolicy.nextRevealedRows(1, 2))
+        // t39：焦点前跳用的 lookahead 一次多揭示若干行（保证连续 DOWN 不撞末尾）
+        assertEquals(16, PerfPolicy.DRAWER_LOOKAHEAD_ROWS)
+        assertEquals(12, PerfPolicy.DRAWER_SCREEN_ROWS)
     }
 
     @Test

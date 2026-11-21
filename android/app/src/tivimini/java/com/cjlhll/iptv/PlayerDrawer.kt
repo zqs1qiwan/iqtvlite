@@ -33,10 +33,12 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -237,28 +239,44 @@ fun PlayerDrawer(
             revealedRows = 0
         }
     }
-    // t29/t33：逐帧把行数补到 total。**每轮迭代只等一帧、只递增一次**（不叠加重组）；
-    // 超过 600ms/1200ms 自动加大步长（6/12 行），避免 t30 观测到的 drawer_open ms=2725 极端情况。
-    // 埋点：drawer_compose frames=.. rows=.. ms=.. lastFrameRows=.. first=.. step=..
-    LaunchedEffect(visible, channels.size) {
+    // t39（关键改动）：**不再把 147 行逐帧全部揭示**。
+    // t37 的 50th=40ms 来自“补满 147 行要 72 帧、每帧都重组列表”这 72 个重帧；
+    // 现在只维护一个**工作窗口**（首屏 3 行 → 第 2 帧扩到 选中行+lookahead+一屏），
+    // 之后**随滚动/焦点按需增长**（见 scroll-follow 效果与 onRowFocusedScroll）。
+    // 这样打开只需 2 个"轻"帧，50th 回到 ≤16ms 才有戏；列表行为与"全量揭示"完全一致（LazyColumn 本就只组合可见项）。
+    LaunchedEffect(visible, channels.size, initialScrollIndex) {
         if (!visible || !PerfPolicy.DRAWER_INCREMENTAL_ROWS) return@LaunchedEffect
         val started = android.os.SystemClock.elapsedRealtime()
-        var frames = 0
-        while (revealedRows < channels.size) {
-            val before = revealedRows
-            androidx.compose.runtime.withFrameNanos { }
-            val elapsed = android.os.SystemClock.elapsedRealtime() - started
-            // t36：恒定 2 行/帧（不再按耗时加速；t34 证明加速会制造大帧）。
-            revealedRows = PerfPolicy.nextRevealedRows(before, channels.size)
-            frames++
-            if (frames == 1 || revealedRows >= channels.size) {
-                PerfTrace.d {
-                    "drawer_compose frames=$frames rows=${channels.size} ms=$elapsed " +
-                        "lastFrameRows=${revealedRows - before} first=${PerfPolicy.DRAWER_FIRST_FRAME_ROWS} " +
-                        "step=${PerfPolicy.DRAWER_ROWS_PER_FRAME}"
+        revealedRows = PerfPolicy.DRAWER_FIRST_FRAME_ROWS.coerceIn(0, channels.size)
+        PerfTrace.d {
+            "drawer_compose frames=1 rows=${channels.size} ms=0 " +
+                "lastFrameRows=$revealedRows first=${PerfPolicy.DRAWER_FIRST_FRAME_ROWS} step=window"
+        }
+        // 第 2 帧：一次性扩到“选中行 + lookahead + 一屏”，避免长列表深处选中时列表过短被钳。
+        androidx.compose.runtime.withFrameNanos { }
+        val target = (initialScrollIndex + PerfPolicy.DRAWER_LOOKAHEAD_ROWS + PerfPolicy.DRAWER_SCREEN_ROWS)
+            .coerceIn(PerfPolicy.DRAWER_FIRST_FRAME_ROWS, channels.size)
+        if (target > revealedRows) revealedRows = target
+        PerfTrace.d {
+            "drawer_compose frames=2 rows=${channels.size} ms=${android.os.SystemClock.elapsedRealtime() - started} " +
+                "lastFrameRows=$target first=${PerfPolicy.DRAWER_FIRST_FRAME_ROWS} step=window"
+        }
+    }
+
+    // t39：滚动/布局驱动按需增长 —— 只要“最后一个可见项”接近已揭示末尾，就再揭示一个窗口，
+    // 保证向下滚动永远有下一屏（用户感知与全量揭示一致，但不再有 72 个重帧）。
+    LaunchedEffect(visible, channels.size) {
+        if (!visible || !PerfPolicy.DRAWER_INCREMENTAL_ROWS) return@LaunchedEffect
+        snapshotFlow { channelListState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0 }
+            .collect { lastVisible ->
+                if (lastVisible >= revealedRows - PerfPolicy.DRAWER_ROWS_PER_FRAME) {
+                    val next = (lastVisible + PerfPolicy.DRAWER_LOOKAHEAD_ROWS).coerceIn(0, channels.size)
+                    if (next > revealedRows) {
+                        revealedRows = next
+                        PerfTrace.d { "drawer_reveal_grow rows=$revealedRows lastVisible=$lastVisible" }
+                    }
                 }
             }
-        }
     }
 
     LaunchedEffect(visible) {
@@ -347,6 +365,29 @@ fun PlayerDrawer(
     val channelListState = rememberLazyListState(
         initialFirstVisibleItemIndex = initialScrollIndex
     )
+    // t39：直接由 item 的 onFocusChanged 驱动滚动（不再依赖 focusedChannelUrl 回写是否生效）。
+    val drawerScope = rememberCoroutineScope()
+    /**
+     * t39（滚动跟随）：焦点行被聚焦时调用。
+     * 步骤：① 若该行还没被揭示（subList 只有 revealedRows 项），先把 revealedRows 扩到 idx+lookahead；
+     * ② 等一帧让列表真正长出这些项（否则 scrollToItem 会被钳在末尾）；
+     * ③ 只有当该行不在可视窗口内时才 scrollToItem，避免打断正常浏览。
+     */
+    val onRowFocusedScroll: (Int) -> Unit = { idx ->
+        if (PerfPolicy.DRAWER_INCREMENTAL_ROWS) {
+            val need = idx + PerfPolicy.DRAWER_LOOKAHEAD_ROWS
+            if (idx >= revealedRows) revealedRows = need.coerceIn(0, channels.size)
+            drawerScope.launch {
+                androidx.compose.runtime.withFrameNanos { }
+                val visible = channelListState.layoutInfo.visibleItemsInfo
+                val first = visible.firstOrNull()?.index ?: 0
+                val last = visible.lastOrNull()?.index ?: 0
+                if (idx < first || idx > last) {
+                    runCatching { channelListState.scrollToItem((idx - 2).coerceAtLeast(0)) }
+                }
+            }
+        }
+    }
 
     // t29（D4）：分帧补行完成后校正一次滚动 —— 首帧只有 10 行时 scrollToItem(选中行) 会被钳住，
     // 补满后需要把选中行带回可视区（否则长列表深处选中的频道看不到焦点）。
@@ -359,13 +400,13 @@ fun PlayerDrawer(
         }
     }
 
-    // t36：**焦点行始终可见** —— 方向键把焦点移到还没揭示的行时，先把它揭示出来，再保证滚动跟随。
-    // （t34 的 DOWN×8 后可见行仍 1–6，就是“焦点下移但列表没跟上”的表现。）
-    LaunchedEffect(visible, focusedChannelUrl, revealedRows, channels.size) {
+    // t39：兜底 —— 若 focusedChannelUrl 由别处（如首帧恢复）改到窗口外，仍保证可见。
+    LaunchedEffect(visible, focusedChannelUrl) {
         if (!visible || !PerfPolicy.DRAWER_INCREMENTAL_ROWS) return@LaunchedEffect
         val url = focusedChannelUrl ?: return@LaunchedEffect
         val idx = channelIndexByUrl[url] ?: return@LaunchedEffect
-        if (idx >= revealedRows) revealedRows = (idx + 1).coerceAtMost(channels.size)
+        if (idx >= revealedRows) revealedRows = (idx + PerfPolicy.DRAWER_LOOKAHEAD_ROWS).coerceIn(0, channels.size)
+        androidx.compose.runtime.withFrameNanos { }
         if (idx !in channelListState.layoutInfo.visibleItemsInfo.map { it.index }) {
             runCatching { channelListState.scrollToItem((idx - 2).coerceAtLeast(0)) }
         }
@@ -925,6 +966,8 @@ fun PlayerDrawer(
                                         }
                                         showDates = false
                                         showGroups = false
+                                        // t39：焦点一落行就把它滚进视野（不依赖 focusedChannelUrl 回写）。
+                                        onRowFocusedScroll(index)
                                     },
                                     onClick = {
                                         focusedChannelUrl = ch.url
