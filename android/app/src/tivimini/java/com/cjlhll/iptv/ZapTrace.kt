@@ -28,13 +28,17 @@ object ZapTrace {
     private var zapKey: String? = null
 
     /**
-     * t201 (ZAP-ONZAP-01): arm the stopwatch from the production path.
-     *
-     * Called on the stream-preparation path, but only re-arms when the media identity actually
-     * changed, so a re-prepare for the same channel (layout change, retry, audio re-select) does not
-     * wipe the measurement of the running zap.
+     * t204 (ZAP-KEY-01): the STABLE identity of a channel — deliberately free of the per-prepare
+     * MediaItem sequence number, so a re-prepare of the same channel keeps the running measurement.
      */
-    fun onZapIfChanged(key: String, now: Long) {
+    fun zapKey(channelId: Long, url: String): String = "c$channelId-l${url.hashCode().toUInt()}"
+
+    /**
+     * t204 (ZAP-TIMING-01): arm the stopwatch at the USER's zap entry (key press / click), so the
+     * measurement starts when the user acts, not when ExoPlayer happens to prepare. Re-arming with the
+     * same key is ignored, i.e. one channel change = one measurement.
+     */
+    fun onZapRequested(key: String, now: Long) {
         if (key == zapKey && zapAt > 0L) return
         zapKey = key
         onZap(now)
@@ -48,8 +52,15 @@ object ZapTrace {
         lastZapMs = -1L
     }
 
-    /** `ExoPlayer.prepare()` was called. */
+    /**
+     * `ExoPlayer.prepare()` was called.
+     *
+     * t204: if no user entry armed the stopwatch (e.g. the initial autoplay), prepare becomes the
+     * origin so the measurement is still produced; in the normal zap path the user entry already set
+     * [zapAt], so `prepareDelayMs` reflects the real key-to-prepare gap.
+     */
     fun onPrepare(now: Long) {
+        if (zapAt == 0L) zapAt = now
         prepareAt = now
     }
 
@@ -131,9 +142,5 @@ object ColdStartPolicy {
      */
     const val EPG_CACHE_FALLBACK_MS = 10_000L
 
-    /**
-     * Whether the EPG cache may be read now.
-     * @param firstFrameRendered the player already presented the first frame
-     */
-    fun mayLoadEpgCache(firstFrameRendered: Boolean): Boolean = !EPG_AFTER_FIRST_FRAME || firstFrameRendered
+
 }

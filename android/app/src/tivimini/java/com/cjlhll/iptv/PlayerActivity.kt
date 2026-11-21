@@ -939,7 +939,11 @@ fun VideoPlayerScreen(
                 androidx.compose.runtime.snapshotFlow { firstFrameRendered }.first { it }
             }
             val t0 = System.currentTimeMillis()
-            val cachedEpg = EpgRepository.load(context, epgSource, forceRefresh = false)
+            // t204 (EPG-CACHE-MAIN-01): the XMLTV cache read is disk + parse work; keep it off the
+            // main thread so a slow/failed cache never blocks the UI (the fallback timer included).
+            val cachedEpg = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                EpgRepository.load(context, epgSource, forceRefresh = false)
+            }
             if (android.util.Log.isLoggable(ZAP_TAG, android.util.Log.DEBUG)) {
                 android.util.Log.d(
                     ZAP_TAG,
@@ -1160,6 +1164,11 @@ fun VideoPlayerScreen(
     }
 
     fun playChannel(channel: Channel) {
+        // t204 (ZAP-TIMING-01): the user zap starts here — one measurement per channel change.
+        ZapTrace.onZapRequested(
+            ZapTrace.zapKey(channel.id, channel.url),
+            android.os.SystemClock.elapsedRealtime()
+        )
         // t126: warm this channel's logo so the next drawer open is instant.
         channel.logoUrl?.trim()?.takeIf { it.isNotBlank() }?.let { u ->
             val pxW = with(density) { 64.dp.roundToPx() }

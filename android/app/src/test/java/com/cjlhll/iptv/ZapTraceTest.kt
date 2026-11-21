@@ -67,35 +67,67 @@ class ZapTraceTest {
     }
 
     @Test
-    fun epgIsNotReadBeforeTheFirstFrame() {
-        // t197 B: cold start must not parse XMLTV before the first frame.
-        assertFalse(ColdStartPolicy.mayLoadEpgCache(firstFrameRendered = false))
-        assertTrue(ColdStartPolicy.mayLoadEpgCache(firstFrameRendered = true))
+    fun theEpgCacheGateIsAPlainConstant() {
+        // t204: mayLoadEpgCache() had no production caller (the effect uses a 10 s timeout instead),
+        // so it is gone; the rule that remains is the constant itself.
+        assertTrue(ColdStartPolicy.EPG_AFTER_FIRST_FRAME)
     }
 
     @Test
     fun theStopwatchIsArmedOncePerRealZap() {
-        // t201 (ZAP-ONZAP-01): the production path calls onZapIfChanged(mediaId), so a re-prepare for
-        // the same channel (layout change, retry) must NOT wipe the running measurement…
+        // t204 (ZAP-TIMING-01): the arm happens at the user entry (playChannel)…
         ZapTrace.reset()
-        ZapTrace.onZapIfChanged("chan-1", 1_000L)
+        val key1 = ZapTrace.zapKey(42L, "http://src/a")
+        ZapTrace.onZapRequested(key1, 1_000L)
         ZapTrace.onPrepare(1_100L)
+        assertEquals("key press → prepare", 100L, ZapTrace.prepareDelayMs())
+        ZapTrace.onFirstFrame(1_780L)
+        assertEquals(780L, ZapTrace.zapToFirstFrameMs())
+
+        // …and a second press for the SAME channel does not restart the running measurement
+        ZapTrace.onZapRequested(key1, 1_500L)
+        assertEquals("same channel keeps its measurement", 780L, ZapTrace.zapToFirstFrameMs())
         assertEquals(100L, ZapTrace.prepareDelayMs())
 
-        ZapTrace.onZapIfChanged("chan-1", 1_500L) // same channel prepared again
-        assertEquals("the same zap keeps its original start point", 100L, ZapTrace.prepareDelayMs())
-
-        // …while a genuinely new channel re-arms it
-        ZapTrace.onZapIfChanged("chan-2", 3_000L)
-        assertEquals(-1L, ZapTrace.prepareDelayMs())
+        // a different channel re-arms it
+        ZapTrace.onZapRequested(ZapTrace.zapKey(43L, "http://src/b"), 3_000L)
         assertEquals(-1L, ZapTrace.zapToFirstFrameMs())
+        assertEquals(-1L, ZapTrace.prepareDelayMs())
+    }
+
+    @Test
+    fun theKeyIsTheChannelNotThePerPrepareMediaId() {
+        // t204 (ZAP-KEY-01): production used to arm from `id` = "c…-l…-s<sequence>", which changes on
+        // EVERY prepare → the same channel always looked new. The key must be channel-stable.
+        val a = ZapTrace.zapKey(7L, "http://src/x")
+        val aAgain = ZapTrace.zapKey(7L, "http://src/x")
+        val b = ZapTrace.zapKey(7L, "http://src/y")
+        assertEquals("same channel → same key", a, aAgain)
+        assertFalse("different stream of the same channel → different key", a == b)
+
+        ZapTrace.reset()
+        ZapTrace.onZapRequested(a, 1_000L)
+        ZapTrace.onPrepare(1_050L)
+        ZapTrace.onFirstFrame(1_700L)
+        // a re-prepare for the same channel (new sequence id) must keep the measurement
+        ZapTrace.onZapRequested(aAgain, 1_900L)
+        assertEquals(700L, ZapTrace.zapToFirstFrameMs())
+    }
+
+    @Test
+    fun prepareSelfArmsWhenNoUserEntryHappened() {
+        // Initial autoplay has no user zap; prepare becomes the origin so a line is still produced.
+        ZapTrace.reset()
+        ZapTrace.onPrepare(5_000L)
+        assertEquals("fallback origin has no key-to-prepare gap", 0L, ZapTrace.prepareDelayMs())
+        assertEquals(300L, ZapTrace.onFirstFrame(5_300L))
     }
 
     @Test
     fun theProductionArmProducesASummaryLine() {
         // t201: without the arm call summaryLine() was always null and logcat had no `zap=` line.
         ZapTrace.reset()
-        ZapTrace.onZapIfChanged("channel-42", 10_000L)
+        ZapTrace.onZapRequested(ZapTrace.zapKey(1L, "channel-42"), 10_000L)
         ZapTrace.onPrepare(10_150L)
         ZapTrace.onFirstFrame(10_765L)
         assertEquals("zap=765ms prepare=150ms firstFrame=615ms", ZapTrace.summaryLine())

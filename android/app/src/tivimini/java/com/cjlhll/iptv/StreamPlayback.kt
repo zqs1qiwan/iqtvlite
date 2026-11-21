@@ -64,9 +64,9 @@ object StreamPlayback {
         val prepared = intent.prepared(request.copy(channel=channel.copy(id=channelId)), id)
         metrics.begin(prepared, onFailure)
         player.setMediaSource(factory.createMediaSource(item))
-        // t197 (A1) / t201 (ZAP-ONZAP-01): arm the TTFF stopwatch from the production path — once per
-        // real channel change — and mark the moment the network/decode work begins.
-        ZapTrace.onZapIfChanged(id, android.os.SystemClock.elapsedRealtime())
+        // t204 (ZAP-TIMING-01): the stopwatch is armed at the USER entry (PlayerActivity.playChannel);
+        // preparation only records its own timestamp, so the measurement is the real key-to-first-frame
+        // latency rather than prepare-to-first-frame.
         ZapTrace.onPrepare(android.os.SystemClock.elapsedRealtime())
         player.prepare()
         player.play()
