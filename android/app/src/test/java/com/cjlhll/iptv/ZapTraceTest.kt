@@ -116,6 +116,52 @@ class ZapTraceTest {
     }
 
     @Test
+    fun decoderBeforeFormatDoesNotDropTheStages() {
+        // t218: the device trace had onVideoDecoderInitialized (47.864s) BEFORE
+        // onInputVideoFormatChanged (47.869s) → the old delta was negative and the whole suffix vanished.
+        ZapTrace.reset()
+        ZapTrace.onZapRequested(ZapTrace.groupKey(1), 10_000L)
+        ZapTrace.onPrepare(10_200L)
+        ZapTrace.onVideoDecoderInitialized(10_210L)   // arrives first
+        ZapTrace.onInputFormatChanged(10_400L)
+        ZapTrace.onFirstFrame(11_100L)
+        assertEquals(200L, ZapTrace.formatDelayMs())
+        assertEquals("an out-of-order decoder mark counts as 0", 0L, ZapTrace.decoderDelayMs())
+        assertEquals("render runs from the latest mark", 700L, ZapTrace.renderDelayMs())
+        assertEquals(
+            "zap=1100ms prepare=200ms firstFrame=900ms fmt=200ms dec=0ms render=700ms",
+            ZapTrace.summaryLineOnce()
+        )
+    }
+
+    @Test
+    fun aMissingDecoderEventStillReportsFormatAndRender() {
+        // A reused codec may not emit onVideoDecoderInitialized at all.
+        ZapTrace.reset()
+        ZapTrace.onZapRequested(ZapTrace.groupKey(2), 10_000L)
+        ZapTrace.onPrepare(10_150L)
+        ZapTrace.onInputFormatChanged(10_950L)
+        ZapTrace.onFirstFrame(11_400L)
+        assertEquals(0L, ZapTrace.decoderDelayMs())
+        val line = ZapTrace.summaryLineOnce()!!
+        assertTrue("fmt must survive: $line", line.contains("fmt=800ms"))
+        assertTrue("dec is clamped to 0: $line", line.contains("dec=0ms"))
+        assertTrue("render must survive: $line", line.contains("render="))
+    }
+
+    @Test
+    fun aNegativeWindowIsClampedToZero() {
+        // First frame observed before the last mark (reordering) → 0, never a negative number.
+        ZapTrace.reset()
+        ZapTrace.onZapRequested(ZapTrace.groupKey(3), 10_000L)
+        ZapTrace.onPrepare(10_100L)
+        ZapTrace.onInputFormatChanged(10_900L)
+        ZapTrace.onFirstFrame(10_800L)
+        assertEquals(0L, ZapTrace.renderDelayMs())
+        assertFalse(ZapTrace.summaryLineOnce()!!.contains("render=-"))
+    }
+
+    @Test
     fun theFirstAutoplayAlsoReportsALineWithoutAnyKeyPress() {
         // t216: cold start autoplay never went through a user entry → no key → summaryLineOnce()
         // returned null and there was no ZAP line at all.
@@ -176,9 +222,12 @@ class ZapTraceTest {
         ZapTrace.onZapRequested(ZapTrace.groupKey(2), 10_000L)
         ZapTrace.onPrepare(10_100L)
         ZapTrace.onFirstFrame(10_900L)
+        // t218: with no format event the stage suffix is omitted entirely (fmt stays -1); the clamped
+        // helpers return 0 rather than a negative number when there is nothing to measure.
         assertEquals(-1L, ZapTrace.formatDelayMs())
-        assertEquals(-1L, ZapTrace.decoderDelayMs())
-        assertEquals(-1L, ZapTrace.renderDelayMs())
+        assertEquals(0L, ZapTrace.decoderDelayMs())
+        // without a format mark the remaining window is measured from prepare (100 → 900 = 800 ms)
+        assertEquals(800L, ZapTrace.renderDelayMs())
         assertEquals("zap=900ms prepare=100ms firstFrame=800ms", ZapTrace.summaryLineOnce())
     }
 

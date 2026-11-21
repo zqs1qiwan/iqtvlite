@@ -32,6 +32,8 @@ object Prefs {
     private const val KEY_REMOTE_CHANNEL_KEYS = "remote_channel_keys"
     // t205: start-up buffer tier (300/400/500 ms), default 稳/500.
     private const val KEY_PLAYBACK_BUFFER_MIN = "playback_buffer_min"
+    // t218: neighbour pre-connect experiment (default OFF — opt-in only).
+    private const val KEY_ZAP_PRECONNECT = "zap_preconnect_enabled"
 
     private fun getPrefs(context: Context): SharedPreferences {
         return context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
@@ -194,6 +196,14 @@ object Prefs {
     /** t205: the persisted start-up buffer tier; unknown values fall back to 稳/500. */
     fun getPlaybackBufferMin(context: Context): Int =
         LoadControlTuning.sanitize(getPrefs(context).getInt(KEY_PLAYBACK_BUFFER_MIN, LoadControlTuning.DEFAULT_BUFFER_MIN_MS))
+
+    /** t218: neighbour pre-connect is an opt-in experiment; default OFF keeps behaviour unchanged. */
+    fun getZapPreconnectEnabled(context: Context): Boolean =
+        getPrefs(context).getBoolean(KEY_ZAP_PRECONNECT, false)
+
+    fun setZapPreconnectEnabled(context: Context, enabled: Boolean) {
+        getPrefs(context).edit().putBoolean(KEY_ZAP_PRECONNECT, enabled).apply()
+    }
 
     fun setPlaybackBufferMin(context: Context, value: Int) {
         getPrefs(context).edit().putInt(KEY_PLAYBACK_BUFFER_MIN, LoadControlTuning.sanitize(value)).apply()

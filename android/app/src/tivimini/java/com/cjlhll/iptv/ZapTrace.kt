@@ -109,14 +109,36 @@ object ZapTrace {
         if (decoderAt == 0L) decoderAt = now
     }
 
-    /** t213: prepare→format (demux/network first format). -1 when unknown. */
+    /**
+     * t218 (ZAP-SEG-02): prepare→first format (network first packet + demux). -1 when unknown.
+     * This is the stage the device A/B showed to dominate TTFF (~94 %).
+     */
     fun formatDelayMs(): Long = if (prepareAt > 0L && formatAt >= prepareAt) formatAt - prepareAt else -1L
 
-    /** t213: format→decoder-initialised (MediaCodec create/configure). -1 when unknown. */
-    fun decoderDelayMs(): Long = if (formatAt > 0L && decoderAt >= formatAt) decoderAt - formatAt else -1L
+    /**
+     * t218: format→decoder-initialised (MediaCodec create/configure).
+     *
+     * The device trace showed `onVideoDecoderInitialized` firing **before**
+     * `onInputVideoFormatChanged` (47.864 s vs 47.869 s), which made the old delta negative and dropped
+     * the whole stage suffix. It is now clamped: a missing or out-of-order decoder mark counts as **0**
+     * (nothing measurable happened in that window) instead of poisoning the line.
+     */
+    fun decoderDelayMs(): Long {
+        if (formatAt == 0L || decoderAt == 0L) return 0L
+        val d = decoderAt - formatAt
+        return if (d > 0L) d else 0L
+    }
 
-    /** t213: decoder→first frame (first decode + Surface submit). -1 when unknown. */
-    fun renderDelayMs(): Long = if (decoderAt > 0L && firstFrameAt >= decoderAt) firstFrameAt - decoderAt else -1L
+    /**
+     * t218: the remaining window to the first frame, measured from the **latest** observed mark
+     * (decoder if it came after the format, otherwise the format). -1 only when nothing was observed.
+     */
+    fun renderDelayMs(): Long {
+        if (firstFrameAt == 0L) return -1L
+        val origin = maxOf(formatAt, decoderAt, prepareAt)
+        if (origin == 0L || firstFrameAt < origin) return 0L
+        return firstFrameAt - origin
+    }
 
     /** `onRenderedFirstFrame` fired for the item prepared above. */
     fun onFirstFrame(now: Long): Long {
@@ -156,13 +178,13 @@ object ZapTrace {
         val total = zapToFirstFrameMs()
         if (total < 0L) return null
         val base = "zap=${total}ms prepare=${prepareDelayMs()}ms firstFrame=${firstFrameDelayMs()}ms"
-        // t213: append the intra-first-frame split when the decoder events were observed.
+        // t213/t218: append the intra-first-frame split as soon as the FORMAT was observed. A missing
+        // or out-of-order decoder mark is reported as dec=0 instead of dropping all three stages.
         val fmt = formatDelayMs()
+        if (fmt < 0L) return base
         val dec = decoderDelayMs()
         val render = renderDelayMs()
-        return if (fmt >= 0 && dec >= 0 && render >= 0) {
-            "$base fmt=${fmt}ms dec=${dec}ms render=${render}ms"
-        } else base
+        return "$base fmt=${fmt}ms dec=${dec}ms render=${render}ms"
     }
 
     fun reset() {

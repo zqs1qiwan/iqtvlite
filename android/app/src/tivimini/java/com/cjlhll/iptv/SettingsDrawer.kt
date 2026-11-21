@@ -72,6 +72,9 @@ fun SettingsDrawer(
     // t205: start-up buffer tier
     playbackBufferLabel: String = "稳(500ms)",
     onCyclePlaybackBuffer: () -> Unit = {},
+    // t218: neighbour pre-connect experiment (default off)
+    zapPreconnectEnabled: Boolean = false,
+    onToggleZapPreconnect: () -> Unit = {},
     onAudioTrackClick: () -> Unit = {},
     // t186 (F1): remote habits
     remoteUpDownLabel: String = "换台",
@@ -231,6 +234,18 @@ fun SettingsDrawer(
                     )
                     Text(
                         text = "快=起播更快但弱网更易卡顿；稳=更抗抖动。切换后下次切台生效。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(start = 16.dp, top = 2.dp, bottom = 6.dp)
+                    )
+                    SettingsItem(
+                        text = if (zapPreconnectEnabled) "预连接相邻频道（实验）：开" else "预连接相邻频道（实验）：关",
+                        focusRequester = null,
+                        tag = "settings_zap_preconnect",
+                        onClick = onToggleZapPreconnect
+                    )
+                    Text(
+                        text = "开启后会在列表打开或空闲时预热相邻频道的网络连接（每台约 1 个连接、2 秒上限）。默认关闭；如出现卡顿或占用升高请关回。",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(start = 16.dp, top = 2.dp, bottom = 6.dp)
