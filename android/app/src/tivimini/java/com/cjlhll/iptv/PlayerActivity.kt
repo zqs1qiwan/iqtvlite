@@ -582,8 +582,8 @@ fun VideoPlayerScreen(
     var infoCardTimerTick by remember { mutableIntStateOf(0) }
 
     fun logInfoCard(message: String) {
-        if (android.util.Log.isLoggable("IQTV-INFOCARD", android.util.Log.DEBUG)) {
-            android.util.Log.d("IQTV-INFOCARD", message)
+        if (android.util.Log.isLoggable(INFO_CARD_TAG, android.util.Log.DEBUG)) {
+            android.util.Log.d(INFO_CARD_TAG, message)
         }
     }
 
@@ -2128,3 +2128,5 @@ private fun clearAudioOverride(player: androidx.media3.common.Player) {
 
 /** t197: one debug tag for the TTFF stopwatch (`adb shell setprop log.tag.IQTV-ZAP DEBUG`). */
 private const val ZAP_TAG = "IQTV-ZAP"
+// t4 (INFO_CARD_V2 §7.3)：信息卡调试日志 tag（只在 setprop log.tag.IQTV-INFOCARD DEBUG 时输出）。
+private const val INFO_CARD_TAG = "IQTV-INFOCARD"
