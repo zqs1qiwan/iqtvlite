@@ -126,6 +126,17 @@ def main() -> int:
         problems.append("PlayerDrawer.kt: focus-driven scroll follow missing (t39)")
     if "const val DRAWER_LOOKAHEAD_ROWS = 16" not in policy or "const val DRAWER_SCREEN_ROWS = 12" not in policy:
         problems.append("PerfPolicy.kt: DRAWER_LOOKAHEAD_ROWS=16 / DRAWER_SCREEN_ROWS=12 required (t39)")
+    # t42: lean channel row (logo + number + name only) and bounded open window with step=2
+    if "openTarget" not in drawer_code:
+        problems.append("PlayerDrawer.kt: bounded open window (openTarget) missing (t42)")
+    # the channel row must not carry the EPG subtitle / marquee / progress bar any more
+    row_start = drawer_code.find("private fun DrawerChannelItem(")
+    row_end = drawer_code.find("private fun ThinProgressBar(", row_start)
+    if row_start != -1 and row_end > row_start:
+        row = drawer_code[row_start:row_end]
+        for banned in ("FocusMarqueeText(", "ThinProgressBar(", "nowProgram", "无信息"):
+            if banned in row:
+                problems.append("DrawerChannelItem still contains " + banned + " (t42 lean row)")
     if "drawer_reveal_grow" not in drawer_code:
         problems.append("PlayerDrawer.kt: scroll-driven reveal grow missing (t39)")
     if "drawer_compose frames=" not in drawer_code:

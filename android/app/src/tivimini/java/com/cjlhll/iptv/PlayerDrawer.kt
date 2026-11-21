@@ -334,19 +334,30 @@ fun PlayerDrawer(
     LaunchedEffect(visible, channels.size, initialScrollIndex) {
         if (!visible || !PerfPolicy.DRAWER_INCREMENTAL_ROWS) return@LaunchedEffect
         val started = android.os.SystemClock.elapsedRealtime()
-        revealedRows = PerfPolicy.DRAWER_FIRST_FRAME_ROWS.coerceIn(0, channels.size)
-        PerfTrace.d {
-            "drawer_compose frames=1 rows=${channels.size} ms=0 " +
-                "lastFrameRows=$revealedRows first=${PerfPolicy.DRAWER_FIRST_FRAME_ROWS} step=window"
-        }
-        // 第 2 帧：一次性扩到“选中行 + lookahead + 一屏”，避免长列表深处选中时列表过短被钳。
-        androidx.compose.runtime.withFrameNanos { }
-        val target = (initialScrollIndex + PerfPolicy.DRAWER_LOOKAHEAD_ROWS + PerfPolicy.DRAWER_SCREEN_ROWS)
+        // t42：恢复 t37 的**打开节奏**（每帧 +2 行），但只补到“有界开窗目标”，
+        // 而不是像 t37 那样一路补满 147 行（72 帧）——两者取优点：
+        //   t37 优点：单帧只 2 行（巨帧 1、50th 40ms）；t40 优点：总帧数少。
+        val openTarget = (initialScrollIndex + PerfPolicy.DRAWER_LOOKAHEAD_ROWS + PerfPolicy.DRAWER_SCREEN_ROWS)
             .coerceIn(PerfPolicy.DRAWER_FIRST_FRAME_ROWS, channels.size)
-        if (target > revealedRows) revealedRows = target
+        revealedRows = PerfPolicy.DRAWER_FIRST_FRAME_ROWS.coerceIn(0, channels.size)
+        var frames = 1
         PerfTrace.d {
-            "drawer_compose frames=2 rows=${channels.size} ms=${android.os.SystemClock.elapsedRealtime() - started} " +
-                "lastFrameRows=$target first=${PerfPolicy.DRAWER_FIRST_FRAME_ROWS} step=window"
+            "drawer_compose frames=1 rows=${channels.size} target=$openTarget ms=0 " +
+                "lastFrameRows=$revealedRows first=${PerfPolicy.DRAWER_FIRST_FRAME_ROWS} step=${PerfPolicy.DRAWER_ROWS_PER_FRAME}"
+        }
+        while (revealedRows < openTarget) {
+            val before = revealedRows
+            androidx.compose.runtime.withFrameNanos { }
+            revealedRows = (before + PerfPolicy.DRAWER_ROWS_PER_FRAME).coerceAtMost(openTarget)
+            frames++
+            if (revealedRows >= openTarget) {
+                PerfTrace.d {
+                    "drawer_compose frames=$frames rows=${channels.size} target=$openTarget " +
+                        "ms=${android.os.SystemClock.elapsedRealtime() - started} " +
+                        "lastFrameRows=${revealedRows - before} first=${PerfPolicy.DRAWER_FIRST_FRAME_ROWS} " +
+                        "step=${PerfPolicy.DRAWER_ROWS_PER_FRAME}"
+                }
+            }
         }
     }
 
@@ -957,9 +968,7 @@ fun PlayerDrawer(
                                     channel = ch,
                                     index = channelNumbers[ch.url] ?: (index + 1),
                                     selected = (ch.url == selectedChannelUrl),
-                                    nowProgram = nowProgramByChannelUrl[ch.url],
                                     focusRequester = if (ch.url == focusTargetUrl) selectedChannelRequester else null,
-                                    drawerVisible = visible,
                                     onFocused = {
                                         activeColumn = DrawerColumn.Channels
                                         if (!isFocusRestoring) {
@@ -1192,9 +1201,7 @@ private fun DrawerChannelItem(
     channel: Channel,
     index: Int,
     selected: Boolean,
-    nowProgram: NowProgramUi?,
     focusRequester: FocusRequester?,
-    drawerVisible: Boolean,
     onFocused: () -> Unit,
     onClick: () -> Unit
 ) {
@@ -1236,42 +1243,17 @@ private fun DrawerChannelItem(
             height = 40.dp
         )
         Spacer(modifier = Modifier.width(12.dp))
-        Column(modifier = Modifier.weight(1f, fill = true)) {
-            Text(
-                text = label,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                style = MaterialTheme.typography.titleMedium,
-                color = contentColor
-            )
-            if (!nowProgram?.title.isNullOrBlank()) {
-                FocusMarqueeText(
-                    text = nowProgram?.title.orEmpty(),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f),
-                    focused = focused,
-                    drawerVisible = drawerVisible
-                )
-                val progress = nowProgram?.progress
-                if (progress != null) {
-                    ThinProgressBar(
-                        progress = progress,
-                        focused = focused,
-                        modifier = Modifier
-                            .padding(top = 4.dp)
-                            .fillMaxWidth()
-                    )
-                }
-            } else {
-                Text(
-                    text = "无信息",
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f)
-                )
-            }
-        }
+        // t42（单行成本减法）：行内只留「台标 + 序号 + 台名」。
+        // 去掉 EPG 副标题 / 跑马灯 / 进度条 / “无信息”占位（这些都是每行额外的
+        // 组合节点 + 文本测量 + draw，实测单行成本 12–15ms；减法后目标 ~4ms）。
+        Text(
+            text = label,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            style = MaterialTheme.typography.titleMedium,
+            color = contentColor,
+            modifier = Modifier.weight(1f, fill = true)
+        )
     }
 }
 
