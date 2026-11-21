@@ -79,4 +79,12 @@ JVM 测试 `probeSplitsCcErrorsAndIgnoresNullPid`：视频/音频/其它各 1 �
 
 | 项 | 值 |
 |---|---|
-| 提交 / CI | 见 t56 任务输出（本文件随实现提交，定稿后补 run 号） |
+| 提交 | `ac86304`（r11：1 行/帧 + 短 lookahead/open 窗口；Probe cc_err 拆分 + null PID 忽略） |
+| CI run（绿） | **#198**，sha `ac86304`，push，conclusion `success` |
+| 构建 | `BUILD SUCCESSFUL in 2m 57s`；`:app:testDebugUnitTest`（含新增 `probeSplitsCcErrorsAndIgnoresNullPid`）+ `:app:lintDebug` + 双包 assemble |
+| 门禁 | 八门禁全 OK（`check_perf_policy` 断言已改为 1/2/12/20）；pair gate `{0,0,0}` |
+| 包 | `tv.iqtvlite.app.validation`，versionCode **10198** |
+| app sha256 | `dccd55bcdaa518e2603dac5a36016aac6aae6b4869488adc05b031994e2137f0` |
+| test sha256 | `cac6fe03edec8dba9daeb66504bbdb7f952153d86329d4151b2ccf3ba0c6a719` |
+| 产物 | `iqtvlite-test-apk`（artifact id 14729881015，10,476,949 B ≪30MB） |
+| 待 t57 判定 | 50th 是否 ≤35ms、巨帧是否 0–1、**快按 DOWN×10 是否跟手/无空白行**；若不达标即按 §6 回退并记录“1 行/帧不可取” |
