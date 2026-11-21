@@ -36,11 +36,11 @@ class JingcaiTimelineTest {
         a[0] = 0x10 // PCR_flag
         val base = pcr27 / 300
         val ext = (pcr27 % 300).toInt()
-        a[1] = ((base shr 25) and 0xFF).toByte()
-        a[2] = ((base shr 17) and 0xFF).toByte()
-        a[3] = ((base shr 9) and 0xFF).toByte()
-        a[4] = ((base shr 1) and 0xFF).toByte()
-        a[5] = (((base and 0x1) shl 7) or ((ext shr 8) and 0x01)).toByte()
+        a[1] = ((base shr 25) and 0xFFL).toByte()
+        a[2] = ((base shr 17) and 0xFFL).toByte()
+        a[3] = ((base shr 9) and 0xFFL).toByte()
+        a[4] = ((base shr 1) and 0xFFL).toByte()
+        a[5] = ((((base and 0x1L) shl 7) or ((ext shr 8) and 0x01).toLong())).toByte()
         a[6] = (ext and 0xFF).toByte()
         return a
     }
