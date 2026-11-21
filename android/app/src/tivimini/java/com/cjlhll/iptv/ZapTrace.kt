@@ -38,6 +38,13 @@ object ZapTrace {
     fun zapKey(channelId: Long, url: String): String = "c$channelId-l${url.hashCode().toUInt()}"
 
     /**
+     * t211 (ZAP-NESTED-01): the key for a *selection* — one user zap may probe several variants of the
+     * same group (selectedIndex 0/1/2 in playGroupAuto), and all of them must share one key so the
+     * variant switch cannot re-arm and exclude the probe time.
+     */
+    fun groupKey(groupIndex: Int): String = "g$groupIndex"
+
+    /**
      * t204 (ZAP-TIMING-01): arm the stopwatch at the USER's zap entry (key press / click), so the
      * measurement starts when the user acts, not when ExoPlayer happens to prepare. Re-arming with the
      * same key is ignored, i.e. one channel change = one measurement.

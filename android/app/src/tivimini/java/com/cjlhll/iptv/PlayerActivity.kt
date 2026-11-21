@@ -1084,15 +1084,19 @@ fun VideoPlayerScreen(
         recentTick++
     }
 
-    fun playGroupVariant(groupIndex: Int, variantIndex: Int, selectionTicket: Long? = null) {
+    fun playGroupVariant(
+        groupIndex: Int,
+        variantIndex: Int,
+        selectionTicket: Long? = null,
+        // t211: only the OUTERMOST entry may arm; nested variant switches (auto probe) must not.
+        armZap: Boolean = false,
+    ) {
         if (selectionTicket != null && !playbackIntent.matches(selectionTicket)) return
         val group = channelGroups.getOrNull(groupIndex) ?: return
         val channel = group.variants.getOrNull(variantIndex)?.channel ?: return
-        // t208 (ZAP-ENTRY-01): last channel, quality-variant pick and the drawer selection all reach
-        // this function; arm here so every zap has a real key→prepare gap. PERF-01: the key is only
-        // built when the debug tag is enabled, so release pays nothing.
-        if (android.util.Log.isLoggable(ZAP_TAG, android.util.Log.DEBUG)) {
-            ZapTrace.onZapRequested(ZapTrace.zapKey(channel.id, channel.url), android.os.SystemClock.elapsedRealtime())
+        // t211: quality-variant picks and last-channel call this directly; they pass armZap = true.
+        if (armZap && android.util.Log.isLoggable(ZAP_TAG, android.util.Log.DEBUG)) {
+            ZapTrace.onZapRequested(ZapTrace.groupKey(groupIndex), android.os.SystemClock.elapsedRealtime())
         }
         if (selectionTicket == null) {
             sourceSelectGeneration += 1
@@ -1127,14 +1131,12 @@ fun VideoPlayerScreen(
     /**
      * 切台：按源列表顺序探测，第一个能连上的就用；都失败则仍播第一个。
      */
-    fun playGroupAuto(groupIndex: Int) {
-        // t208 (ZAP-ENTRY-01): D-pad / number jump / last-channel all land here (and finally in
-        // playGroupVariant); arming at this funnel covers every entry. onZapRequested is idempotent
-        // for the same channel key, so nested calls cannot restart the measurement.
-        if (android.util.Log.isLoggable(ZAP_TAG, android.util.Log.DEBUG)) {
-            channelGroups.getOrNull(groupIndex)?.variants?.firstOrNull()?.channel?.let { c ->
-                ZapTrace.onZapRequested(ZapTrace.zapKey(c.id, c.url), android.os.SystemClock.elapsedRealtime())
-            }
+    fun playGroupAuto(groupIndex: Int, armZap: Boolean = true) {
+        // t211 (ZAP-NESTED-01): arm ONCE per user selection, with the GROUP key — the fallback probe
+        // may switch through selectedIndex 0/1/2, and all those variants share this key, so the probe
+        // time stays inside the measurement instead of being reset away.
+        if (armZap && android.util.Log.isLoggable(ZAP_TAG, android.util.Log.DEBUG)) {
+            ZapTrace.onZapRequested(ZapTrace.groupKey(groupIndex), android.os.SystemClock.elapsedRealtime())
         }
         val group = channelGroups.getOrNull(groupIndex) ?: return
         if (group.variants.isEmpty()) return
@@ -1200,7 +1202,8 @@ fun VideoPlayerScreen(
         }
         channelGroups.forEachIndexed { groupIndex, group ->
             if (group.variants.any { it.channel.url == channel.url && (channel.id == 0L || it.channel.id == channel.id) }) {
-                playGroupAuto(groupIndex)
+                // t211: playChannel already armed; do not arm again inside.
+                playGroupAuto(groupIndex, armZap = false)
                 return
             }
         }
@@ -1218,7 +1221,7 @@ fun VideoPlayerScreen(
         if (target.groupIndex !in channelGroups.indices) return false
         if (target.variantIndex !in target.group.variants.indices) return false
         lastChannelSwitchAt = now
-        playGroupVariant(target.groupIndex, target.variantIndex)
+        playGroupVariant(target.groupIndex, target.variantIndex, armZap = true)
         infoBannerOpen = true
         return true
     }
@@ -1609,7 +1612,7 @@ fun VideoPlayerScreen(
                     if (groupIndex >= 0) {
                         setRecentOpen(false)
                         sidebarController.closeDrawer()
-                        playGroupVariant(groupIndex, variantIndex)
+                        playGroupVariant(groupIndex, variantIndex, armZap = true)
                     }
                 }
             },
@@ -1634,7 +1637,7 @@ fun VideoPlayerScreen(
                 sourceSelectGeneration += 1
                 sourceSelectJob?.cancel()
                 val groupIndex = if (qualityDialogGroupIndex >= 0) qualityDialogGroupIndex else playingGroupIndex
-                playGroupVariant(groupIndex, variantIndex)
+                playGroupVariant(groupIndex, variantIndex, armZap = true)
             },
             onClose = { qualityDialogOpen = false }
         )

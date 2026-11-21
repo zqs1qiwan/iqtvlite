@@ -98,6 +98,34 @@ class ZapTraceTest {
     }
 
     @Test
+    fun aMultiVariantSelectionArmsOnceForAnyChosenVariant() {
+        // t211 (ZAP-NESTED-01): playGroupAuto arms with the GROUP key, then probes selectedIndex 0/1/2.
+        val groupKey = ZapTrace.groupKey(7)
+        listOf(0, 1, 2).forEach { selectedIndex ->
+            ZapTrace.reset()
+            ZapTrace.onZapRequested(groupKey, 10_000L)
+            val probeMs = 40L * (selectedIndex + 1)
+            ZapTrace.onPrepare(10_000L + probeMs)
+            val prepared = ZapTrace.prepareDelayMs()
+            org.junit.Assert.assertTrue("selectedIndex=$selectedIndex must keep a positive prepare gap", prepared > 0L)
+            org.junit.Assert.assertEquals(probeMs, prepared)
+            ZapTrace.onFirstFrame(10_000L + probeMs + 600L)
+            org.junit.Assert.assertNotNull(ZapTrace.summaryLineOnce())
+        }
+    }
+
+    @Test
+    fun nestedVariantSwitchesDoNotRestartTheMeasurement() {
+        ZapTrace.reset()
+        val k = ZapTrace.groupKey(3)
+        ZapTrace.onZapRequested(k, 1_000L)
+        ZapTrace.onPrepare(1_250L)
+        assertEquals(250L, ZapTrace.prepareDelayMs())
+        ZapTrace.onZapRequested(k, 1_400L)
+        assertEquals("nested arm must not move the origin", 250L, ZapTrace.prepareDelayMs())
+    }
+
+    @Test
     fun theLineIsPrintedOncePerChannelEvenIfTheFrameRepeats() {
         // t208 (ZAP-REPEAT-01): onRenderedFirstFrame fires again when the same channel is re-entered;
         // that must not produce a second line (nor a bogus larger zap).
