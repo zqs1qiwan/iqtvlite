@@ -60,4 +60,11 @@
 
 | 项 | 值 |
 |---|---|
-| 提交 / CI | 见 t48 任务输出（本文件随实现提交，定稿后补 run 号） |
+| 提交 | `696105c`（fix(drawer): keyed subtitle subtree + clipToBounds，open window 28→18） |
+| CI run（绿） | **#181**，sha `696105c`，push，conclusion `success` |
+| 构建 | `BUILD SUCCESSFUL in 3m 46s`；`:app:testDebugUnitTest` + `:app:lintDebug` + `assembleDebug` + `assembleDebugAndroidTest` |
+| 包 | `tv.iqtvlite.app.validation`，versionCode **10181**，versionName `2.2.0-tivimini-696105cc-validation` |
+| app sha256 | `0b1fa060c56c84212f1eb3ddab17e171c066375132692c57b8aac53c03643dac` |
+| test sha256 | `fef67df88ccb5ddd07fcd2dfb6c55f97e7c5dceafb5477b51a701603bb70914e` |
+| 门禁 | logo / info_card / settings_ia / settings_scroll / **perf_policy（t48：clipToBounds / keyed 副标题子树 / OPEN_WINDOW=18）** / player_threading / refresh_paths 全 OK；pair gate `{0,0,0}` |
+| 产物 | `iqtvlite-test-apk`（artifact id 14720848888，10,464,337 B ≪30MB） |
