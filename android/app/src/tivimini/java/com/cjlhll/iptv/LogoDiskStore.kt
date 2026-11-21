@@ -20,6 +20,19 @@ import java.util.concurrent.atomic.AtomicLong
  * removal is the job of `clearDisk` / `invalidate` / [prune].
  */
 object LogoDiskStore {
+    /**
+     * t11 (P0)：新写入一律用 PNG。原因：本机（API28 / TR100-G9）的 Skia 硬件 WEBP 编码器在
+     * `Bitmap.compress(WEBP)` 里走 `SkWebpEncoder::Encode → ImportYUVAFromRGBA (pc 0x0)` 直接
+     * SIGSEGV，进程瞬间死回桌面（首次安装/清 data 后台标缓存冷时必现）。PNG 无损且全 API 稳定。
+     */
+    const val EXTENSION = "png"
+
+    /** 旧版本写下的 `.webp` 缓存仍然可读（只改写入格式，不清用户已有缓存）。 */
+    val LEGACY_EXTENSIONS: List<String> = listOf("webp")
+
+    /** 统计/裁剪/清理要同时覆盖新旧后缀，否则旧 webp 会变成统计不到的孤儿文件。 */
+    val DISK_EXTENSIONS: List<String> = listOf(EXTENSION) + LEGACY_EXTENSIONS
+
     /** Bounded lock table (LOCK-01): 64 stripes, so zapping many channels cannot grow it. */
     private const val LOCK_STRIPES = 64
     private val locks = Array(LOCK_STRIPES) { Any() }
@@ -90,9 +103,10 @@ object LogoDiskStore {
     }
 
     /** Count/size of the cached entries — the `stats()` primitive (TEST-01: real, not a mirror). */
-    fun scan(dir: File, extension: String = "webp"): Usage {
+    fun scan(dir: File, extensions: List<String> = DISK_EXTENSIONS): Usage {
+        val wanted = extensions.toSet()
         val files = try {
-            dir.listFiles()?.filter { it.isFile && it.extension == extension } ?: emptyList()
+            dir.listFiles()?.filter { it.isFile && it.extension in wanted } ?: emptyList()
         } catch (_: Exception) {
             emptyList()
         }
@@ -100,9 +114,10 @@ object LogoDiskStore {
     }
 
     /** Drop the oldest entries until the directory fits in [maxBytes]; returns bytes reclaimed. */
-    fun prune(dir: File, maxBytes: Long, extension: String = "webp"): Long {
+    fun prune(dir: File, maxBytes: Long, extensions: List<String> = DISK_EXTENSIONS): Long {
+        val wanted = extensions.toSet()
         val files = try {
-            dir.listFiles()?.filter { it.isFile && it.extension == extension } ?: return 0L
+            dir.listFiles()?.filter { it.isFile && it.extension in wanted } ?: return 0L
         } catch (_: Exception) {
             return 0L
         }
@@ -118,7 +133,8 @@ object LogoDiskStore {
     }
 
     /** Remove every file (used by clearDisk / invalidate) — the only whole-directory deleter. */
-    fun clear(dir: File, extension: String? = null): Int {
+    fun clear(dir: File, extensions: List<String>? = null): Int {
+        val wanted = extensions?.toSet()
         val files = try {
             dir.listFiles() ?: return 0
         } catch (_: Exception) {
@@ -126,7 +142,7 @@ object LogoDiskStore {
         }
         var removed = 0
         files.forEach { f ->
-            if (extension == null || f.extension == extension) {
+            if (wanted == null || f.extension in wanted) {
                 if (runCatching { f.delete() }.getOrDefault(false)) removed++
             }
         }

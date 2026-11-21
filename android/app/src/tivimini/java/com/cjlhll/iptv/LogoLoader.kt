@@ -4,7 +4,6 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
-import android.os.Build
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -58,6 +57,10 @@ object LogoLoader {
     private const val MAX_DISK_BYTES = 32L * 1024 * 1024
     private const val PRUNE_INTERVAL_MS = 60_000L
     private const val PRUNE_EVERY_WRITES = 24
+    private const val LOG_TAG = "IQTV-LOGO"
+
+    /** t11 (P0): 唯一允许的写盘编码。禁止回归到 WEBP —— 本机 Skia WEBP 编码器会 SIGSEGV。 */
+    internal const val WRITE_FORMAT_NAME = "PNG"
 
     /** Bumped by clearMemory/clearDisk/clearAll only (whole-cache invalidation). */
     private val cacheGeneration = java.util.concurrent.atomic.AtomicInteger(0)
@@ -135,8 +138,25 @@ object LogoLoader {
         return "${sha256Hex(url)}_${targetWidthPx}x${targetHeightPx}"
     }
 
+    /**
+     * t11 (P0)：新缓存一律写 `.png`（WEBP 编码在本机 Skia 上 SIGSEGV）。旧 `.webp` 仍作为读取
+     * 候选，见 [legacyCacheFile] / [readableCacheFile]，所以升级不会丢已有台标缓存。
+     */
     private fun cacheFile(dir: File, diskKey: String): File {
+        return File(dir, "$diskKey.${LogoDiskStore.EXTENSION}")
+    }
+
+    /** t11：旧版本的 `.webp` 缓存（只读兼容，不再写入）。 */
+    private fun legacyCacheFile(dir: File, diskKey: String): File {
         return File(dir, "$diskKey.webp")
+    }
+
+    /** 读盘候选顺序：新 `.png` → 旧 `.webp`。返回 null 表示这个 key 还没有磁盘缓存。 */
+    private fun readableCacheFile(dir: File, diskKey: String): File? {
+        val png = cacheFile(dir, diskKey)
+        if (png.isFile) return png
+        val legacy = legacyCacheFile(dir, diskKey)
+        return if (legacy.isFile) legacy else null
     }
 
     /** (lastModified, length) identity of a cache file — ATOMIC-02 delete guard. */
@@ -174,12 +194,9 @@ object LogoLoader {
     suspend fun stats(context: Context): LogoStats = withContext(Dispatchers.IO) {
         val mem = synchronized(cache) { cache.size }
         val dir = cacheDir(context)
-        val files = try {
-            dir.listFiles()?.filter { it.isFile && it.extension == "webp" } ?: emptyList()
-        } catch (_: Exception) {
-            emptyList()
-        }
-        LogoStats(mem, files.size, files.sumOf { it.length() })
+        // t11: 统计同时覆盖新 `.png` 与旧 `.webp`，否则升级后旧缓存会“消失”在统计里。
+        val usage = LogoDiskStore.scan(dir)
+        LogoStats(mem, usage.count, usage.bytes)
     }
 
     fun clearMemory() {
@@ -262,6 +279,17 @@ object LogoLoader {
     internal fun identityForTest(file: File): FileIdentity? = fileIdentity(file)
     internal fun deleteIfIdentityForTest(file: File, identity: FileIdentity?) = deleteIfIdentity(file, identity)
     internal fun writeBitmapToDiskForTest(file: File, bitmap: Bitmap): Boolean = writeBitmapToDisk(file, bitmap)
+    // t11 (P0): 写盘格式 / 新旧后缀兼容 的 JVM 断言入口。
+    internal fun writeFormatNameForTest(): String = WRITE_FORMAT_NAME
+    internal fun diskExtensionForTest(): String = LogoDiskStore.EXTENSION
+    internal fun legacyDiskExtensionsForTest(): List<String> = LogoDiskStore.LEGACY_EXTENSIONS
+    internal fun cacheFileForTest(dir: File, url: String, w: Int, h: Int): File = cacheFile(dir, diskKey(url, w, h))
+    internal fun legacyCacheFileForTest(dir: File, url: String, w: Int, h: Int): File =
+        legacyCacheFile(dir, diskKey(url, w, h))
+    internal fun readableCacheFileForTest(dir: File, url: String, w: Int, h: Int): File? =
+        readableCacheFile(dir, diskKey(url, w, h))
+    internal fun writeAtomicallyDefensivelyForTest(file: File, encode: (java.io.OutputStream) -> Unit): Boolean =
+        writeAtomicallyDefensively(file, encode)
     /** Mirrors loadInternal's staleness rule so the rule itself is unit-testable. */
     internal fun isStaleForTest(globalGen: Int, url: String, urlGen: Int): Boolean =
         !shouldPublishForTest(globalGen, url, urlGen)
@@ -308,11 +336,33 @@ object LogoLoader {
      * ATOMIC-02: one unique temp file per write + atomic rename, serialized per key by
      * [LogoDiskStore]. Never deletes the destination first (that opened a window where a reader saw
      * no file at all); `renameTo` replaces it in one step.
+     *
+     * t11 (P0): **NEVER** use `Bitmap.CompressFormat.WEBP` here. On this device (API28 / TR100-G9)
+     * the Skia hardware WEBP encoder dies with SIGSEGV inside `SkWebpEncoder::Encode →
+     * ImportYUVAFromRGBA (pc 0x0)` while compressing the first cold-start logo, which took the whole
+     * process down (first install / cleared data always reproduced it). A native SIGSEGV cannot be
+     * caught, so the fix is the format itself: PNG is lossless and stable on every API level.
      */
     private fun writeBitmapToDisk(file: File, bitmap: Bitmap): Boolean {
-        val format = if (Build.VERSION.SDK_INT >= 30) Bitmap.CompressFormat.WEBP_LOSSY else Bitmap.CompressFormat.WEBP
-        return LogoDiskStore.writeAtomically(file) { out -> bitmap.compress(format, 80, out) }
+        if (bitmap.isRecycled) {
+            android.util.Log.w(LOG_TAG, "write_failed=png reason=recycled")
+            return false
+        }
+        val ok = writeAtomicallyDefensively(file) { out ->
+            if (!bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)) {
+                throw IllegalStateException("png compress returned false")
+            }
+        }
+        if (!ok) android.util.Log.w(LOG_TAG, "write_failed=png")
+        return ok
     }
+
+    /**
+     * t11: 写盘防御层 — 编码/IO 异常只返回 false，绝不冒泡到加载协程或主线程。
+     * 注意：native SIGSEGV 无法被 JVM try/catch 捕获，真正的修复是换掉 WEBP 编码器（见上）。
+     */
+    internal fun writeAtomicallyDefensively(file: File, encode: (java.io.OutputStream) -> Unit): Boolean =
+        runCatching { LogoDiskStore.writeAtomically(file, encode) }.getOrElse { false }
 
     /** t126: public load with in-flight de-duplication (one network/decode per url+size at a time). */
     suspend fun load(context: Context, url: String, targetWidthPx: Int, targetHeightPx: Int): ImageBitmap? {
@@ -350,20 +400,23 @@ object LogoLoader {
 
         val diskKey = withContext(Dispatchers.Default) { diskKey(url, targetWidthPx, targetHeightPx) }
 
-        val (diskFile, diskExists) = withContext(Dispatchers.IO) {
+        // t11: 写盘目标固定是 `.png`；读盘先试 `.png` 再回退旧 `.webp`（升级不丢缓存）。
+        val (cacheDirectory, diskFile, diskExists) = withContext(Dispatchers.IO) {
             val dir = cacheDir(context)
             if (!dir.exists()) dir.mkdirs()
-            val file = cacheFile(dir, diskKey)
-            file to file.exists()
+            val png = cacheFile(dir, diskKey)
+            val readable = if (png.isFile) png else legacyCacheFile(dir, diskKey).takeIf { it.isFile }
+            Triple(dir, png, readable != null)
         }
+        val readableFile = withContext(Dispatchers.IO) { readableCacheFile(cacheDirectory, diskKey) }
 
-        if (diskExists) {
+        if (diskExists && readableFile != null) {
             // ATOMIC-02: capture the file identity *before* decoding, so a stale result can only
             // delete the exact bytes it read — never a newer file another load just published.
-            val identity = withContext(Dispatchers.IO) { fileIdentity(diskFile) }
+            val identity = withContext(Dispatchers.IO) { fileIdentity(readableFile) }
             val bitmap = withContext(Dispatchers.Default) {
                 try {
-                    BitmapFactory.decodeFile(diskFile.absolutePath)
+                    BitmapFactory.decodeFile(readableFile.absolutePath)
                 } catch (_: Exception) {
                     null
                 }
@@ -376,7 +429,7 @@ object LogoLoader {
                     return imageBitmap
                 }
                 // stale: remove only if the file is still the one we decoded (identity match)
-                deleteIfIdentity(diskFile, identity)
+                deleteIfIdentity(readableFile, identity)
             }
         }
 
@@ -384,13 +437,15 @@ object LogoLoader {
             // Double check
             getCached(memoryKey)?.let { return@withPermit it }
 
-            val identity2 = withContext(Dispatchers.IO) {
-                if (diskFile.exists()) fileIdentity(diskFile) else null
+            val existing = withContext(Dispatchers.IO) {
+                readableCacheFile(cacheDirectory, diskKey)?.let { it to fileIdentity(it) }
             }
-            if (identity2 != null) {
+            if (existing != null) {
+                val existingFile = existing.first
+                val identity2 = existing.second
                 val bitmap = withContext(Dispatchers.Default) {
                     try {
-                        BitmapFactory.decodeFile(diskFile.absolutePath)
+                        BitmapFactory.decodeFile(existingFile.absolutePath)
                     } catch (_: Exception) {
                         null
                     }
@@ -398,7 +453,7 @@ object LogoLoader {
                 if (bitmap != null) {
                     val imageBitmap = bitmap.asImageBitmap()
                     if (putCachedIfFresh(memoryKey, imageBitmap, gen, uGen, url)) return@withPermit imageBitmap
-                    deleteIfIdentity(diskFile, identity2)
+                    deleteIfIdentity(existingFile, identity2)
                 }
             }
 

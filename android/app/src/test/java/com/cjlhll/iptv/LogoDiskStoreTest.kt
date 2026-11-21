@@ -150,7 +150,7 @@ class LogoDiskStoreTest {
         File(dir, "b.webp").writeBytes(ByteArray(4))
         File(dir, "keep.xml").writeBytes(ByteArray(4))
 
-        val removed = LogoDiskStore.clear(dir, extension = "webp")
+        val removed = LogoDiskStore.clear(dir, extensions = listOf("webp"))
 
         assertEquals(2, removed)
         assertTrue(File(dir, "keep.xml").exists())
