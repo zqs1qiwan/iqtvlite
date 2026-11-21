@@ -96,4 +96,11 @@ PerfTrace.d { "row_focus idx=$next via=key down=$down" }
 
 | 项 | 值 |
 |---|---|
-| 提交 / CI | 见 t46 任务输出（本文件随实现提交，定稿后补 run 号） |
+| 提交 | `2f3c2bc`（perf(drawer) r9: 分帧泵 + UP/DOWN 接管 + 副标题 testTag/row_focus 埋点） |
+| CI run（绿） | **#179**，sha `2f3c2bc`，push，conclusion `success` |
+| 构建 | `BUILD SUCCESSFUL in 4m 13s`；`:app:testDebugUnitTest` + `:app:lintDebug` + `assembleDebug` + `assembleDebugAndroidTest` |
+| 包 | `tv.iqtvlite.app.validation`，versionCode **10179**，versionName `2.2.0-tivimini-2f3c2bc1-validation` |
+| app sha256 | `71419e9922ecb64884c9accf582a6fc3178ab0ecb7547ad1832fc8c29f767d4a` |
+| test sha256 | `06b6892795fae7b97dcf9485ff1ac6aca5e9ff31573d0a51b3a51178aacda0d4` |
+| 门禁 | logo / info_card / settings_ia / settings_scroll / **perf_policy（t46：revealTarget/泵/drawer_row_subtitle/row_focus/via=key 必须在位；禁止 `revealedRows = next` 一次性增长回潮）** / player_threading / refresh_paths 全 OK；pair gate `{0,0,0}` |
+| 产物 | `iqtvlite-test-apk`（artifact id 14719019099，10,463,611 B ≪30MB） |
