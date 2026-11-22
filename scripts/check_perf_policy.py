@@ -234,6 +234,32 @@ def main() -> int:
     if "fun drawerContainerAlpha(" not in policy:
         problems.append("PerfPolicy.kt: drawerContainerAlpha helper missing (FULLFIX §3)")
 
+    # 复审 B2（U5）：播放台 ▶ 标记 / 信息卡不污染 / 节目单空态三分类。
+    ui_policy = SRC / "DrawerUiPolicy.kt"
+    if not ui_policy.exists():
+        problems.append("DrawerUiPolicy.kt missing (review B2)")
+    else:
+        up = ui_policy.read_text(encoding="utf-8")
+        for token in ("fun channelLabel(", "val PLAYING_MARK", "fun programEmptyText(",
+                      "未配置 EPG 源", "EPG 加载失败", "暂无节目单"):
+            if token not in up:
+                problems.append("DrawerUiPolicy.kt: missing " + token)
+    if "DrawerUiPolicy.channelLabel(selected" not in drawer_code:
+        problems.append("PlayerDrawer.kt: selected row must render the playing marker via DrawerUiPolicy.channelLabel (B2①)")
+    if "playingSuffix" not in drawer_code:
+        problems.append("PlayerDrawer.kt: playing suffix (· 播放中) missing (B2①)")
+    if "DrawerUiPolicy.programEmptyText(" not in drawer_code:
+        problems.append("PlayerDrawer.kt: EPG empty state must use DrawerUiPolicy.programEmptyText (B2③)")
+    if "epgSourceConfigured: Boolean" not in drawer_code or "epgLoadFailed: Boolean" not in drawer_code:
+        problems.append("PlayerDrawer.kt: EPG three-state params missing (B2③)")
+    # B2②: nowProgramByUrl must NOT be filtered by selectedGroup.
+    activity_code = strip_comments(ACTIVITY.read_text(encoding="utf-8"))
+    b2 = re.search(r"LaunchedEffect\(epgData, nowMillis, channelGroups, selectedGroup\)", activity_code)
+    if b2:
+        problems.append("PlayerActivity.kt: nowProgramByUrl must not filter by selectedGroup (B2②)")
+    if "FULLFIX B2②" not in ACTIVITY.read_text(encoding="utf-8"):
+        problems.append("PlayerActivity.kt: B2② info-card independence note missing")
+
     if "if (showContent)" not in drawer_code:
         problems.append("PlayerDrawer.kt: drawer list content must be gated by showContent (do not compose when closed)")
     if "PerfPolicy.DRAWER_OPAQUE_CONTAINER" not in drawer_code:

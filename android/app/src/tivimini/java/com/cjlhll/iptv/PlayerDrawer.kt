@@ -128,6 +128,9 @@ fun PlayerDrawer(
     nowProgramByChannelUrl: Map<String, NowProgramUi> = emptyMap(),
     epgData: EpgData? = null,
     nowMillis: Long = 0L,
+    // FULLFIX B2③：节目单空态三分类（未配置 EPG / 加载失败 / 无节目）。
+    epgSourceConfigured: Boolean = true,
+    epgLoadFailed: Boolean = false,
     onSelectGroup: (String) -> Unit,
     onSelectChannel: (Channel) -> Unit,
     onPlayProgram: (CatchupPlayRequest) -> Unit,
@@ -1092,9 +1095,14 @@ fun PlayerDrawer(
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Text(
-                                        text = if (isEpgLoading) "加载中" else "暂无节目单",
+                                        text = DrawerUiPolicy.programEmptyText(
+                                            configured = epgSourceConfigured,
+                                            loadFailed = epgLoadFailed,
+                                            loading = isEpgLoading,
+                                        ),
                                         style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                                        modifier = Modifier.testTag("drawer_epg_empty")
                                     )
                                 }
                             } else {
@@ -1281,8 +1289,13 @@ private fun DrawerChannelItem(
     onClick: () -> Unit
 ) {
     var focused by remember { mutableStateOf(false) }
-    // t27（D3）：行标题预格式化（避免每帧字符串拼接）。
-    val label = remember(index, channel.title) { "$index. ${channel.title}" }
+    // FULLFIX B2①：播放台用 ▶ 前缀标识，与浏览焦点（surfaceVariant 底色）正交区分。
+    // 纯文本、无新节点/无动画/硬边框（沿用 Flat 风格），remember 避免每帧拼接。
+    val label = remember(selected, index, channel.title) {
+        DrawerUiPolicy.channelLabel(selected, index, channel.title)
+    }
+    /** FULLFIX B2①：播放台副标题末尾追加「· 播放中」，仅 selected 时。 */
+    val playingSuffix = remember(selected) { if (selected) " · 播放中" else "" }
     // t46：聚焦行日志（确认副标题真的渲染 + 供 t47 归因滚动落点）。
     LaunchedEffect(focused) {
         if (focused) {
@@ -1349,7 +1362,7 @@ private fun DrawerChannelItem(
                 // FULLFIX §1：无节目显示「无信息」（恢复初始设计），仍固定 16dp 高并 clip。
                 Box(modifier = Modifier.height(16.dp).fillMaxWidth().clipToBounds()) {
                     Text(
-                        text = if (!programTitle.isNullOrBlank()) programTitle else "无信息",
+                        text = (if (!programTitle.isNullOrBlank()) programTitle else "无信息") + playingSuffix,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         style = MaterialTheme.typography.bodySmall,

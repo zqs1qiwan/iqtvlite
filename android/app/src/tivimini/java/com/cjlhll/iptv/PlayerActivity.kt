@@ -733,6 +733,9 @@ fun VideoPlayerScreen(
         sidebarController.setSelection(currentGroupIndex, currentVariantIndex)
     }
     var epgData by remember { mutableStateOf<EpgData?>(null) }
+    // FULLFIX B2③：EPG 空态三分类所需的来源配置/加载失败状态（会话内，随每次加载更新）。
+    val epgSourceConfigured = remember(context) { Prefs.getEpgSource(context).isNotBlank() }
+    var epgLoadFailed by remember { mutableStateOf(false) }
     var nowMillis by remember { mutableStateOf(System.currentTimeMillis()) }
     var nowProgramByUrl by remember { mutableStateOf<Map<String, NowProgramUi>>(emptyMap()) }
     // t62: push EPG into the Activity-level controller so the native sidebar renders it directly.
@@ -1211,6 +1214,7 @@ fun VideoPlayerScreen(
             launch {
                 BackgroundSourceUpdater.epgUpdated.collect { data ->
                     epgData = data
+                    epgLoadFailed = false
                     Log.i(epgLoadTag, "background updated. programs=${data.programsByChannelId.size}")
                 }
             }
@@ -1246,6 +1250,8 @@ fun VideoPlayerScreen(
                     EpgRepository.load(context, epgSource, forceRefresh = false)
                 }
             }
+            // FULLFIX B2③：缓存读取返回 null = 配置了该源但加载失败（供抽屉显示"EPG 加载失败"）。
+            epgLoadFailed = cachedEpg == null
             if (android.util.Log.isLoggable(ZAP_TAG, android.util.Log.DEBUG)) {
                 android.util.Log.d(
                     ZAP_TAG,
@@ -1281,23 +1287,21 @@ fun VideoPlayerScreen(
         }
     }
 
-    LaunchedEffect(epgData, nowMillis, channelGroups, selectedGroup) {
+    // FULLFIX B2②：信息卡节目只按实际播放台查询，不受 selectedGroup 浏览过滤影响。
+    // 旧实现按 selectedGroup 过滤 groups → 抽屉浏览分组变化时 A 台的 nowProgram 消失。
+    // 现在遍历**全部** channelGroups，键覆盖每个 variant URL，因此无论当前浏览/焦点在哪，
+    // 信息卡用播放台 URL 查询永远能拿到它自己的节目。key 去掉 selectedGroup。
+    LaunchedEffect(epgData, nowMillis, channelGroups) {
         val data = epgData
-        val groups = if (selectedGroup == "全部") {
-            channelGroups
-        } else {
-            channelGroups.filter {
-                ChannelGrouper.displayGroupName(it) == selectedGroup
-            }
-        }
-        if (data == null || groups.isEmpty()) {
+        val allGroups = channelGroups
+        if (data == null || allGroups.isEmpty()) {
             nowProgramByUrl = emptyMap()
             return@LaunchedEffect
         }
 
         val map = withContext(Dispatchers.Default) {
             buildMap {
-                for (group in groups) {
+                for (group in allGroups) {
                     val displayChannel = group.defaultChannel
                     val t = data.nowProgramTitle(displayChannel, nowMillis)
                     if (!t.isNullOrBlank()) {
@@ -1644,6 +1648,9 @@ fun VideoPlayerScreen(
             nowProgramByChannelUrl = nowProgramByUrl,
             epgData = epgData,
             nowMillis = nowMillis,
+            // FULLFIX B2③：节目单空态三分类。
+            epgSourceConfigured = epgSourceConfigured,
+            epgLoadFailed = epgLoadFailed,
             onSelectGroup = { sidebarController.selectGroup(it) },
             onSelectChannel = { channel ->
                 playChannel(channel)
