@@ -74,4 +74,12 @@ vc10187 实测：巨帧 1 个（315.9ms，仍在 0–1 目标内）、50th 57/53
 
 | 项 | 值 |
 |---|---|
-| 提交 / CI | 见 t58 任务输出（本文件随实现提交，定稿后补 run 号） |
+| 提交 | `47e5160`（r12：回退 2/3/16/28 + 三层 graphicsLayer + keyed 副标题 softWrap=false） |
+| CI run（绿） | **#200**，sha `47e5160`，push，conclusion `success` |
+| 构建 | `BUILD SUCCESSFUL in 3m 26s`；`:app:testDebugUnitTest` + `:app:lintDebug` + 双包 assemble |
+| 门禁 | 八门禁全 OK（perf_policy：常量 2/3/16/28 + `graphicsLayer()` ≥3 + `key("sub_$index")` + `softWrap = false`）；pair gate `{0,0,0}` |
+| 包 | `tv.iqtvlite.app.validation`，versionCode **10200** |
+| app sha256 | `c4bb280b48d12a1140855948cc053d709193d9785d50852fde1319b8f65a5598` |
+| test sha256 | `7b368b533e10b64f9671f9e99da716af13b208bd5c56e0d37b8084c209860e1c` |
+| 产物 | `iqtvlite-test-app`（artifact id 14731266406，10,476,985 B ≪30MB） |
+| 待 t59 判定 | Draw 中位是否 ≤5ms、50th 是否下降、50–61 区间孤立 `北` 是否消失；若 Draw≤5 但 50th 不动 → 按 §5 记录“Compose 方案到此为止” |
