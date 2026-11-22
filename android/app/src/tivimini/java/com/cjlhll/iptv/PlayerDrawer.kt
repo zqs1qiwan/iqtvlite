@@ -1202,8 +1202,6 @@ private fun DrawerGroupItem(
     onClick: () -> Unit
 ) {
     var focused by remember { mutableStateOf(false) }
-    // t60：副标题“过窄”判定的像素阈值（8dp），供 onTextLayout 探针使用。
-    val minSubtitlePx = with(androidx.compose.ui.platform.LocalDensity.current) { 8.dp.roundToPx() }
     val bg = when {
         focused -> MaterialTheme.colorScheme.surfaceVariant
         else -> MaterialTheme.colorScheme.surface.copy(alpha = 0.01f)
@@ -1327,7 +1325,8 @@ private fun DrawerChannelItem(
                         // onTextLayout 里探测“过窄/多行”并打点，供验收断言。
                         onTextLayout = { result ->
                             val w = result.size.width
-                            if (w < minSubtitlePx || result.lineCount > 1) {
+                            // 24px ≈ 8dp@3x 的保守阈值；真正要抓的是“被测量成极窄”的异常
+                            if (w < 24 || result.lineCount > 1) {
                                 PerfTrace.d { "sub_narrow idx=$index w=$w lines=${result.lineCount}" }
                             }
                         },
