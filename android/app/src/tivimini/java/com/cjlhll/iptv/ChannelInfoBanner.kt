@@ -418,7 +418,7 @@ private fun RecentStrip(
             .height(64.dp)
             .clipToBounds()
             .testTag("info_card_recent_row"),
-        verticalArrangement = Arrangement.Start,
+        horizontalArrangement = Arrangement.Start,
     ) {
         items.forEachIndexed { index, item ->
             var isFocused by remember(item.title, index) { mutableStateOf(false) }
