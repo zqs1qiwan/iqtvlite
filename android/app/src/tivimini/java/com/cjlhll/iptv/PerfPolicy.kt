@@ -98,6 +98,23 @@ object PerfPolicy {
     fun drawerFocusIndexInRange(index: Int, channelCount: Int): Boolean =
         channelCount > 0 && index in 0 until channelCount
 
+    /**
+     * t15（滚动校正）：目标行是否已被分帧揭示到足以执行 scrollToItem。
+     *
+     * 根因：打开首帧 revealedRows=3 时就 scrollToItem(126)，被 LazyColumn 钳到 0；
+     * 之后分帧补到 147 行却没再校正滚动 → 焦点 idx126、可见 first=1。
+     * 这里给出门控条件：只有当揭示行数覆盖 targetScroll 那一行（+1，0 基索引需 count>=index+1）
+     * 时，scrollToItem 才不会被钳到 0，才应执行一次校正。
+     */
+    fun drawerScrollCorrected(revealedRows: Int, targetScrollIndex: Int): Boolean =
+        targetScrollIndex >= 0 && revealedRows >= targetScrollIndex + 1
+
+    /**
+     * t15：把焦点行索引换算成 `scrollToItem` 的目标（留 2 行前置上下文，S1 安全钳制）。
+     */
+    fun drawerScrollTargetIndex(focusIndex: Int, channelCount: Int): Int =
+        drawerSafeFirstVisibleIndex((focusIndex - 2).coerceAtLeast(0), channelCount)
+
     /** 之后每帧追加多少行（t33：3→2，把单帧成本再压一半）。 */
     const val DRAWER_ROWS_PER_FRAME = 2
 

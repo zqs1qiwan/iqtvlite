@@ -239,11 +239,15 @@ fun PlayerDrawer(
     // t46：**唯一增长入口** —— 任何触发（打开 / 滚动 / 焦点）只抬高目标值，
     // 由下面的“泵”每帧 +2 行推进；不再一次性赋值（t45 的 301–393ms 巨帧就是一次性 +16/+28 造成的）。
     var revealTarget by remember { mutableIntStateOf(0) }
+    // t15（滚动校正）：待校正的目标行（scrollToItem 索引）+ once 标记。
+    // 设为 >=0 表示"揭示到该行后需要补一次 scrollToItem"；done 后设为 -1。
+    var pendingScrollIndex by remember { mutableIntStateOf(-1) }
     val showContent = visible && contentReady
     LaunchedEffect(visible) {
         if (!visible) {
             contentReady = false
             revealedRows = 0
+            pendingScrollIndex = -1 // t15：关闭时清空待校正，避免跨开合带入陈旧目标
             composedUrls.clear()
         } else if (PerfPolicy.DRAWER_DEFER_CONTENT_MS > 0L) {
             contentReady = false
@@ -396,6 +400,20 @@ fun PlayerDrawer(
         }
     }
 
+    // t15（滚动校正核心）：把"滚动定位"与"行数揭示"解耦。
+    // 只要有待校正目标（pendingScrollIndex>=0），就等分帧揭示覆盖到那一行
+    // （PerfPolicy.drawerScrollCorrected：revealedRows >= target+1）再执行一次 scrollToItem，
+    // 然后清空 pending（once 语义，防重复滚动/抖动）。这修复了首帧 revealedRows=3 时
+    // scrollToItem(126) 被钳到 0、之后补到 147 行却不校正 → first=1 的根因。
+    LaunchedEffect(visible, revealedRows, pendingScrollIndex) {
+        if (!visible || pendingScrollIndex < 0) return@LaunchedEffect
+        if (!PerfPolicy.drawerScrollCorrected(revealedRows, pendingScrollIndex)) return@LaunchedEffect
+        val target = pendingScrollIndex
+        pendingScrollIndex = -1 // once：先清标记再滚，避免重入
+        runCatching { channelListState.scrollToItem(target) }
+        PerfTrace.d { "drawer_scroll_correct target=$target revealed=$revealedRows" }
+    }
+
     // t39：滚动/布局驱动按需增长 —— 只要“最后一个可见项”接近已揭示末尾，就再揭示一个窗口，
     // 保证向下滚动永远有下一屏（用户感知与全量揭示一致，但不再有 72 个重帧）。
     LaunchedEffect(visible, channels.size) {
@@ -539,11 +557,10 @@ fun PlayerDrawer(
                 stableFocusedChannelUrl = targetUrl
                 val targetIndex = channelIndexByUrl[targetUrl]
                 if (targetIndex != null && channels.isNotEmpty()) {
-                    val targetScroll = (targetIndex - 2).coerceAtLeast(0)
-                    val visibleIndices = channelListState.layoutInfo.visibleItemsInfo.map { it.index }.toSet()
-                    if (targetIndex !in visibleIndices) {
-                        runCatching { channelListState.scrollToItem(targetScroll) }
-                    }
+                    val targetScroll = PerfPolicy.drawerScrollTargetIndex(targetIndex, channels.size)
+                    // t15：不在首帧直接 scrollToItem（此时 revealedRows=3 → 被钳到 0）。
+                    // 改为登记待校正目标，由下方的 revealedRows 门控 effect 在分帧揭示覆盖后执行。
+                    pendingScrollIndex = targetScroll
                 }
             }
         }
@@ -584,11 +601,8 @@ fun PlayerDrawer(
         focusedChannelUrl = remembered
         if (channels.isEmpty()) return@LaunchedEffect
         val idx = remembered?.let { channelIndexByUrl[it] } ?: 0
-        runCatching {
-            channelListState.scrollToItem(
-                PerfPolicy.drawerSafeFirstVisibleIndex((idx - 2).coerceAtLeast(0), channels.size)
-            )
-        }
+        // t15：切组也走 revealedRows 门控的滚动校正（而不是首帧可能被钳的 scrollToItem）。
+        pendingScrollIndex = PerfPolicy.drawerScrollTargetIndex(idx, channels.size)
     }
 
     LaunchedEffect(selectedChannelUrl, visible) {
@@ -597,6 +611,19 @@ fun PlayerDrawer(
         if (focusedChannelUrl.isNullOrBlank()) {
             focusedChannelUrl = targetUrl
             stableFocusedChannelUrl = targetUrl
+        }
+        // t15（P8b）：换台使 selectedChannelUrl 变深行（焦点已初始化过）时，同样登记滚动校正。
+        // 但只在抽屉刚打开后的首个 selectedChannelUrl 事件才强制校正；抽屉内正常浏览由
+        // onRowFocusedScroll 跟随，这里不抢。hasInitializedDrawerFocus 为 true 且本次是
+        // 由换台驱动的深行（不在可视区）时才登记，避免打开后反复抖动。
+        if (hasInitializedDrawerFocus) {
+            val idx = channelIndexByUrl[targetUrl]
+            if (idx != null && idx > 0) {
+                val visibleIndices = channelListState.layoutInfo.visibleItemsInfo.map { it.index }
+                if (idx !in visibleIndices) {
+                    pendingScrollIndex = PerfPolicy.drawerScrollTargetIndex(idx, channels.size)
+                }
+            }
         }
     }
 

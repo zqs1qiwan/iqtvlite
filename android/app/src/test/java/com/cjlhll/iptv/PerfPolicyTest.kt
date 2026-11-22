@@ -224,4 +224,36 @@ class PerfPolicyTest {
         assertEquals("2 行 → 1", 1, PerfPolicy.drawerSafeFirstVisibleIndex(99, 2))
         assertEquals("大组越界 → 末尾", 146, PerfPolicy.drawerSafeFirstVisibleIndex(999, 147))
     }
+
+    // ── t15：分帧揭示后校正滚动（冷启首开 / P8b 换台深行） ──────────────────
+    @Test
+    fun t15ScrollCorrectionIsGatedByRevealedRows() {
+        // 真机复现：焦点 idx126 → targetScroll=124；首帧 revealed=3 不得校正（会被钳到 0）。
+        val target = PerfPolicy.drawerScrollTargetIndex(126, 147)
+        assertEquals(124, target)
+        assertFalse("首帧 3 行不足以校正深行", PerfPolicy.drawerScrollCorrected(3, target))
+        assertFalse("补到 100 行仍不够", PerfPolicy.drawerScrollCorrected(100, target))
+        assertTrue("补到 125 行覆盖 target=124（需 >=125）", PerfPolicy.drawerScrollCorrected(125, target))
+        assertTrue("补满 147 行可校正", PerfPolicy.drawerScrollCorrected(147, target))
+
+        // 浅行：target=0，首帧 revealed=3 已覆盖（>=1）。
+        val shallow = PerfPolicy.drawerScrollTargetIndex(0, 147)
+        assertEquals(0, shallow)
+        assertTrue(PerfPolicy.drawerScrollCorrected(3, shallow))
+
+        // 边界：负数 target 不校正；target=1 需 revealed>=2。
+        assertFalse(PerfPolicy.drawerScrollCorrected(147, -1))
+        assertFalse(PerfPolicy.drawerScrollCorrected(1, 1))
+        assertTrue(PerfPolicy.drawerScrollCorrected(2, 1))
+    }
+
+    @Test
+    fun t15ScrollTargetUsesSafeFirstVisibleClamp() {
+        // 与 S1 安全钳制一致：idx0→0，idx1→0，idx40→38，空组→0，越界→末尾。
+        assertEquals(0, PerfPolicy.drawerScrollTargetIndex(0, 147))
+        assertEquals(0, PerfPolicy.drawerScrollTargetIndex(1, 147))
+        assertEquals(38, PerfPolicy.drawerScrollTargetIndex(40, 147))
+        assertEquals(0, PerfPolicy.drawerScrollTargetIndex(5, 0))
+        assertEquals(145, PerfPolicy.drawerScrollTargetIndex(999, 147))
+    }
 }

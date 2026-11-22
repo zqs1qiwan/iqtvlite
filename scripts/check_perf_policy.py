@@ -260,6 +260,23 @@ def main() -> int:
     if "FULLFIX B2②" not in ACTIVITY.read_text(encoding="utf-8"):
         problems.append("PlayerActivity.kt: B2② info-card independence note missing")
 
+    # t15: scroll correction decoupled from row reveal (cold-open / P8b deep-row).
+    if "fun drawerScrollCorrected(" not in policy or "fun drawerScrollTargetIndex(" not in policy:
+        problems.append("PerfPolicy.kt: t15 scroll-correction pure helpers missing")
+    for token in ("pendingScrollIndex", "drawerScrollCorrected(revealedRows, pendingScrollIndex)",
+                  "drawer_scroll_correct", "PerfPolicy.drawerScrollTargetIndex("):
+        if token not in drawer_code:
+            problems.append("PlayerDrawer.kt: t15 token missing " + token)
+    # once semantics: pending must be cleared to -1 before scrolling.
+    if "pendingScrollIndex = -1" not in drawer_code:
+        problems.append("PlayerDrawer.kt: t15 pending once-clear (=-1) missing")
+    # gating effect must depend on revealedRows.
+    if "LaunchedEffect(visible, revealedRows, pendingScrollIndex)" not in drawer_code:
+        problems.append("PlayerDrawer.kt: t15 correction effect must be keyed by revealedRows")
+    # the old first-frame unconditional scrollToItem at open must be replaced by pending registration.
+    if re.search(r"if \(targetIndex !in visibleIndices\) \{\s*runCatching \{ channelListState\.scrollToItem\(targetScroll\)", drawer_code):
+        problems.append("PlayerDrawer.kt: old first-frame unconditional scrollToItem is back (t15 regression)")
+
     if "if (showContent)" not in drawer_code:
         problems.append("PlayerDrawer.kt: drawer list content must be gated by showContent (do not compose when closed)")
     if "PerfPolicy.DRAWER_OPAQUE_CONTAINER" not in drawer_code:
