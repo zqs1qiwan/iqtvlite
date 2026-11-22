@@ -265,8 +265,12 @@ def main() -> int:
     if "fun drawerScrollCorrected(" not in policy or "fun drawerScrollTargetIndex(" not in policy:
         problems.append("PerfPolicy.kt: t15 scroll-correction pure helpers missing")
     # V4 §4: scroll target must use channelCount-2 upper bound (999/147 -> 145, CI #216).
-    if "coerceIn(0, channelCount - 2)" not in policy:
-        problems.append("PerfPolicy.kt: drawerScrollTargetIndex must use coerceIn(0, channelCount-2) (V4 §4)")
+    # 两种合法写法都接受：直接 coerceIn(0, channelCount - 2)，或先算 hi=channelCount-2 再 coerceIn(0, hi)。
+    # 单纯字符串匹配曾误杀带小 count 防御的正确实现（CI #219），故改为语义等价断言。
+    direct_bound = "coerceIn(0, channelCount - 2)" in policy
+    via_hi = ("val hi = channelCount - 2" in policy and "coerceIn(0, hi)" in policy)
+    if not (direct_bound or via_hi):
+        problems.append("PerfPolicy.kt: drawerScrollTargetIndex must clamp upper bound to channelCount-2 (V4 §4)")
     for token in ("pendingScrollIndex", "drawerScrollCorrected(revealedRows, pendingScrollIndex)",
                   "drawer_scroll_correct", "PerfPolicy.drawerScrollTargetIndex("):
         if token not in drawer_code:
