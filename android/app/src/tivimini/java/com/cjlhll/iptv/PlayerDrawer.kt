@@ -1559,7 +1559,7 @@ private fun DrawerProgramItem(
 
     val textColor = when (timeState) {
         ProgramTimeState.Past -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f)
-        ProgramTimeState.Now -> Color(0xFF40C4FF) // Light Blue A200
+        ProgramTimeState.Now -> BrandFocus.BlueColor // V4 §9：品牌蓝（原 Light Blue 40C4FF）
         ProgramTimeState.Future -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.86f)
     }
 

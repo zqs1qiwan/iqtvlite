@@ -7,4 +7,10 @@
     <color name="teal_700">#FF018786</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+    <!-- V4 §9：全局焦点/确认态品牌蓝 -->
+    <color name="tm_focus">#FF2F6BFF</color>
+    <color name="tm_accent">#FF2F6BFF</color>
+    <color name="tm_progress">#FF2F6BFF</color>
+    <color name="tm_focus_bg">#222F6BFF</color>
+    <color name="tm_panel">#E81E1E1E</color>
 </resources>
