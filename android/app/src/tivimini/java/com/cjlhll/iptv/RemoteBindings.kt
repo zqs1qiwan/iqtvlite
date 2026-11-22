@@ -222,6 +222,43 @@ object RemoteBindings {
         return bindings
     }
 
+    /** FULLFIX V4 §3：某功能当前的按键集合是否与出厂默认完全一致（未自定义）。 */
+    fun isDefaultBinding(bindings: List<KeyBinding>, action: RemoteAction): Boolean {
+        val cur = bindings.firstOrNull { it.action == action } ?: return false
+        val def = DEFAULT.firstOrNull { it.action == action } ?: return false
+        return cur.shortPressKeycodes == def.shortPressKeycodes && cur.longPressKeycodes == def.longPressKeycodes
+    }
+
+    /**
+     * 从绑定反推"某 keycode 是否被用户显式改绑过"：若该键在 DEFAULT 中属于 action A，
+     * 但在当前绑定中不再属于 A，则视为自定义。用于 V4 §3 RIGHT 特例判断。
+     */
+    fun isKeyCustomBound(bindings: List<KeyBinding>, keycode: Int): Boolean {
+        val defaultAction = DEFAULT.firstOrNull { keycode in it.shortPressKeycodes || keycode in it.longPressKeycodes }?.action
+            ?: return true // DEFAULT 里根本没有该键 → 视为自定义
+        val current = bindings.firstOrNull { keycode in it.shortPressKeycodes || keycode in it.longPressKeycodes }?.action
+        return current != defaultAction
+    }
+
+    /**
+     * V4 §3（A 方案）：RIGHT 键决策。
+     * 仅当 RIGHT 是**默认绑定**（用户未自定义）且 selectedGroup=全部（或焦点在分组列）时，
+     * 把默认的 OPEN_SETTINGS 特例化为 OPEN_DRAWER；用户显式重绑 RIGHT 时尊重用户绑定；
+     * CATCHUP 的 SEEK_FORWARD 等非 OPEN_SETTINGS 动作不受影响。
+     */
+    fun resolveRight(
+        resolved: RemoteAction?,
+        selectedGroup: String,
+        inGroupColumn: Boolean,
+        rightCustomBound: Boolean,
+        allGroupName: String = "全部",
+    ): RemoteAction? {
+        if (resolved != RemoteAction.OPEN_SETTINGS) return resolved
+        if (rightCustomBound) return resolved
+        if (inGroupColumn || selectedGroup == allGroupName) return RemoteAction.OPEN_DRAWER
+        return resolved
+    }
+
     /** 从绑定反推一级摘要的两个标签（保持 SettingsSummary.remote 签名与 ≤22 全角字符）。 */
     fun summaryLabels(bindings: List<KeyBinding>): Pair<String, String> {
         val upDown = if (bindings.firstOrNull { it.action == RemoteAction.CHANNEL_UP }?.shortPressKeycodes?.contains(KEY_DPAD_UP) == true) {

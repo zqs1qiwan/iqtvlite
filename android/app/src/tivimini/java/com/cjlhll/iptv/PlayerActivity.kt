@@ -427,12 +427,22 @@ class PlayerActivity : ComponentActivity() {
                 KeyEvent.KEYCODE_DPAD_RIGHT -> {
                     if (!isDrawerOpen && !isSettingsDrawerOpen && !isQualityDialogOpen && !isRecentChannelsOpen && !isAudioDialogOpen) {
                         // FULLFIX §7：RIGHT 由 router 解析（默认 PLAYER_ONLY=打开设置 / CATCHUP=快进）。
-                        when (resolvePlayerAction(event)) {
+                        val resolved = resolvePlayerAction(event)
+                        // V4 §3（A 方案）：默认绑定 + 「全部」上下文 → RIGHT 特例进频道列表；
+                        // 用户自定义 RIGHT（或回看 SEEK_FORWARD）不受影响，尊重遥控全映射。
+                        val action = RemoteBindings.resolveRight(
+                            resolved = resolved,
+                            selectedGroup = sidebarController.value.selectedGroup,
+                            inGroupColumn = sidebarController.value.activeColumn == DrawerColumn.Groups,
+                            rightCustomBound = RemoteBindings.isKeyCustomBound(remoteBindings, RemoteBindings.KEY_DPAD_RIGHT),
+                        )
+                        when (action) {
                             RemoteAction.SEEK_FORWARD -> {
                                 val step = calculateSeekStep(event.repeatCount)
                                 if (onCatchupSeek?.invoke(step) == true) return true
                             }
                             RemoteAction.OPEN_SETTINGS -> { setSettingsDrawerOpen?.invoke(true); return true }
+                            RemoteAction.OPEN_DRAWER -> { sidebarController.openDrawer(); return true }
                             else -> Unit
                         }
                     }
@@ -1652,6 +1662,8 @@ fun VideoPlayerScreen(
             epgSourceConfigured = epgSourceConfigured,
             epgLoadFailed = epgLoadFailed,
             onSelectGroup = { sidebarController.selectGroup(it) },
+            // V4 §2：分组列聚焦/点击 → 清该组记忆、从第一台开始。
+            onSelectGroupReset = { sidebarController.selectGroup(it, resetFocus = true) },
             onSelectChannel = { channel ->
                 playChannel(channel)
             },

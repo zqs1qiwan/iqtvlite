@@ -3,6 +3,7 @@ package com.cjlhll.iptv
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.LocalDate
@@ -151,5 +152,27 @@ class SidebarControllerTest {
         // 再次打开仍保留浏览焦点 a2（不是播放台 a1）。
         c.openDrawer()
         assertEquals("a2", c.value.focusedChannelUrl)
+    }
+
+    // ── V4 §2：分组幂等 + resetFocus 从第一台开始 ──────────────────────────
+    @Test
+    fun selectGroupIsIdempotentWhenNameUnchanged() {
+        val c = controller()
+        val before = c.value
+        c.selectGroup("央视频道")
+        val after = c.value
+        assertSame("组名未变时 state 引用不变（filteredChannels 复用）", before, after)
+    }
+
+    @Test
+    fun selectGroupResetFocusClearsMemoryAndFocus() {
+        val c = controller()
+        c.openDrawer()
+        c.focusChannel("a2")
+        assertEquals("a2", c.lastFocusedUrlFor("央视频道"))
+        // 重新聚焦同一组并 resetFocus → 清焦点与该组记忆。
+        c.selectGroup("央视频道", resetFocus = true)
+        assertNull(c.value.focusedChannelUrl)
+        assertNull(c.lastFocusedUrlFor("央视频道"))
     }
 }

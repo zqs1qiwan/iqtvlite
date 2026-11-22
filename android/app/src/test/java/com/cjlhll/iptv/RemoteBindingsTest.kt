@@ -191,4 +191,36 @@ class RemoteBindingsTest {
         // 覆盖层打开（MENU_OPEN）时任何键都不穿透（fallback 守卫的语义基础）。
         assertNull(RemoteBindings.resolveWith(bound, f1, false, UiContext.MENU_OPEN))
     }
+
+    // ── V4 §3（A 方案）：RIGHT 默认 + 全部频道 → 进列表；自定义绑定尊重用户 ──
+    @Test
+    fun rightKeyAPlanAllGroupOpensDrawerOnlyForDefaultBinding() {
+        assertEquals(
+            RemoteAction.OPEN_DRAWER,
+            RemoteBindings.resolveRight(RemoteAction.OPEN_SETTINGS, "全部", false, false),
+        )
+        assertEquals(
+            RemoteAction.OPEN_SETTINGS,
+            RemoteBindings.resolveRight(RemoteAction.OPEN_SETTINGS, "央视频道", false, false),
+        )
+        assertEquals(
+            RemoteAction.OPEN_DRAWER,
+            RemoteBindings.resolveRight(RemoteAction.OPEN_SETTINGS, "央视频道", true, false),
+        )
+        assertEquals(
+            RemoteAction.OPEN_SETTINGS,
+            RemoteBindings.resolveRight(RemoteAction.OPEN_SETTINGS, "全部", false, true),
+        )
+        assertEquals(
+            RemoteAction.SEEK_FORWARD,
+            RemoteBindings.resolveRight(RemoteAction.SEEK_FORWARD, "全部", false, false),
+        )
+    }
+
+    @Test
+    fun isKeyCustomBoundDetectsRightRebinding() {
+        assertFalse(RemoteBindings.isKeyCustomBound(RemoteBindings.DEFAULT, RemoteBindings.KEY_DPAD_RIGHT))
+        val rebound = RemoteBindings.bind(RemoteBindings.DEFAULT, RemoteAction.CHANNEL_DOWN, RemoteBindings.KEY_DPAD_RIGHT, false)
+        assertTrue(RemoteBindings.isKeyCustomBound(rebound, RemoteBindings.KEY_DPAD_RIGHT))
+    }
 }

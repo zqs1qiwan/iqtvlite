@@ -110,7 +110,25 @@ class SidebarController {
     fun toggleGroups() = _state.update { it.copy(showGroups = !it.showGroups) }
     fun toggleDates() = _state.update { it.copy(showDates = !it.showDates) }
 
-    fun selectGroup(name: String) = _state.update { it.copy(selectedGroup = name) }
+    /**
+     * V4 §2：幂等切组 —— 组名真变化才更新 state（focus 事件重复触发不引发 filteredChannels 重算）。
+     * @param resetFocus 由分组列聚焦/点击触发时为 true：清掉该组记忆，使进入后从第一台开始。
+     */
+    fun selectGroup(name: String, resetFocus: Boolean = false) {
+        val cur = _state.value
+        if (cur.selectedGroup != name) {
+            _state.update { s ->
+                val nextFocus = if (resetFocus) null else s.focusedChannelUrl
+                val nextMap = if (resetFocus) s.lastFocusedByGroup - name else s.lastFocusedByGroup
+                s.copy(selectedGroup = name, focusedChannelUrl = nextFocus, lastFocusedByGroup = nextMap)
+            }
+        } else if (resetFocus) {
+            // 组名相同但要"从头开始"：仍清焦点与记忆（state 变更一次）。
+            _state.update { s ->
+                s.copy(focusedChannelUrl = null, lastFocusedByGroup = s.lastFocusedByGroup - name)
+            }
+        }
+    }
     fun selectEpgDate(date: LocalDate?) = _state.update { it.copy(selectedEpgDate = date, showDates = true) }
     fun setEpgDates(dates: List<LocalDate>) = _state.update { it.copy(epgDates = dates) }
     fun setEpgData(data: EpgData?) {

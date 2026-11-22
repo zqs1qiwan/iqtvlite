@@ -279,6 +279,28 @@ def main() -> int:
     # the old first-frame unconditional scrollToItem at open must be replaced by pending registration.
     if re.search(r"if \(targetIndex !in visibleIndices\) \{\s*runCatching \{ channelListState\.scrollToItem\(targetScroll\)", drawer_code):
         problems.append("PlayerDrawer.kt: old first-frame unconditional scrollToItem is back (t15 regression)")
+    # V4 §1: list initial index fixed to 0 (no first-frame clamp flicker); logicalFocused drives highlight.
+    if "initialFirstVisibleItemIndex = 0" not in drawer_code:
+        problems.append("PlayerDrawer.kt: channelListState initial index must be 0 (V4 §1)")
+    if "val showFocused = focused || logicalFocused" not in drawer_code:
+        problems.append("PlayerDrawer.kt: logicalFocused highlight missing (V4 §1)")
+    # V4 §2: group focus selects group; RIGHT(Groups) collapses + focuses first channel;
+    # selectGroup is idempotent with resetFocus; no `if (!showGroups) return` in selectedGroup effect.
+    sidebar = (SRC / "SidebarController.kt").read_text(encoding="utf-8")
+    if "fun selectGroup(name: String, resetFocus: Boolean = false)" not in sidebar:
+        problems.append("SidebarController.kt: idempotent selectGroup(resetFocus) missing (V4 §2)")
+    if "if (g != selectedGroup) onSelectGroupReset(g)" not in drawer_code:
+        problems.append("PlayerDrawer.kt: group onFocus must call onSelectGroupReset (V4 §2)")
+    right_groups = re.search(r"DirectionRight && activeColumn == DrawerColumn\.Groups.*?showGroups = false.*?pendingFocusToChannels = true", drawer_code, re.S)
+    if not right_groups:
+        problems.append("PlayerDrawer.kt: RIGHT(Groups) must collapse showGroups + focus channels (V4 §2)")
+    if "onSelectGroupReset = { sidebarController.selectGroup(it, resetFocus = true) }" not in activity_code:
+        problems.append("PlayerActivity.kt: onSelectGroupReset wiring missing (V4 §2)")
+    sel_group_block = re.search(r"LaunchedEffect\(selectedGroup\) \{(.*?)\n    \}", drawer_code, re.S)
+    if sel_group_block and "if (!showGroups) return@LaunchedEffect" in sel_group_block.group(1):
+        problems.append("PlayerDrawer.kt: selectedGroup effect still early-returns when groups collapsed (V4 §2)")
+    if "remember(channelGroups, selectedGroup)" not in activity_code:
+        problems.append("PlayerActivity.kt: filteredChannels cache (remember) must be preserved (V4 §2)")
 
     if "if (showContent)" not in drawer_code:
         problems.append("PlayerDrawer.kt: drawer list content must be gated by showContent (do not compose when closed)")

@@ -214,6 +214,16 @@ def main() -> int:
     if test_file.exists() and "arbitraryFunctionKeyCanResolveToChannelDown" not in test_file.read_text(encoding="utf-8"):
         problems.append("RemoteBindingsTest.kt: t10 F1=131 arbitrary-key case missing")
 
+    # 11) V4 §3 (A plan): RIGHT default -> all-group opens drawer; custom binding respected.
+    if "fun resolveRight(" not in btext or "fun isKeyCustomBound(" not in btext:
+        problems.append("RemoteBindings.kt: V4 §3 resolveRight/isKeyCustomBound missing")
+    if "RemoteBindings.resolveRight(" not in activity_code:
+        problems.append("PlayerActivity.kt: RIGHT branch must use RemoteBindings.resolveRight (V4 §3)")
+    if "rightCustomBound = RemoteBindings.isKeyCustomBound" not in activity_code:
+        problems.append("PlayerActivity.kt: RIGHT custom-binding guard missing (V4 §3)")
+    if test_file.exists() and "rightKeyAPlanAllGroupOpensDrawerOnlyForDefaultBinding" not in test_file.read_text(encoding="utf-8"):
+        problems.append("RemoteBindingsTest.kt: V4 §3 RIGHT A-plan test missing")
+
     if problems:
         for p in problems:
             print(f"check_settings_ia: FAIL {p}")

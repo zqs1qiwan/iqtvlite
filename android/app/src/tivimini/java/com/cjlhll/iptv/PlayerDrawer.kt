@@ -132,6 +132,8 @@ fun PlayerDrawer(
     epgSourceConfigured: Boolean = true,
     epgLoadFailed: Boolean = false,
     onSelectGroup: (String) -> Unit,
+    // V4 §2：分组列聚焦/点击切组（resetFocus=true → 从该组第一台开始）。
+    onSelectGroupReset: (String) -> Unit = onSelectGroup,
     onSelectChannel: (Channel) -> Unit,
     onPlayProgram: (CatchupPlayRequest) -> Unit,
     onClose: () -> Unit,
@@ -350,7 +352,9 @@ fun PlayerDrawer(
     }
 
     val channelListState = rememberLazyListState(
-        initialFirstVisibleItemIndex = initialScrollIndex
+        // V4 §1：初值固定 0，避免冷启时 initialScrollIndex=深行被 LazyColumn 钳到 0 造成
+        // 「先闪到开头又跳回」的两次跳变。恢复位置完全交给 t15 的 pendingScrollIndex 门控校正。
+        initialFirstVisibleItemIndex = 0
     )
 
     // t39（关键改动）：**不再把 147 行逐帧全部揭示**。
@@ -460,17 +464,8 @@ fun PlayerDrawer(
         }
     }
 
-    // t39：打开后把选中行滚进视野（工作窗口第 2 帧已覆盖它；此处只做一次确认）。
-    // 旧实现要求 revealedRows == channels.size（全量揭示）才执行，改成有界窗口后该条件永不成立。
-    LaunchedEffect(visible, channels.size, initialScrollIndex) {
-        if (!visible || activeColumn != DrawerColumn.Channels) return@LaunchedEffect
-        androidx.compose.runtime.withFrameNanos { }
-        androidx.compose.runtime.withFrameNanos { }
-        val idx = initialScrollIndex
-        if (idx > 0 && idx !in channelListState.layoutInfo.visibleItemsInfo.map { it.index }) {
-            runCatching { channelListState.scrollToItem((idx - 2).coerceAtLeast(0)) }
-        }
-    }
+    // V4 §1：旧的「打开后确认 scrollToItem」effect 已移除——它在首帧 revealed=3 时也会被钳到 0，
+    // 与 t15 的 pendingScrollIndex 门控校正形成双滚动/闪烁。现在所有打开定位统一走 pending 校正。
 
     // t39：兜底 —— 若 focusedChannelUrl 由别处（如首帧恢复）改到窗口外，仍保证可见。
     LaunchedEffect(visible, focusedChannelUrl) {
@@ -593,9 +588,9 @@ fun PlayerDrawer(
 
     LaunchedEffect(selectedGroup) {
         if (!visible) return@LaunchedEffect
-        if (!showGroups) return@LaunchedEffect
-        // FULLFIX §2：切组不再硬编码回 0——用该组上次浏览焦点（由 Activity 随 selectedGroup 传入）。
-        // 旧实现 `focusedChannelUrl = null` + `scrollToItem(0)` 是「切组回开头」的直接根因。
+        // V4 §2：移除旧的 `if (!showGroups) return` —— 分组列收起后切组也要更新焦点/滚动。
+        // selectGroupReset 会清该组记忆 → initialFocusUrl 为 null → remembered=null → idx=0（第一台）。
+        // FULLFIX §2：切组不再硬编码回 0（走 pendingScrollIndex 门控）；仅无记忆时才从第一台开始。
         groupChangedFlag = true
         val remembered = initialFocusUrl?.takeIf { channelIndexByUrl.containsKey(it) }
         focusedChannelUrl = remembered
@@ -948,7 +943,16 @@ fun PlayerDrawer(
                         pendingFocusToGroups = true
                         true
                     } else if (it.key == Key.DirectionRight && activeColumn == DrawerColumn.Groups) {
+                        // V4 §2：→ 从分组列进入频道列并收起分组列，聚焦该组第一台。
+                        showGroups = false
+                        activeColumn = DrawerColumn.Channels
                         pendingFocusToChannels = true
+                        val firstUrl = channels.firstOrNull()?.url
+                        if (firstUrl != null) {
+                            focusedChannelUrl = firstUrl
+                            onFocusedChannelChanged(firstUrl)
+                            pendingScrollIndex = PerfPolicy.drawerScrollTargetIndex(0, channels.size)
+                        }
                         true
                     } else if (it.key == Key.DirectionRight && activeColumn == DrawerColumn.Channels) {
                         pendingFocusToPrograms = true
@@ -1028,8 +1032,10 @@ fun PlayerDrawer(
                                             onFocused = {
                                                 activeColumn = DrawerColumn.Groups
                                                 showDates = false
+                                                // V4 §2：聚焦即展示（幂等，组名真变化才重算）；从该组第一台开始。
+                                                if (g != selectedGroup) onSelectGroupReset(g)
                                             },
-                                            onClick = { onSelectGroup(g) }
+                                            onClick = { onSelectGroupReset(g) }
                                         )
                                     }
                                 }
@@ -1069,6 +1075,8 @@ fun PlayerDrawer(
                                     channel = ch,
                                     index = channelNumbers[ch.url] ?: (index + 1),
                                     selected = (ch.url == selectedChannelUrl),
+                                    // V4 §1：逻辑焦点（不依赖真实 Compose 焦点），行一被组合即高亮。
+                                    logicalFocused = (ch.url == focusTargetUrl),
                                     nowProgram = nowProgramByChannelUrl[ch.url],
                                     focusRequester = if (ch.url == focusTargetUrl) selectedChannelRequester else null,
                                     onFocused = {
@@ -1310,12 +1318,16 @@ private fun DrawerChannelItem(
     channel: Channel,
     index: Int,
     selected: Boolean,
+    // V4 §1：逻辑焦点（ch.url==focusTargetUrl），与本地真实焦点 focused 正交。
+    logicalFocused: Boolean = false,
     nowProgram: NowProgramUi?,
     focusRequester: FocusRequester?,
     onFocused: () -> Unit,
     onClick: () -> Unit
 ) {
     var focused by remember { mutableStateOf(false) }
+    // V4 §1：逻辑焦点 OR 真实焦点 —— 行一被组合即高亮，不依赖 requestFocus 成功（深行要等 ~60 帧）。
+    val showFocused = focused || logicalFocused
     // FULLFIX B2①：播放台用 ▶ 前缀标识，与浏览焦点（surfaceVariant 底色）正交区分。
     // 纯文本、无新节点/无动画/硬边框（沿用 Flat 风格），remember 避免每帧拼接。
     val label = remember(selected, index, channel.title) {
@@ -1333,7 +1345,7 @@ private fun DrawerChannelItem(
         }
     }
     val bg = when {
-        focused -> MaterialTheme.colorScheme.surfaceVariant
+        showFocused -> MaterialTheme.colorScheme.surfaceVariant
         else -> Color.Transparent
     }
 
