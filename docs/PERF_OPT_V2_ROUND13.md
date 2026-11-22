@@ -63,4 +63,12 @@
 
 | 项 | 值 |
 |---|---|
-| 提交 / CI | 见 t60 任务输出（本文件随实现提交，定稿后补 run 号） |
+| 提交 | `170ea89`（r13 主体：清洗 + 去 softWrap + sub_narrow + 文档）→ `64ab74f`（用 Text 的 onTextLayout 参数）→ `d4ddb38`（阈值内联，修编译） |
+| CI run（绿） | **#204**，sha `d4ddb38`，push，conclusion `success` |
+| 构建 | `BUILD SUCCESSFUL in 3m 27s`；`:app:testDebugUnitTest`（含新增 `TextSanitizeTest` 3 例）+ `:app:lintDebug` + 双包 assemble |
+| 门禁 | 八门禁全 OK（perf_policy：**禁止 `softWrap = false`**、要求 `TextSanitize.programTitle(`、要求 `sub_narrow`、`graphicsLayer()` ≥3、常量 2/3/16/28）；pair gate `{0,0,0}` |
+| 包 | `tv.iqtvlite.app.validation`，versionCode **10204** |
+| app sha256 | `564792e9a80286cfd3df95a986bfbca02702a05069b2e956b6d4ba07572e12ef` |
+| test sha256 | `0017a076bb418a41164dbd86aea65c97b50ede15e88cef887ef26f676589af9e` |
+| 产物 | `iqtvlite-test-apk`（artifact id 14732018900，10,478,713 B ≪30MB） |
+| 待 t61 终验 | 残影 **0 次**（≥6 轮扫 60/61 区间）+ `sub_narrow` 日志应为 0 条 + 回归全项 + 可交付确认 |
