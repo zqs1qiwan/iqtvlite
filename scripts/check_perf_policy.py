@@ -144,8 +144,12 @@ def main() -> int:
     # t58: separate cached layers (static background + content + list) to cut fixed per-frame draw cost
     if drawer_code.count("graphicsLayer()") < 3:
         problems.append("PlayerDrawer.kt: expected >=3 graphicsLayer() (background/content/list) for t58 layer caching")
-    if "softWrap = false" not in drawer_code:
-        problems.append("PlayerDrawer.kt: subtitle must set softWrap = false (t58 residue fix)")
+    if "softWrap = false" in drawer_code:
+        problems.append("PlayerDrawer.kt: softWrap = false must be removed (t60 residue root fix)")
+    if "TextSanitize.programTitle(" not in drawer_code:
+        problems.append("PlayerDrawer.kt: subtitle text must go through TextSanitize.programTitle (t60)")
+    if "sub_narrow" not in drawer_code:
+        problems.append("PlayerDrawer.kt: sub_narrow probe missing (t60)")
     if "openTarget" not in drawer_code:
         problems.append("PlayerDrawer.kt: bounded open window (openTarget) missing (t42)")
     # the channel row must not carry the EPG subtitle / marquee / progress bar any more

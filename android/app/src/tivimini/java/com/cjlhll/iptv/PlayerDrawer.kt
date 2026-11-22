@@ -53,6 +53,7 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.onTextLayout
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.graphicsLayer
@@ -1296,7 +1297,8 @@ private fun DrawerChannelItem(
         // t42（单行成本减法）：非聚焦行只留「台标 + 序号 + 台名」（约 2 个节点，零副文本成本）。
         // t44（信息不减法）：**只有聚焦行**才组合节目副标题 + 2dp 进度 —— 每帧最多 1 行，
         // 且聚焦切换时旧行立即释放；不用 FocusMarqueeText/ThinProgressBar（避免动画节点与额外 draw）。
-        val programTitle = if (PerfPolicy.DRAWER_FOCUSED_SUBTITLE && focused) nowProgram?.title else null
+        // t60：先清洗不可见字符（NBSP/全角空格/零宽），避免首字被挤成单独一行（残影根因）。
+        val programTitle = if (PerfPolicy.DRAWER_FOCUSED_SUBTITLE && focused) TextSanitize.programTitle(nowProgram?.title) else null
         // t48（修残影）：聚焦/非聚焦两种行结构用 `key(...)` 隔开 —— 失焦时整棵副标题子树**销毁重建**，
         // 不会再复用旧布局/旧 draw 命令；配合外层 clipToBounds，杜绝 t47 观测到的单字残影（城/军/武/音）。
         if (!programTitle.isNullOrBlank()) {
@@ -1320,8 +1322,17 @@ private fun DrawerChannelItem(
                         lineHeight = 14.sp,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f),
                         // t46：给验收一个可断言的语义节点（t45 在语义树里没观测到副标题）。
-                        softWrap = false,
-                        modifier = Modifier.testTag("drawer_row_subtitle")
+                        // t60：不再用 softWrap=false（那会把文字测成极窄宽），改为单行 ellipsis + 确定宽度；
+                        // onTextLayout 里探测“过窄/多行”并打点，供验收断言。
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("drawer_row_subtitle")
+                            .onTextLayout { result ->
+                                val w = result.size.width
+                                if (w < 8.dp.roundToPx() || result.lineCount > 1) {
+                                    PerfTrace.d { "sub_narrow idx=$index w=$w lines=${result.lineCount}" }
+                                }
+                            }
                     )
                 }
                 val progress = nowProgram?.progress
