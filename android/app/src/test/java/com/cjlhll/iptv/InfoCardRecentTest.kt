@@ -2,6 +2,7 @@ package com.cjlhll.iptv
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -135,5 +136,29 @@ class InfoCardRecentTest {
         }
         assertEquals(1, card.size)
         assertEquals("切台应回到用户上次看的那条线路", 1, card.first().variantIndex)
+    }
+
+    // ── FULLFIX §5（U1）：高亮 = 真焦点 = OK 目标，同一真源 focusIndex ────────
+    @Test
+    fun focusTargetAlwaysFollowsHighlightedIndex() {
+        // focusIndex 是唯一真源：目标索引恒等于 clamp(focusIndex)，空列表 → -1（不请求焦点）。
+        assertEquals(0, InfoCardPolicy.focusTargetIndex(0, 6))
+        assertEquals(1, InfoCardPolicy.focusTargetIndex(1, 6))
+        assertEquals(5, InfoCardPolicy.focusTargetIndex(5, 6))
+        assertEquals(5, InfoCardPolicy.focusTargetIndex(99, 6)) // 越界 clamp 到末尾，不环绕
+        assertEquals(0, InfoCardPolicy.focusTargetIndex(-3, 6))
+        assertEquals(-1, InfoCardPolicy.focusTargetIndex(0, 0)) // 空条无目标
+    }
+
+    @Test
+    fun okTargetIsTheHighlightedCardNotTheEventSource() {
+        // OK→OK→右→OK：高亮从卡 0 移到卡 1 后，OK 必须切到卡 1 对应的台。
+        val cards = listOf("A", "B", "C", "D")
+        assertEquals("初始 focusIndex=0 → 卡 A", "A", InfoCardPolicy.resolveRecentTarget(cards, 0))
+        val moved = InfoCardPolicy.nextFocusIndex(0, cards.size, 1)
+        assertEquals(1, moved)
+        assertEquals("右移后 focusIndex=1 → OK 切到卡 B", "B", InfoCardPolicy.resolveRecentTarget(cards, moved))
+        assertNull("空列表 OK 不崩、不切台", InfoCardPolicy.resolveRecentTarget(emptyList<String>(), 0))
+        assertNull("越界 focusIndex OK 不崩", InfoCardPolicy.resolveRecentTarget(cards, 99))
     }
 }

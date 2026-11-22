@@ -115,10 +115,15 @@ fun ChannelInfoBanner(
                 onExitFocus()
             }
             InfoCardPolicy.FocusRecovery.REQUEST_FOCUS -> {
-                // 进入/保持聚焦，以及“节点被重建/焦点被抢”后的自愈重试。
-                if (stripFocusIndex < 0) {
-                    val target = requesters.getOrNull(focusIndex.coerceIn(0, recentCount - 1))
-                    runCatching { target?.requestFocus() }
+                // FULLFIX §5（U1）：焦点必须跟随高亮 focusIndex。旧的 `if (stripFocusIndex < 0)`
+                // 守卫使得真实焦点已在卡 0 时，RIGHT 改了 focusIndex 也不会重新请求卡 1 的焦点
+                // （高亮=卡1、真焦点=卡0、OK 目标=卡0，三处不一致 → 用户「不能切换」）。
+                // 现在每次 focusIndex 变化都请求目标卡；先同步 stripFocusIndex 再请求，
+                // 避免 aggregateNodeFocus 短暂为 false 触发镜像抖动。
+                val target = InfoCardPolicy.focusTargetIndex(focusIndex, recentCount)
+                if (target >= 0) {
+                    stripFocusIndex = target
+                    runCatching { requesters.getOrNull(target)?.requestFocus() }
                 }
                 wasFocused = true
             }
@@ -189,6 +194,12 @@ fun ChannelInfoBanner(
                     when (event.key) {
                         Key.DirectionLeft -> { onMoveFocus(-1); true }
                         Key.DirectionRight -> { onMoveFocus(1); true }
+                        // FULLFIX §5（U1）：OK 目标统一取高亮 focusIndex（不是事件来源卡 index）。
+                        // 放在根部统一处理，空/1 张也安全（resolveRecentTarget 返回 null → 不切台）。
+                        Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> {
+                            if (showRecent) onSwitchRecent(InfoCardPolicy.focusTargetIndex(focusIndex, recentCount).coerceAtLeast(0))
+                            true
+                        }
                         Key.DirectionUp, Key.DirectionDown, Key.Back -> { onExitFocus(); true }
                         else -> false
                     }
@@ -337,12 +348,7 @@ fun ChannelInfoBanner(
                     }
                     RecentStrip(
                         items = recentCards,
-                        focusIndex = focusIndex,
-                        focused = focused,
                         requesters = requesters,
-                        onMoveFocus = onMoveFocus,
-                        onSwitchRecent = onSwitchRecent,
-                        onExitFocus = onExitFocus,
                         onCardFocusChanged = { index, isFocused ->
                             if (isFocused) stripFocusIndex = index
                             else if (stripFocusIndex == index) stripFocusIndex = -1
@@ -396,17 +402,13 @@ private fun EntryHint() {
 
 /**
  * 最近观看小卡行：普通 Row（≤6，无回收抖动），焦点只改底色/文字色，不改尺寸 → 无 remeasure。
- * 按键由小卡自身 onPreviewKeyEvent 处理（UP/DOWN/BACK 退聚焦），避免与 Activity 守卫重复。
+ * FULLFIX §5（U1）：按键统一由 banner 根部 onPreviewKeyEvent 处理（高亮=焦点=OK 目标同一真源），
+ * 这里只负责渲染 + 上报真实焦点，不再自带一套按键路径。
  */
 @Composable
 private fun RecentStrip(
     items: List<RecentChannelUi>,
-    focusIndex: Int,
-    focused: Boolean,
     requesters: List<FocusRequester>,
-    onMoveFocus: (Int) -> Unit,
-    onSwitchRecent: (Int) -> Unit,
-    onExitFocus: () -> Unit,
     onCardFocusChanged: (Int, Boolean) -> Unit,
 ) {
     Row(
@@ -430,16 +432,9 @@ private fun RecentStrip(
                         isFocused = it.isFocused
                         onCardFocusChanged(index, it.isFocused)
                     }
-                    .onPreviewKeyEvent { event ->
-                        if (!focused || event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
-                        when (event.key) {
-                            Key.DirectionLeft -> { onMoveFocus(-1); true }
-                            Key.DirectionRight -> { onMoveFocus(1); true }
-                            Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> { onSwitchRecent(index); true }
-                            Key.DirectionUp, Key.DirectionDown, Key.Back -> { onExitFocus(); true }
-                            else -> false
-                        }
-                    }
+                    // FULLFIX §5（U1）：卡片自身不再处理按键（原来这里用事件来源卡 index 调
+                    // onSwitchRecent(index)，与高亮 focusIndex 不一致 → OK 切错台）。
+                    // 所有按键统一在 banner 根部 onPreviewKeyEvent 处理；卡片只上报焦点。
                     .focusable()
                     .background(
                         if (isFocused) MaterialTheme.colorScheme.surfaceVariant else Color.Transparent

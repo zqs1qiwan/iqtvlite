@@ -207,6 +207,28 @@ def main() -> int:
         problems.append("ChannelInfoBanner.kt: double 40dp horizontal padding still present (FULLFIX §4.2③)")
     if ".height(64.dp)" not in banner or ".clipToBounds()" not in banner:
         problems.append("ChannelInfoBanner.kt: recent strip needs height(64)+clipToBounds (FULLFIX §4.2③/U1)")
+
+    # 9) FULLFIX §5 (U1): highlight = real focus = OK target, one source of truth (focusIndex).
+    if "fun focusTargetIndex(" not in policy or "fun resolveRecentTarget(" not in policy:
+        problems.append("InfoCardPolicy.kt: U1 pure helpers focusTargetIndex/resolveRecentTarget missing")
+    if re.search(r"if \(stripFocusIndex < 0\)", banner):
+        problems.append("ChannelInfoBanner.kt: the stripFocusIndex<0 guard is back (U1 focus not following highlight)")
+    if "InfoCardPolicy.focusTargetIndex(focusIndex, recentCount)" not in banner:
+        problems.append("ChannelInfoBanner.kt: REQUEST_FOCUS must target focusIndex (U1)")
+    if "stripFocusIndex = target" not in banner:
+        problems.append("ChannelInfoBanner.kt: stripFocusIndex must be synced before request (U1)")
+    # Root onPreviewKeyEvent must own OK and pass focusIndex (not the event-source card index).
+    root_ok = re.search(r"Key\.DirectionCenter, Key\.Enter, Key\.NumPadEnter -> \{[^}]*onSwitchRecent\(", banner)
+    if not root_ok:
+        problems.append("ChannelInfoBanner.kt: root onPreviewKeyEvent must handle OK (U1)")
+    if "onSwitchRecent(index)" in banner:
+        problems.append("ChannelInfoBanner.kt: card-level onSwitchRecent(index) is back (U1 wrong OK target)")
+    if "InfoCardPolicy.resolveRecentTarget(cardRecentItems, infoCardFocusIndex)" not in activity:
+        problems.append("PlayerActivity.kt: onSwitchRecent must resolve target via infoCardFocusIndex (U1)")
+    # Card must not have its own key path any more (single key path at the banner root).
+    recent_start = banner.find("private fun RecentStrip(")
+    if recent_start != -1 and ".onPreviewKeyEvent" in banner[recent_start:]:
+        problems.append("ChannelInfoBanner.kt: RecentStrip still has its own onPreviewKeyEvent (U1 dual key path)")
         for p in problems:
             print(f"check_info_card: FAIL {p}")
         return 1

@@ -2031,9 +2031,12 @@ fun VideoPlayerScreen(
                         )
                         logInfoCard("move index=$infoCardFocusIndex")
                     },
-                    onSwitchRecent = { index ->
-                        cardRecentItems.getOrNull(index)?.let { item ->
-                            logInfoCard("switch idx=$index group=${item.number} ${item.title}")
+                    onSwitchRecent = { _ ->
+                        // FULLFIX §5（U1）：OK 目标以权威 infoCardFocusIndex 为准，忽略事件来源 index
+                        // （高亮/真焦点/OK 目标三者用同一真源，OK→OK→右→OK 才切到第二张卡）。
+                        // InfoCardPolicy.resolveRecentTarget 对空/越界返回 null → 空/1 张不崩。
+                        InfoCardPolicy.resolveRecentTarget(cardRecentItems, infoCardFocusIndex)?.let { item ->
+                            logInfoCard("switch idx=$infoCardFocusIndex group=${item.number} ${item.title}")
                             if (switchToRecent(item)) {
                                 // §5.2：切台后保持 FOCUSED，焦点回到第一张（刚离开的台）。
                                 infoCardFocusIndex = 0
