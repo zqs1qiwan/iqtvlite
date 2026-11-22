@@ -9,8 +9,8 @@ package com.cjlhll.iptv
  */
 object InfoCardPolicy {
 
-    /** 卡片底部「最近观看」最多几张（存储层仍是最多 10 条，这里只做视图截断）。 */
-    const val MAX_RECENT = 6
+    /** V4 §6：卡片底部「最近观看」最多 4 个 logo（v3 是 6）。 */
+    const val MAX_RECENT = 4
 
     /** 空闲 3s 自动隐藏（旧版 5000ms）；聚焦时不隐藏。 */
     const val AUTO_HIDE_MS = 3000L
@@ -157,12 +157,14 @@ object InfoCardPolicy {
         else -> "${channelCount}ch"
     }
 
-    /** 徽标候选（优先级：分辨率 > 帧率 > 码率 > 声道；未知跳过、不占位）。 */
+    /**
+     * V4 §6：徽标候选固定三项（分辨率 > 帧率 > 声道），**不再显示码率**（bitrate 参数保留兼容但忽略）。
+     * 未知即隐藏、不补 `—`。`bitrateLabel` 仍保留供诊断/日志使用。
+     */
     fun badgeCandidates(width: Int, height: Int, frameRate: Float, bitrate: Int, channelCount: Int): List<BadgeCandidate> {
-        val out = ArrayList<BadgeCandidate>(4)
+        val out = ArrayList<BadgeCandidate>(3)
         resolutionTier(width, height)?.let { out.add(BadgeCandidate("resolution", it.label)) }
         frameRateLabel(frameRate)?.let { out.add(BadgeCandidate("fps", it)) }
-        bitrateLabel(bitrate)?.let { out.add(BadgeCandidate("bitrate", it)) }
         channelLabel(channelCount)?.let { out.add(BadgeCandidate("channels", it)) }
         return out
     }
@@ -259,9 +261,12 @@ object InfoCardPolicy {
             .format(cardClockFormatter)
 
     /**
-     * FULLFIX §4.2①：台名下小字只留 `频道 N · 分组`，不再拼音频编码（编码移到技术行）。
-     * 旧签名为 `(number, group, audioCodec)`；audioCodec 分支已删除，防止回退。
+     * V4 §6：台标下分组小字只显示本台分组名（无「频道 N」前缀、无编码）。
+     * 台名由 UI 层单独渲染为 `"$number. $title"`。group 为空 → ""。
      */
+    fun groupLine(group: String?): String = group?.takeIf { it.isNotBlank() }?.trim() ?: ""
+
+    /** 保留兼容：台标下小字（V4 不再使用，UI 改用 groupLine）。 */
     fun smallMetaLine(number: Int, group: String?): String {
         val parts = ArrayList<String>(2)
         if (number > 0) parts.add("频道 $number")

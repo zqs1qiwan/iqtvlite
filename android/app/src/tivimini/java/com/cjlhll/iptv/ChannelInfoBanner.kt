@@ -153,10 +153,12 @@ fun ChannelInfoBanner(
     val vf = videoFormat
     val frameRate = InfoCardPolicy.takePositive(vf?.frameRate ?: -1f, frameRateFallback)
     val bitrate = InfoCardPolicy.takePositive(vf?.bitrate ?: -1, videoBitrateFallback)
+    // V4 §6：徽标三项（分辨率/帧率/声道），紧凑上限 180dp。
     val badgePlan = InfoCardPolicy.planBadges(
         InfoCardPolicy.badgeCandidates(
             vf?.width ?: 0, vf?.height ?: 0, frameRate ?: -1f, bitrate ?: -1, audioChannelCount,
-        )
+        ),
+        maxWidthDp = 180.0,
     )
     val videoCodec = InfoCardPolicy.videoCodecLabel(vf?.sampleMimeType, vf?.codecs)
     val audioCodec = InfoCardPolicy.audioCodecLabel(audioLabel)
@@ -170,8 +172,9 @@ fun ChannelInfoBanner(
         nowMillis = nowMillis,
         catchup = catchupConfiguration != null,
     )
-    // FULLFIX §4.2①：台标下只留「频道 N · 分组」，编码已移到技术行。
-    val smallMeta = InfoCardPolicy.smallMetaLine(channelNumber, groupLabel)
+    // V4 §6：台标下只留本台分组小字；台名渲染为 "$number. $title"（见主行 Text）。
+    val smallMeta = InfoCardPolicy.groupLine(groupLabel)
+    val titleWithNumber = if (channelNumber > 0) "$channelNumber. ${channel?.title ?: "未知频道"}" else (channel?.title ?: "未知频道")
     val progressValue: Float? = programProgress ?: catchupConfiguration?.let { c ->
         val d = (c.endMillis - c.startMillis).toFloat()
         if (d <= 0f) null else ((c.positionMs - c.startMillis).toFloat() / d).coerceIn(0f, 1f)
@@ -252,8 +255,8 @@ fun ChannelInfoBanner(
 
                     Column(modifier = Modifier.weight(0.44f)) {
                         Text(
-                            text = channel?.title ?: "未知频道",
-                            style = MaterialTheme.typography.headlineLarge.copy(fontSize = 34.sp, lineHeight = 42.sp),
+                            text = titleWithNumber,
+                            style = MaterialTheme.typography.headlineLarge.copy(fontSize = 30.sp, lineHeight = 38.sp),
                             color = MaterialTheme.colorScheme.onSurface,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
@@ -401,9 +404,9 @@ private fun EntryHint() {
 }
 
 /**
- * 最近观看小卡行：普通 Row（≤6，无回收抖动），焦点只改底色/文字色，不改尺寸 → 无 remeasure。
- * FULLFIX §5（U1）：按键统一由 banner 根部 onPreviewKeyEvent 处理（高亮=焦点=OK 目标同一真源），
- * 这里只负责渲染 + 上报真实焦点，不再自带一套按键路径。
+ * V4 §6：最近观看小卡行 —— 最多 4 个仅 logo 方块（56×56，logo 48dp），无台名文字行。
+ * 无 logo 时用频道号/台名首字居中回退。焦点 = 蓝底 + 白字加粗，不改尺寸（无 remeasure）。
+ * 按键统一由 banner 根部 onPreviewKeyEvent 处理（U1 单一真源），这里只渲染 + 上报焦点。
  */
 @Composable
 private fun RecentStrip(
@@ -414,17 +417,17 @@ private fun RecentStrip(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            // FULLFIX §4.2③/U1：去掉内层 40dp 左右 padding（父 Column 已有）；固定高 + clip 防末尾贴边溢出。
-            .height(64.dp)
+            .height(56.dp)
             .clipToBounds()
             .testTag("info_card_recent_row"),
         horizontalArrangement = Arrangement.Start,
     ) {
         items.forEachIndexed { index, item ->
             var isFocused by remember(item.title, index) { mutableStateOf(false) }
-            Column(
+            val hasLogo = item.logoUrl?.isNotBlank() == true
+            Box(
                 modifier = Modifier
-                    .size(width = 104.dp, height = 64.dp)
+                    .size(56.dp)
                     .testTag("info_card_recent_$index")
                     .semantics { contentDescription = "最近观看第${index + 1}个 ${item.number}. ${item.title}" }
                     .focusRequester(requesters[index])
@@ -432,32 +435,26 @@ private fun RecentStrip(
                         isFocused = it.isFocused
                         onCardFocusChanged(index, it.isFocused)
                     }
-                    // FULLFIX §5（U1）：卡片自身不再处理按键（原来这里用事件来源卡 index 调
-                    // onSwitchRecent(index)，与高亮 focusIndex 不一致 → OK 切错台）。
-                    // 所有按键统一在 banner 根部 onPreviewKeyEvent 处理；卡片只上报焦点。
                     .focusable()
-                    .background(
-                        if (isFocused) BrandFocus.BgColor else Color.Transparent
-                    )
-                    .padding(4.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
+                    .background(if (isFocused) BrandFocus.BgColor else Color.Transparent),
+                contentAlignment = Alignment.Center
             ) {
-                ChannelLogo(
-                    logoUrl = item.logoUrl,
-                    fallbackTitle = item.title,
-                    width = 40.dp,
-                    height = 40.dp
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = item.title,
-                    style = MaterialTheme.typography.bodySmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    color = Color.White,
-                    fontWeight = if (isFocused) androidx.compose.ui.text.font.FontWeight.Bold
-                    else androidx.compose.ui.text.font.FontWeight.Normal
-                )
+                if (hasLogo) {
+                    ChannelLogo(
+                        logoUrl = item.logoUrl,
+                        fallbackTitle = "",
+                        width = 48.dp,
+                        height = 48.dp
+                    )
+                } else {
+                    Text(
+                        text = item.number.takeIf { it > 0 }?.toString() ?: item.title.take(1),
+                        style = MaterialTheme.typography.titleMedium,
+                        color = Color.White,
+                        fontWeight = if (isFocused) androidx.compose.ui.text.font.FontWeight.Bold
+                        else androidx.compose.ui.text.font.FontWeight.Medium
+                    )
+                }
             }
             if (index != items.lastIndex) Spacer(modifier = Modifier.width(12.dp))
         }

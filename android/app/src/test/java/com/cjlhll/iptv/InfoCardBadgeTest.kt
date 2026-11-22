@@ -60,12 +60,13 @@ class InfoCardBadgeTest {
         assertEquals("3ch", InfoCardPolicy.channelLabel(3))
     }
 
-    // ── 徽标候选 + 优先级/溢出 ─────────────────────────────────────────────
+    // ── 徽标候选（V4 §6：三项 分辨率/帧率/声道，无码率） ───────────────────
     @Test
     fun badgeCandidatesFollowPriorityAndHideUnknown() {
         val full = InfoCardPolicy.badgeCandidates(1920, 1080, 60f, 8_300_000, 2)
-        assertEquals(listOf("FHD", "60fps", "8.3Mbps", "2ch"), full.map { it.label })
-        assertEquals(listOf("resolution", "fps", "bitrate", "channels"), full.map { it.key })
+        assertEquals("V4：三项无码率", listOf("FHD", "60fps", "2ch"), full.map { it.label })
+        assertEquals(listOf("resolution", "fps", "channels"), full.map { it.key })
+        assertFalse("码率项不进候选", full.any { it.key == "bitrate" })
         assertTrue("全未知 → 空（不占位）", InfoCardPolicy.badgeCandidates(0, 0, 0f, 0, 0).isEmpty())
         assertEquals(listOf("FHD"), InfoCardPolicy.badgeCandidates(1920, 1080, 0f, 0, 0).map { it.label })
     }
@@ -73,21 +74,21 @@ class InfoCardBadgeTest {
     @Test
     fun planBadgesKeepsVisibleAsPrefixAndOverflowAsSuffix() {
         val cand = InfoCardPolicy.badgeCandidates(1920, 1080, 60f, 8_300_000, 2)
-        val wide = InfoCardPolicy.planBadges(cand, maxWidthDp = 260.0)
-        assertEquals(listOf("FHD", "60fps", "8.3Mbps", "2ch"), wide.visible)
+        val wide = InfoCardPolicy.planBadges(cand, maxWidthDp = 180.0)
+        assertEquals(listOf("FHD", "60fps", "2ch"), wide.visible)
         assertTrue(wide.overflow.isEmpty())
 
-        val mid = InfoCardPolicy.planBadges(cand, maxWidthDp = 140.0)
-        assertEquals("先挤掉码率/声道", listOf("FHD", "60fps"), mid.visible)
-        assertEquals(listOf("8.3Mbps", "2ch"), mid.overflow)
+        val mid = InfoCardPolicy.planBadges(cand, maxWidthDp = 100.0)
+        assertEquals(listOf("FHD", "60fps"), mid.visible)
+        assertEquals(listOf("2ch"), mid.overflow)
 
         val narrow = InfoCardPolicy.planBadges(cand, maxWidthDp = 60.0)
         assertEquals(listOf("FHD"), narrow.visible)
-        assertEquals(listOf("60fps", "8.3Mbps", "2ch"), narrow.overflow)
+        assertEquals(listOf("60fps", "2ch"), narrow.overflow)
 
         val tiny = InfoCardPolicy.planBadges(cand, maxWidthDp = 10.0)
         assertTrue(tiny.visible.isEmpty())
-        assertEquals(listOf("FHD", "60fps", "8.3Mbps", "2ch"), tiny.overflow)
+        assertEquals(listOf("FHD", "60fps", "2ch"), tiny.overflow)
     }
 
     // ── 节目行 ─────────────────────────────────────────────────────────────
@@ -145,5 +146,15 @@ class InfoCardBadgeTest {
         val cand = InfoCardPolicy.badgeCandidates(1920, 1080, 50f, -1, 2)
         assertEquals(listOf("FHD", "50fps", "2ch"), cand.map { it.label })
         assertFalse("未知码率隐藏、不占位", cand.any { it.key == "bitrate" })
+    }
+
+    // ── V4 §6：最近观看 4 个 + 分组小字 ────────────────────────────────────
+    @Test
+    fun v4RecentCountAndGroupLine() {
+        assertEquals("V4：最近观看最多 4 个", 4, InfoCardPolicy.MAX_RECENT)
+        assertEquals("央视频道", InfoCardPolicy.groupLine("央视频道"))
+        assertEquals("央视频道", InfoCardPolicy.groupLine("  央视频道  "))
+        assertEquals("", InfoCardPolicy.groupLine(null))
+        assertEquals("", InfoCardPolicy.groupLine("  "))
     }
 }

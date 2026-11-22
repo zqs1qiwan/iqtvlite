@@ -90,17 +90,25 @@ class PlayerActivity : ComponentActivity() {
     private var setRecentChannelsOpen: ((Boolean) -> Unit)? = null
     private var setAudioDialogOpen: ((Boolean) -> Unit)? = null
     private var digits by mutableStateOf("")
+    // V4 §7：确认态（OK/超时提交前置 true），OSD 数字短暂变品牌蓝加粗。
+    private var digitConfirmed by mutableStateOf(false)
     private var numberJob: Job? = null
     private fun submitNumber() {
         numberJob?.cancel()
         val number = digits.toIntOrNull()
+        digitConfirmed = true
         if (number == null || onNumberJump?.invoke(number) != true) {
             android.widget.Toast.makeText(this, "没有频道 $digits", android.widget.Toast.LENGTH_SHORT).show()
         }
         digits = ""
+        // V4 §7：确认态保留一帧（~180ms）让用户看到蓝字，然后复位（digits 已空 OSD 自然消失）。
+        lifecycleScope.launch {
+            delay(180)
+            digitConfirmed = false
+        }
     }
     override fun onStop() {
-        numberJob?.cancel(); digits = ""
+        numberJob?.cancel(); digits = ""; digitConfirmed = false
         super.onStop()
     }
     private var onChannelStep: ((Int) -> Boolean)? = null
@@ -241,13 +249,16 @@ class PlayerActivity : ComponentActivity() {
                     }
                     if (digits.isNotEmpty()) {
                         // t124: visible digit-entry OSD — dark panel + high-contrast brand ink.
+                        // V4 §7：数字 OSD 移到右上角（TopEnd），确认态数字用品牌蓝加粗。
+                        val osdDigitColor = if (digitConfirmed) BrandFocus.BlueColor else ComposeColor(0xFFF2F5FA)
                         Column(
                             modifier = Modifier
-                                .align(Alignment.TopCenter)
-                                .padding(top = 36.dp)
+                                .align(Alignment.TopEnd)
+                                .padding(top = 24.dp, end = 40.dp)
+                                .testTag("digit_osd")
                                 .background(ComposeColor(0xE610141A.toInt()))
                                 .padding(horizontal = 28.dp, vertical = 14.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
+                            horizontalAlignment = Alignment.End
                         ) {
                             Text(
                                 "请输入频道号",
@@ -256,8 +267,11 @@ class PlayerActivity : ComponentActivity() {
                             )
                             Text(
                                 digits + "_",
-                                color = ComposeColor(0xFFF2F5FA),
-                                style = MaterialTheme.typography.headlineLarge
+                                color = osdDigitColor,
+                                style = MaterialTheme.typography.headlineLarge.copy(
+                                    fontWeight = if (digitConfirmed) androidx.compose.ui.text.font.FontWeight.Bold
+                                    else androidx.compose.ui.text.font.FontWeight.Normal
+                                )
                             )
                         }
                     }

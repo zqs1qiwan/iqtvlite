@@ -67,8 +67,8 @@ def main() -> int:
     habits = HABITS.read_text(encoding="utf-8")
 
     # 1) pure policy
-    if not re.search(r"const val MAX_RECENT = 6\b", policy):
-        problems.append("InfoCardPolicy.kt: MAX_RECENT must be 6")
+    if not re.search(r"const val MAX_RECENT = 4\b", policy):
+        problems.append("InfoCardPolicy.kt: MAX_RECENT must be 4 (V4 §6, was 6)")
     if not re.search(r"const val AUTO_HIDE_MS = 3000L", policy):
         problems.append("InfoCardPolicy.kt: AUTO_HIDE_MS must be 3000L")
     for fn in ("fun isVisible(", "fun autoHideMs(", "fun canFocusRecent(", "fun nextFocusIndex(",
@@ -153,8 +153,8 @@ def main() -> int:
         problems.append("ChannelInfoBanner.kt: logo must be >=160x96dp (v3)")
     if "info_card_logo" not in banner:
         problems.append("ChannelInfoBanner.kt: info_card_logo tag missing")
-    if "34.sp" not in banner or "headlineLarge.copy" not in banner:
-        problems.append("ChannelInfoBanner.kt: channel name must be headlineLarge.copy(fontSize = 34.sp)")
+    if "headlineLarge.copy" not in banner:
+        problems.append("ChannelInfoBanner.kt: channel name must use headlineLarge.copy (v4 titleWithNumber)")
     for tag in ("info_card_badges", "info_card_tech", "info_card_program_time", "info_card_number", "info_card_group"):
         if tag not in banner:
             problems.append("ChannelInfoBanner.kt: missing v3 tag " + tag)
@@ -205,8 +205,20 @@ def main() -> int:
         problems.append("ChannelInfoBanner.kt: container padding must be 16dp (FULLFIX §4.2③)")
     if banner.count("padding(start = 40.dp") > 1:
         problems.append("ChannelInfoBanner.kt: double 40dp horizontal padding still present (FULLFIX §4.2③)")
-    if ".height(64.dp)" not in banner or ".clipToBounds()" not in banner:
-        problems.append("ChannelInfoBanner.kt: recent strip needs height(64)+clipToBounds (FULLFIX §4.2③/U1)")
+    if ".clipToBounds()" not in banner:
+        problems.append("ChannelInfoBanner.kt: recent strip needs clipToBounds (FULLFIX §4.2③/U1)")
+
+    # 8b) V4 §6: info card v4 — 3 badges (no bitrate), groupLine, 4 logo-only 56dp cards, ≤240dp.
+    if "fun groupLine(" not in policy:
+        problems.append("InfoCardPolicy.kt: groupLine missing (V4 §6)")
+    if "groupLine(groupLabel)" not in banner:
+        problems.append("ChannelInfoBanner.kt: subtitle must use groupLine (V4 §6)")
+    if 'BadgeCandidate("bitrate"' in policy:
+        problems.append("InfoCardPolicy.kt: bitrate must not be a badge candidate (V4 §6)")
+    if "maxWidthDp = 180.0" not in banner:
+        problems.append("ChannelInfoBanner.kt: badge maxWidth 180dp missing (V4 §6)")
+    if ".size(56.dp)" not in banner or "48.dp" not in banner:
+        problems.append("ChannelInfoBanner.kt: recent cards must be 56dp logo-only with 48dp logo (V4 §6)")
 
     # 9) FULLFIX §5 (U1): highlight = real focus = OK target, one source of truth (focusIndex).
     if "fun focusTargetIndex(" not in policy or "fun resolveRecentTarget(" not in policy:

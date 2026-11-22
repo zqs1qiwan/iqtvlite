@@ -224,6 +224,15 @@ def main() -> int:
     if test_file.exists() and "rightKeyAPlanAllGroupOpensDrawerOnlyForDefaultBinding" not in test_file.read_text(encoding="utf-8"):
         problems.append("RemoteBindingsTest.kt: V4 §3 RIGHT A-plan test missing")
 
+    # 12) V4 §7: digit OSD at top-end with confirm-state brand blue + tag.
+    if "Alignment.TopEnd" not in activity_code or "digit_osd" not in activity_code:
+        problems.append("PlayerActivity.kt: digit OSD must be TopEnd with testTag digit_osd (V4 §7)")
+    osd = re.search(r"if \(digits\.isNotEmpty\(\)\) \{(.*?)\n                    \}", activity_code, re.S)
+    if osd and "Alignment.TopCenter" in osd.group(1):
+        problems.append("PlayerActivity.kt: digit OSD still TopCenter (V4 §7)")
+    if "digitConfirmed" not in activity_code or "BrandFocus.BlueColor" not in activity_code:
+        problems.append("PlayerActivity.kt: digit confirm-state brand blue missing (V4 §7)")
+
     if problems:
         for p in problems:
             print(f"check_settings_ia: FAIL {p}")
