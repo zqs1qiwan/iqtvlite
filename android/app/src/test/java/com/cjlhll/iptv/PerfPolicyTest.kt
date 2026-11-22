@@ -255,5 +255,8 @@ class PerfPolicyTest {
         assertEquals(38, PerfPolicy.drawerScrollTargetIndex(40, 147))
         assertEquals(0, PerfPolicy.drawerScrollTargetIndex(5, 0))
         assertEquals(145, PerfPolicy.drawerScrollTargetIndex(999, 147))
+        // V4 §4.3 新增边界：count=1 → 0；count=2 越界 → 0（coerceIn(0, 0)）。
+        assertEquals(0, PerfPolicy.drawerScrollTargetIndex(5, 1))
+        assertEquals(0, PerfPolicy.drawerScrollTargetIndex(999, 2))
     }
 }

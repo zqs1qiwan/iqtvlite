@@ -263,6 +263,9 @@ def main() -> int:
     # t15: scroll correction decoupled from row reveal (cold-open / P8b deep-row).
     if "fun drawerScrollCorrected(" not in policy or "fun drawerScrollTargetIndex(" not in policy:
         problems.append("PerfPolicy.kt: t15 scroll-correction pure helpers missing")
+    # V4 §4: scroll target must use channelCount-2 upper bound (999/147 -> 145, CI #216).
+    if "coerceIn(0, channelCount - 2)" not in policy:
+        problems.append("PerfPolicy.kt: drawerScrollTargetIndex must use coerceIn(0, channelCount-2) (V4 §4)")
     for token in ("pendingScrollIndex", "drawerScrollCorrected(revealedRows, pendingScrollIndex)",
                   "drawer_scroll_correct", "PerfPolicy.drawerScrollTargetIndex("):
         if token not in drawer_code:

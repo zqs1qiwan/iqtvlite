@@ -110,10 +110,14 @@ object PerfPolicy {
         targetScrollIndex >= 0 && revealedRows >= targetScrollIndex + 1
 
     /**
-     * t15：把焦点行索引换算成 `scrollToItem` 的目标（留 2 行前置上下文，S1 安全钳制）。
+     * t15 / V4 §4：把焦点行索引换算成 `scrollToItem` 的目标（留 2 行前置上下文）。
+     *
+     * V4 §4：上限用 `channelCount - 2`（而非 n-1），使越界 focus=999、count=147 → 145
+     * （与 PerfPolicyTest.t15ScrollTargetUsesSafeFirstVisibleClamp 一致，修复 CI #216）。
+     * 语义：末尾目标仍留 2 行上下文，符合"留 2 行前置"注释；空/1 组 → 0。
      */
     fun drawerScrollTargetIndex(focusIndex: Int, channelCount: Int): Int =
-        drawerSafeFirstVisibleIndex((focusIndex - 2).coerceAtLeast(0), channelCount)
+        if (channelCount <= 0) 0 else (focusIndex - 2).coerceIn(0, channelCount - 2)
 
     /** 之后每帧追加多少行（t33：3→2，把单帧成本再压一半）。 */
     const val DRAWER_ROWS_PER_FRAME = 2
