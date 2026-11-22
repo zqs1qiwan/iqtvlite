@@ -143,6 +143,7 @@ class SidebarControllerTest {
         val c = controller()
         c.setSelection(0, 0) // 播放 a1
         c.openDrawer()
+        c.selectGroup("央视频道") // 先切到该组，focusChannel 才会按此组名记忆
         c.focusChannel("a2") // 浏览到 a2
         c.closeDrawer()
         assertEquals("a2", c.value.focusedChannelUrl)

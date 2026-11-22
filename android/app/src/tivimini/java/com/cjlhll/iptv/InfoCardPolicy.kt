@@ -86,9 +86,10 @@ object InfoCardPolicy {
     fun focusTargetIndex(focusIndex: Int, count: Int): Int =
         if (count <= 0) -1 else focusIndex.coerceIn(0, count - 1)
 
-    /** FULLFIX §5（U1）：OK 切台目标 = 高亮 focusIndex 指向的那张卡（空/index 越界 → null，不崩）。 */
+    /** FULLFIX §5（U1）：OK 切台目标 = 高亮 focusIndex 指向的那张卡；越界/null 不崩、不误切台。
+     *  注意这里**不做 clamp**：clamp 会把 99 变成末尾卡导致误切台；越界应直接无目标。 */
     fun <T> resolveRecentTarget(items: List<T>, focusIndex: Int): T? =
-        items.getOrNull(focusTargetIndex(focusIndex, items.size))
+        items.getOrNull(focusIndex)
     /** 外部换台（数字/166-167/上一台/抽屉选台/音轨切换）→ 丢弃焦点。
      *  t16（F4）：生产代码已不再直接调用（状态迁移统一在 PlayerActivity 里做），保留是给
      *  `InfoCardPolicyTest` 校验「外部换台必须退聚焦」这条不变量，勿删。 */
