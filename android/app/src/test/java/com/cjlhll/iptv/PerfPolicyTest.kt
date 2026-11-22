@@ -127,4 +127,81 @@ class PerfPolicyTest {
         // 回退：改 0 即恢复旧行为。
         assertTrue(ColdStartPolicy.EPG_AFTER_FIRST_FRAME)
     }
+
+    // ── S1：小分组抽屉崩溃回归 ──────────────────────────────────────────────
+    // 旧实现 `coerceIn(FIRST_FRAME_ROWS, channels.size)` 在 0/1/2 行时 lo>hi 抛异常。
+    // 这里断言抽出的纯函数在所有边界都不越界、不崩。
+
+    @Test
+    fun s1DrawerFirstRowsClampsToActualRowCount() {
+        assertEquals("0 行 → 首帧 0", 0, PerfPolicy.drawerFirstRows(0))
+        assertEquals("1 行 → 首帧 1（不得用 3 越界）", 1, PerfPolicy.drawerFirstRows(1))
+        assertEquals("2 行 → 首帧 2", 2, PerfPolicy.drawerFirstRows(2))
+        assertEquals("3 行 → 首帧 3", 3, PerfPolicy.drawerFirstRows(3))
+        assertEquals("大组 → 首帧仍 3", 3, PerfPolicy.drawerFirstRows(147))
+        assertEquals("负数 defensive → 0", 0, PerfPolicy.drawerFirstRows(-1))
+    }
+
+    @Test
+    fun s1SafeOpenTargetNeverExceedsRowCountForSmallGroups() {
+        // 0 行：旧实现抛异常，新实现 first=0、target=0。
+        assertEquals(0, PerfPolicy.drawerSafeOpenTarget(0, 0))
+        assertEquals(0, PerfPolicy.drawerSafeOpenTarget(50, 0))
+        // 1/2 行：target 被钳在行数内，且 >= first。
+        assertEquals(1, PerfPolicy.drawerSafeOpenTarget(0, 1))
+        assertEquals(1, PerfPolicy.drawerSafeOpenTarget(999, 1))
+        assertEquals(2, PerfPolicy.drawerSafeOpenTarget(0, 2))
+        assertEquals(2, PerfPolicy.drawerSafeOpenTarget(999, 2))
+        assertEquals("3 行起步 → 目标 3", 3, PerfPolicy.drawerSafeOpenTarget(0, 3))
+    }
+
+    @Test
+    fun s1SafeOpenTargetPreservesLargeGroupWindowSemantics() {
+        // 大组仍按“选中行 + 工作窗口，且不少于首帧 3 行”计算，行为不变。
+        assertEquals(28, PerfPolicy.drawerSafeOpenTarget(0, 147))
+        assertEquals(3, PerfPolicy.drawerSafeOpenTarget(0, 3))
+        assertEquals(68, PerfPolicy.drawerSafeOpenTarget(40, 147)) // 40+28=68，仍 <= 147
+    }
+
+    @Test
+    fun s1SafeOpenTargetStaysWithinBoundsForAnyInput() {
+        // 对 0..200 行、初始索引 0..200、越界负数做全量边界扫描：
+        // 结果必须始终落在 [firstRows(n), n]，且不抛异常。
+        for (n in 0..200) {
+            val first = PerfPolicy.drawerFirstRows(n)
+            for (idx in -5..200) {
+                val target = PerfPolicy.drawerSafeOpenTarget(idx, n)
+                assertTrue("n=$n idx=$idx target=$target 不得小于 first=$first", target >= first)
+                assertTrue("n=$n idx=$idx target=$target 不得大于 n=$n", target <= n)
+            }
+        }
+    }
+
+    @Test
+    fun s1LargeGroupToSmallGroupTargetAndFocusStayValid() {
+        // 模拟“打开抽屉后从大组切到 2 行小组”：
+        // 大组打开时选中行 100 → 目标在窗口内；切组后 focusedChannelUrl 被清空、
+        // selectedChannelUrl 在小组中不存在 → initialScrollIndex 回落到 0。
+        val largeOpenTarget = PerfPolicy.drawerSafeOpenTarget(100, 147)
+        assertEquals(128, largeOpenTarget)
+        val smallCount = 2
+        val smallInitialScroll = 0 // channelIndexByUrl[旧 selectedUrl] ?: 0
+        val smallOpenTarget = PerfPolicy.drawerSafeOpenTarget(smallInitialScroll, smallCount)
+        assertEquals("小组目标钳到 2，不崩", 2, smallOpenTarget)
+        // 非空小组聚焦第一项（focusTargetIndex=0），索引必须有效且首帧能覆盖到它。
+        assertTrue("非空小组落焦索引 0 有效", PerfPolicy.drawerFocusIndexInRange(0, smallCount))
+        assertTrue("首帧揭示行数必须覆盖落焦行", PerfPolicy.drawerFirstRows(smallCount) > 0)
+        assertTrue("小组越界索引无效", !PerfPolicy.drawerFocusIndexInRange(2, smallCount))
+        assertFalse("空组没有有效落焦索引", PerfPolicy.drawerFocusIndexInRange(0, 0))
+    }
+
+    @Test
+    fun s1FirstVisibleIndexClampHandlesEmptyAndSmallGroups() {
+        // 旧实现 coerceIn(0, channelCount-1) 在 count=0 时抛异常。
+        assertEquals("空组 → 0 占位（不抛）", 0, PerfPolicy.drawerSafeFirstVisibleIndex(0, 0))
+        assertEquals("空组越界索引 → 0 占位", 0, PerfPolicy.drawerSafeFirstVisibleIndex(99, 0))
+        assertEquals("1 行 → 0", 0, PerfPolicy.drawerSafeFirstVisibleIndex(5, 1))
+        assertEquals("2 行 → 1", 1, PerfPolicy.drawerSafeFirstVisibleIndex(99, 2))
+        assertEquals("大组越界 → 末尾", 146, PerfPolicy.drawerSafeFirstVisibleIndex(999, 147))
+    }
 }

@@ -152,6 +152,26 @@ def main() -> int:
         problems.append("PlayerDrawer.kt: sub_narrow probe missing (t60)")
     if "openTarget" not in drawer_code:
         problems.append("PlayerDrawer.kt: bounded open window (openTarget) missing (t42)")
+    # S1: small-group drawer crash guard. The old `coerceIn(FIRST_FRAME_ROWS, channels.size)`
+    # and `coerceIn(0, channelCount - 1)` throw IllegalArgumentException when lo>hi (0–2 rows / empty
+    # groups). The safe open-target/first-rows/first-visible helpers in PerfPolicy must be used,
+    # and the raw lo>hi patterns must be gone.
+    if "PerfPolicy.drawerSafeOpenTarget(" not in drawer_code:
+        problems.append("PlayerDrawer.kt: S1 open target must go through PerfPolicy.drawerSafeOpenTarget")
+    if "PerfPolicy.drawerFirstRows(" not in drawer_code:
+        problems.append("PlayerDrawer.kt: S1 first rows must go through PerfPolicy.drawerFirstRows")
+    if "PerfPolicy.drawerSafeFirstVisibleIndex(" not in drawer_code:
+        problems.append("PlayerDrawer.kt: S1 first-visible clamp must go through PerfPolicy.drawerSafeFirstVisibleIndex")
+    if re.search(r"coerceIn\(PerfPolicy\.DRAWER_FIRST_FRAME_ROWS,\s*channels\.size\)", drawer_code):
+        problems.append("PlayerDrawer.kt: forbidden lo>hi coerceIn(FIRST_FRAME_ROWS, channels.size) is back (S1)")
+    if re.search(r"coerceIn\(0,\s*channelCount\s*-\s*1\)", drawer_code):
+        problems.append("PlayerDrawer.kt: forbidden coerceIn(0, channelCount-1) is back (S1)")
+    for helper in ("fun drawerSafeOpenTarget(", "fun drawerFirstRows(", "fun drawerSafeFirstVisibleIndex("):
+        if helper not in policy:
+            problems.append("PerfPolicy.kt: S1 pure helper missing: " + helper)
+    # Back must still close the drawer (S1 must not change the Back branch).
+    if "it.key == Key.Back" not in drawer_code or "onClose()" not in drawer_code:
+        problems.append("PlayerDrawer.kt: Back branch must still close the drawer (S1 regression)")
     # the channel row must not carry the EPG subtitle / marquee / progress bar any more
     row_start = drawer_code.find("private fun DrawerChannelItem(")
     row_end = drawer_code.find("private fun ThinProgressBar(", row_start)

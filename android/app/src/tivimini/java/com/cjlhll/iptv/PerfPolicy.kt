@@ -47,6 +47,43 @@ object PerfPolicy {
     /** 首帧先组合多少行（t39：6→3，专门消掉 t37 残留的 304ms 巨帧；3 行仍足以"有内容"）。 */
     const val DRAWER_FIRST_FRAME_ROWS = 3
 
+    /**
+     * S1：按实际行数计算首帧揭示行数。
+     *
+     * 旧实现在 PlayerDrawer 里直接 `DRAWER_FIRST_FRAME_ROWS.coerceIn(0, channels.size)`，
+     * 空/小分组（size < 3）时 lo>hi 会抛 IllegalArgumentException；这里改写成
+     * `minOf(FIRST, n)`，保证结果始终落在 0..n，且 0 行返回 0。
+     */
+    fun drawerFirstRows(channelCount: Int): Int =
+        if (channelCount <= 0) 0 else minOf(DRAWER_FIRST_FRAME_ROWS, channelCount)
+
+    /**
+     * S1：抽屉打开时的目标窗口，按实际行数计算，避免 `coerceIn(lo, hi)` 在 lo>hi 时崩溃。
+     *
+     * 语义与旧实现一致（大组：首帧 3 行起步、目标选中行 + OPEN_WINDOW），
+     * 但对 0/1/2 行的小分组安全：first=minOf(FIRST, n)，target 落在 first..n。
+     */
+    fun drawerSafeOpenTarget(initialScrollIndex: Int, channelCount: Int): Int {
+        val n = channelCount.coerceAtLeast(0)
+        val first = drawerFirstRows(n)
+        val start = initialScrollIndex.coerceAtLeast(0)
+        return maxOf(first, minOf(start + DRAWER_OPEN_WINDOW_ROWS, n))
+    }
+
+    /**
+     * S1：频道列落焦索引的安全钳制。
+     *
+     * 旧实现 `firstVisibleItemIndex.coerceIn(0, channelCount - 1)` 在 channelCount=0 时
+     * lo=0 > hi=-1 抛异常；这里对 <=0 的列表返回 0（调用方已用 channelCount>0 守卫按键分支，
+     * 返回 0 仅作为不可能被使用的安全占位），其余钳到 0..(count-1)。
+     */
+    fun drawerSafeFirstVisibleIndex(firstVisibleItemIndex: Int, channelCount: Int): Int =
+        if (channelCount <= 0) 0 else firstVisibleItemIndex.coerceIn(0, channelCount - 1)
+
+    /** S1：焦点索引是否落在非空频道列表内（大组切小组后 focusedChannelUrl 已清空时用 0 落焦）。 */
+    fun drawerFocusIndexInRange(index: Int, channelCount: Int): Boolean =
+        channelCount > 0 && index in 0 until channelCount
+
     /** 之后每帧追加多少行（t33：3→2，把单帧成本再压一半）。 */
     const val DRAWER_ROWS_PER_FRAME = 2
 

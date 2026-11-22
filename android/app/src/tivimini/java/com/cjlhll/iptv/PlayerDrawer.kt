@@ -343,9 +343,13 @@ fun PlayerDrawer(
         if (!visible || !PerfPolicy.DRAWER_INCREMENTAL_ROWS) return@LaunchedEffect
         // t46：打开只**设定目标**（有界开窗），实际推进交给分帧泵（每帧 +2 行）。
         // t48：首屏目标 28 → 18（减少分帧数 13→9），仍按 step=2 分帧推进。
-        val openTarget = (initialScrollIndex + PerfPolicy.DRAWER_OPEN_WINDOW_ROWS)
-            .coerceIn(PerfPolicy.DRAWER_FIRST_FRAME_ROWS, channels.size)
-        revealedRows = PerfPolicy.DRAWER_FIRST_FRAME_ROWS.coerceIn(0, channels.size)
+        // S1：按实际行数计算首帧与目标窗口。旧写法
+        // `(initialScrollIndex + OPEN_WINDOW).coerceIn(FIRST_FRAME_ROWS, channels.size)` 在
+        // channels.size < FIRST_FRAME_ROWS（0/1/2 行的小分组）时 lo>hi 会抛
+        // IllegalArgumentException，导致打开抽屉直接崩溃。pure helper 保证 lo<=hi：
+        // 0 行 → first=0、openTarget=0；1/2 行 → 目标钳在行数内，不崩也不越界。
+        val openTarget = PerfPolicy.drawerSafeOpenTarget(initialScrollIndex, channels.size)
+        revealedRows = PerfPolicy.drawerFirstRows(channels.size)
         revealTarget = openTarget
         PerfTrace.d {
             "drawer_compose target=$openTarget first=${PerfPolicy.DRAWER_FIRST_FRAME_ROWS} " +
@@ -872,7 +876,13 @@ fun PlayerDrawer(
                         // → focusTargetIndex/focusTargetUrl 变化 → 该行挂上 requester → 现有 effect 聚焦；
                         // → onRowFocusedScroll 抬高 revealTarget 并按帧补行，然后滚动跟随。
                         val down = it.key == Key.DirectionDown
-                        val base = focusedIndex ?: channelListState.firstVisibleItemIndex.coerceIn(0, channelCount - 1)
+                        // S1：`coerceIn(0, channelCount - 1)` 在 channelCount=0 时 lo>hi 会抛
+                        // IllegalArgumentException；外层分支虽已用 channelCount>0 守卫，
+                        // 这里仍改用安全钳制，空列表返回 0 占位（不会进入下面的取模分支）。
+                        val base = focusedIndex
+                            ?: PerfPolicy.drawerSafeFirstVisibleIndex(
+                                channelListState.firstVisibleItemIndex, channelCount
+                            )
                         val next = if (down) (base + 1) % channelCount
                         else if (base - 1 < 0) channelCount - 1 else base - 1
                         if (next == base) {
