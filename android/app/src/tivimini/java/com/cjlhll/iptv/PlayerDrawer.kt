@@ -53,7 +53,6 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.onTextLayout
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.graphicsLayer
@@ -1203,6 +1202,8 @@ private fun DrawerGroupItem(
     onClick: () -> Unit
 ) {
     var focused by remember { mutableStateOf(false) }
+    // t60：副标题“过窄”判定的像素阈值（8dp），供 onTextLayout 探针使用。
+    val minSubtitlePx = with(androidx.compose.ui.platform.LocalDensity.current) { 8.dp.roundToPx() }
     val bg = when {
         focused -> MaterialTheme.colorScheme.surfaceVariant
         else -> MaterialTheme.colorScheme.surface.copy(alpha = 0.01f)
@@ -1324,15 +1325,15 @@ private fun DrawerChannelItem(
                         // t46：给验收一个可断言的语义节点（t45 在语义树里没观测到副标题）。
                         // t60：不再用 softWrap=false（那会把文字测成极窄宽），改为单行 ellipsis + 确定宽度；
                         // onTextLayout 里探测“过窄/多行”并打点，供验收断言。
+                        onTextLayout = { result ->
+                            val w = result.size.width
+                            if (w < minSubtitlePx || result.lineCount > 1) {
+                                PerfTrace.d { "sub_narrow idx=$index w=$w lines=${result.lineCount}" }
+                            }
+                        },
                         modifier = Modifier
                             .fillMaxWidth()
                             .testTag("drawer_row_subtitle")
-                            .onTextLayout { result ->
-                                val w = result.size.width
-                                if (w < 8.dp.roundToPx() || result.lineCount > 1) {
-                                    PerfTrace.d { "sub_narrow idx=$index w=$w lines=${result.lineCount}" }
-                                }
-                            }
                     )
                 }
                 val progress = nowProgram?.progress
