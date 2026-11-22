@@ -150,7 +150,7 @@ private fun SourceOptionItem(
 ) {
     var focused by remember { mutableStateOf(false) }
     val bg = when {
-        focused -> MaterialTheme.colorScheme.surfaceVariant
+        focused -> BrandFocus.BgColor
         else -> MaterialTheme.colorScheme.surface.copy(alpha = 0.01f)
     }
     val title = if (selected) "$label (当前)" else label

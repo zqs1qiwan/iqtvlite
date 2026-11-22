@@ -450,7 +450,7 @@ private fun SettingsRootItem(
     var focused by remember { mutableStateOf(false) }
     val bringIntoView = remember { BringIntoViewRequester() }
     val scope = rememberCoroutineScope()
-    val bg = if (focused) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.surface.copy(alpha = 0.01f)
+    val bg = if (focused) BrandFocus.BgColor else MaterialTheme.colorScheme.surface.copy(alpha = 0.01f)
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -969,7 +969,7 @@ private fun SettingsItem(
     // Every row gets its own requester, so no call site has to know about scrolling.
     val bringIntoView = remember { BringIntoViewRequester() }
     val scope = rememberCoroutineScope()
-    val bg = if (focused) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.surface.copy(alpha = 0.01f)
+    val bg = if (focused) BrandFocus.BgColor else MaterialTheme.colorScheme.surface.copy(alpha = 0.01f)
 
     Row(
         modifier = Modifier

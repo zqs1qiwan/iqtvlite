@@ -1,22 +1,30 @@
 package com.cjlhll.iptv
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Test
 
 /** FULLFIX 复审 B2（U5）：播放台标记 + 节目单空态三分类的纯逻辑用例。 */
 class DrawerUiPolicyTest {
 
-    // ── B2①：播放台 ▶ 标记与浏览焦点正交 ──────────────────────────────────
+    // ── V4 §5：播放台变色（不再 ▶ 文本） ────────────────────────────────────
     @Test
-    fun channelLabelMarksOnlyThePlayingChannel() {
-        assertEquals("1. CCTV-1", DrawerUiPolicy.channelLabel(false, 1, "CCTV-1"))
-        assertEquals("▶ 1. CCTV-1", DrawerUiPolicy.channelLabel(true, 1, "CCTV-1"))
-        assertEquals("▶ 13. 湖南卫视", DrawerUiPolicy.channelLabel(true, 13, "湖南卫视"))
-        // 两个维度正交：selected 只决定 ▶ 前缀，与焦点状态无关（焦点是 surfaceVariant 底色）。
+    fun channelLabelHasNoPlayingMark() {
+        assertEquals("1. CCTV-1", DrawerUiPolicy.channelLabel(1, "CCTV-1"))
+        assertEquals("13. 湖南卫视", DrawerUiPolicy.channelLabel(13, "湖南卫视"))
+        assertFalse("标签不得含 ▶", DrawerUiPolicy.channelLabel(1, "CCTV-1").contains("▶"))
+        assertFalse("标签不得含 播放中", DrawerUiPolicy.channelLabel(1, "CCTV-1").contains("播放中"))
+    }
+
+    @Test
+    fun playingNameColorUsesBrandBlueOnlyForPlayingChannel() {
         assertEquals(
-            "播放台标记与焦点无关",
-            "▶ 2. 央视二套",
-            DrawerUiPolicy.channelLabel(true, 2, "央视二套"),
+            DrawerUiPolicy.NameColor.PLAYING,
+            DrawerUiPolicy.playingNameColor(true),
+        )
+        assertEquals(
+            DrawerUiPolicy.NameColor.NORMAL,
+            DrawerUiPolicy.playingNameColor(false),
         )
     }
 

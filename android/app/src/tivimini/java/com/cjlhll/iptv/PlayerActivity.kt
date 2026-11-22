@@ -183,8 +183,8 @@ class PlayerActivity : ComponentActivity() {
 
         composeOverlay.setContent {
             val colorScheme = darkColorScheme(
-                primary = ComposeColor(0xFFBDBDBD),
-                onPrimary = ComposeColor.Black,
+                primary = BrandFocus.BlueColor,
+                onPrimary = ComposeColor.White,
                 secondary = ComposeColor(0xFF757575),
                 onSecondary = ComposeColor.Black,
                 tertiary = ComposeColor(0xFF616161),
@@ -192,7 +192,10 @@ class PlayerActivity : ComponentActivity() {
                 background = ComposeColor(0xFF121212),
                 onBackground = ComposeColor.White,
                 surface = ComposeColor(0xFF1E1E1E),
-                onSurface = ComposeColor.White
+                onSurface = ComposeColor.White,
+                // V4 §9：焦点统一品牌蓝（浅底 + 白字），所有 surfaceVariant 焦点点自动变蓝。
+                surfaceVariant = BrandFocus.BgColor,
+                onSurfaceVariant = ComposeColor.White
             )
 
             MaterialTheme(colorScheme = colorScheme) {

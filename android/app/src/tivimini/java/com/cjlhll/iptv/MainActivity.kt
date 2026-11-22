@@ -79,8 +79,8 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContent {
             val colorScheme = darkColorScheme(
-                primary = Color(0xFFBDBDBD),
-                onPrimary = Color.Black,
+                primary = BrandFocus.BlueColor,
+                onPrimary = Color.White,
                 secondary = Color(0xFF757575),
                 onSecondary = Color.Black,
                 tertiary = Color(0xFF616161),
@@ -88,7 +88,10 @@ class MainActivity : ComponentActivity() {
                 background = Color(0xFF121212),
                 onBackground = Color.White,
                 surface = Color(0xFF1E1E1E),
-                onSurface = Color.White
+                onSurface = Color.White,
+                // V4 §9：焦点统一品牌蓝。
+                surfaceVariant = BrandFocus.BgColor,
+                onSurfaceVariant = Color.White
             )
 
             MaterialTheme(colorScheme = colorScheme) {
@@ -351,13 +354,13 @@ fun MainScreen() {
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 val textFieldColors = TextFieldDefaults.colors(
-                    focusedContainerColor = Color(0xFF303030),
+                    focusedContainerColor = BrandFocus.BgColor,
                     unfocusedContainerColor = Color(0xFF303030),
                     focusedTextColor = Color.White,
                     unfocusedTextColor = Color.White,
-                    focusedLabelColor = Color.LightGray,
+                    focusedLabelColor = BrandFocus.BlueColor,
                     unfocusedLabelColor = Color.Gray,
-                    cursorColor = Color.White
+                    cursorColor = BrandFocus.BlueColor
                 )
 
                 TextField(

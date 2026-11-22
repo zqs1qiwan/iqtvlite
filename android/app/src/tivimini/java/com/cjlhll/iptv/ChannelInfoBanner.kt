@@ -437,7 +437,7 @@ private fun RecentStrip(
                     // 所有按键统一在 banner 根部 onPreviewKeyEvent 处理；卡片只上报焦点。
                     .focusable()
                     .background(
-                        if (isFocused) MaterialTheme.colorScheme.surfaceVariant else Color.Transparent
+                        if (isFocused) BrandFocus.BgColor else Color.Transparent
                     )
                     .padding(4.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
@@ -454,8 +454,9 @@ private fun RecentStrip(
                     style = MaterialTheme.typography.bodySmall,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    color = if (isFocused) MaterialTheme.colorScheme.onSurface
-                    else MaterialTheme.colorScheme.onSurfaceVariant
+                    color = Color.White,
+                    fontWeight = if (isFocused) androidx.compose.ui.text.font.FontWeight.Bold
+                    else androidx.compose.ui.text.font.FontWeight.Normal
                 )
             }
             if (index != items.lastIndex) Spacer(modifier = Modifier.width(12.dp))

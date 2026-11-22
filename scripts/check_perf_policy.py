@@ -240,14 +240,15 @@ def main() -> int:
         problems.append("DrawerUiPolicy.kt missing (review B2)")
     else:
         up = ui_policy.read_text(encoding="utf-8")
-        for token in ("fun channelLabel(", "val PLAYING_MARK", "fun programEmptyText(",
+        for token in ("fun channelLabel(", "fun programEmptyText(", "fun playingNameColor(",
                       "未配置 EPG 源", "EPG 加载失败", "暂无节目单"):
             if token not in up:
                 problems.append("DrawerUiPolicy.kt: missing " + token)
-    if "DrawerUiPolicy.channelLabel(selected" not in drawer_code:
-        problems.append("PlayerDrawer.kt: selected row must render the playing marker via DrawerUiPolicy.channelLabel (B2①)")
-    if "playingSuffix" not in drawer_code:
-        problems.append("PlayerDrawer.kt: playing suffix (· 播放中) missing (B2①)")
+    # V4 §5: playing marker is a blue color (not ▶ text); channelLabel(idx,title) 2-arg.
+    if "DrawerUiPolicy.channelLabel(index" not in drawer_code:
+        problems.append("PlayerDrawer.kt: label must use DrawerUiPolicy.channelLabel(index,title) (V4 §5)")
+    if "DrawerUiPolicy.playingNameColor(" not in drawer_code:
+        problems.append("PlayerDrawer.kt: playing row must use DrawerUiPolicy.playingNameColor (V4 §5)")
     if "DrawerUiPolicy.programEmptyText(" not in drawer_code:
         problems.append("PlayerDrawer.kt: EPG empty state must use DrawerUiPolicy.programEmptyText (B2③)")
     if "epgSourceConfigured: Boolean" not in drawer_code or "epgLoadFailed: Boolean" not in drawer_code:
@@ -301,6 +302,19 @@ def main() -> int:
         problems.append("PlayerDrawer.kt: selectedGroup effect still early-returns when groups collapsed (V4 §2)")
     if "remember(channelGroups, selectedGroup)" not in activity_code:
         problems.append("PlayerActivity.kt: filteredChannels cache (remember) must be preserved (V4 §2)")
+    # V4 §5: playing channel uses blue color, no ▶/播放中 text.
+    if "PLAYING_MARK" in (SRC / "DrawerUiPolicy.kt").read_text(encoding="utf-8"):
+        problems.append("DrawerUiPolicy.kt: PLAYING_MARK must be removed (V4 §5)")
+    if "▶" in drawer_code or "播放中" in drawer_code:
+        problems.append("PlayerDrawer.kt: no ▶/播放中 text (V4 §5 blue-color marker)")
+    if "playingNameColor(" not in drawer_code or "BrandFocus.BlueColor" not in drawer_code:
+        problems.append("PlayerDrawer.kt: playing row must use BrandFocus blue (V4 §5/§9)")
+    # V4 §9: BrandFocus token exists and focus points use it (no hard border).
+    brand = SRC / "BrandFocus.kt"
+    if not brand.exists() or "0xFF2F6BFF" not in brand.read_text(encoding="utf-8"):
+        problems.append("BrandFocus.kt: #2F6BFF brand-blue token missing (V4 §9)")
+    if "surfaceVariant" in drawer_code and "focused -> MaterialTheme.colorScheme.surfaceVariant" in drawer_code:
+        problems.append("PlayerDrawer.kt: raw surfaceVariant focus point remains (V4 §9 use BrandFocus)")
 
     if "if (showContent)" not in drawer_code:
         problems.append("PlayerDrawer.kt: drawer list content must be gated by showContent (do not compose when closed)")

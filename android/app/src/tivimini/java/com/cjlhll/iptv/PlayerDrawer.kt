@@ -1282,7 +1282,7 @@ private fun DrawerGroupItem(
 ) {
     var focused by remember { mutableStateOf(false) }
     val bg = when {
-        focused -> MaterialTheme.colorScheme.surfaceVariant
+        focused -> BrandFocus.BgColor
         else -> MaterialTheme.colorScheme.surface.copy(alpha = 0.01f)
     }
 
@@ -1328,13 +1328,15 @@ private fun DrawerChannelItem(
     var focused by remember { mutableStateOf(false) }
     // V4 §1：逻辑焦点 OR 真实焦点 —— 行一被组合即高亮，不依赖 requestFocus 成功（深行要等 ~60 帧）。
     val showFocused = focused || logicalFocused
-    // FULLFIX B2①：播放台用 ▶ 前缀标识，与浏览焦点（surfaceVariant 底色）正交区分。
-    // 纯文本、无新节点/无动画/硬边框（沿用 Flat 风格），remember 避免每帧拼接。
-    val label = remember(selected, index, channel.title) {
-        DrawerUiPolicy.channelLabel(selected, index, channel.title)
+    // V4 §5：播放台用台名变色标识（不再 ▶ 文本），与浏览焦点底色正交。
+    val label = remember(index, channel.title) {
+        DrawerUiPolicy.channelLabel(index, channel.title)
     }
-    /** FULLFIX B2①：播放台副标题末尾追加「· 播放中」，仅 selected 时。 */
-    val playingSuffix = remember(selected) { if (selected) " · 播放中" else "" }
+    val nameColor = if (DrawerUiPolicy.playingNameColor(selected) == DrawerUiPolicy.NameColor.PLAYING) {
+        BrandFocus.BlueColor
+    } else {
+        MaterialTheme.colorScheme.onSurface
+    }
     // t46：聚焦行日志（确认副标题真的渲染 + 供 t47 归因滚动落点）。
     LaunchedEffect(focused) {
         if (focused) {
@@ -1345,11 +1347,9 @@ private fun DrawerChannelItem(
         }
     }
     val bg = when {
-        showFocused -> MaterialTheme.colorScheme.surfaceVariant
+        showFocused -> BrandFocus.BgColor
         else -> Color.Transparent
     }
-
-    val contentColor = MaterialTheme.colorScheme.onSurface
 
     Row(
         modifier = Modifier
@@ -1395,13 +1395,19 @@ private fun DrawerChannelItem(
                     text = label,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = contentColor
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontWeight = if (showFocused || nameColor == BrandFocus.BlueColor) {
+                            androidx.compose.ui.text.font.FontWeight.Bold
+                        } else {
+                            androidx.compose.ui.text.font.FontWeight.Medium
+                        }
+                    ),
+                    color = nameColor
                 )
                 // FULLFIX §1：无节目显示「无信息」（恢复初始设计），仍固定 16dp 高并 clip。
                 Box(modifier = Modifier.height(16.dp).fillMaxWidth().clipToBounds()) {
                     Text(
-                        text = (if (!programTitle.isNullOrBlank()) programTitle else "无信息") + playingSuffix,
+                        text = if (!programTitle.isNullOrBlank()) programTitle else "无信息",
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         style = MaterialTheme.typography.bodySmall,
@@ -1504,7 +1510,7 @@ private fun DrawerDateItem(
 ) {
     var focused by remember { mutableStateOf(false) }
     val bg = when {
-        focused -> MaterialTheme.colorScheme.surfaceVariant
+        focused -> BrandFocus.BgColor
         else -> MaterialTheme.colorScheme.surface.copy(alpha = 0.01f)
     }
 
@@ -1547,7 +1553,7 @@ private fun DrawerProgramItem(
 ) {
     var focused by remember { mutableStateOf(false) }
     val bg = when {
-        focused -> MaterialTheme.colorScheme.surfaceVariant
+        focused -> BrandFocus.BgColor
         else -> MaterialTheme.colorScheme.surface.copy(alpha = 0.01f)
     }
 
