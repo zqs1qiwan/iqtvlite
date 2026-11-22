@@ -30,6 +30,8 @@ object Prefs {
     private const val KEY_REMOTE_BACK = "remote_back"
     private const val KEY_REMOTE_DIGITS = "remote_digits"
     private const val KEY_REMOTE_CHANNEL_KEYS = "remote_channel_keys"
+    // FULLFIX §7：功能→按键全映射（v1）。保存 RemoteBindings.serialize 的结果。
+    private const val KEY_REMOTE_ACTION_BINDINGS = "remote_action_bindings_v1"
     // t205: start-up buffer tier (300/400/500 ms), default 稳/500.
     private const val KEY_PLAYBACK_BUFFER_MIN = "playback_buffer_min"
     // t218: neighbour pre-connect experiment (default OFF — opt-in only).
@@ -269,7 +271,34 @@ object Prefs {
             .remove(KEY_REMOTE_BACK)
             .remove(KEY_REMOTE_DIGITS)
             .remove(KEY_REMOTE_CHANNEL_KEYS)
+            .remove(KEY_REMOTE_ACTION_BINDINGS)
             .apply()
+    }
+
+    // ---- FULLFIX §7: function->key bindings (v1) with one-time legacy migration ----
+
+    /** 是否有任一旧 remote_* key 被显式写过（用于判断是否要迁移老偏好）。 */
+    private fun hasLegacyRemotePrefs(p: SharedPreferences): Boolean =
+        p.contains(KEY_REMOTE_UPDOWN) || p.contains(KEY_REMOTE_OK) || p.contains(KEY_REMOTE_BACK) ||
+            p.contains(KEY_REMOTE_DIGITS) || p.contains(KEY_REMOTE_CHANNEL_KEYS)
+
+    /**
+     * 读取功能→按键绑定：
+     * - 已存 v1 → parse（损坏则 DEFAULT）；
+     * - 未存 v1 但写过旧偏好 → migrate(旧 Settings) 并写回 v1 一次；
+     * - 都没有 → DEFAULT。
+     */
+    fun getRemoteBindings(context: Context): List<KeyBinding> {
+        val p = getPrefs(context)
+        val raw = p.getString(KEY_REMOTE_ACTION_BINDINGS, null)
+        if (raw != null) return RemoteBindings.parse(raw)
+        val bindings = if (hasLegacyRemotePrefs(p)) RemoteBindings.migrate(getRemoteSettings(context)) else RemoteBindings.DEFAULT
+        setRemoteBindings(context, bindings)
+        return bindings
+    }
+
+    fun setRemoteBindings(context: Context, bindings: List<KeyBinding>) {
+        getPrefs(context).edit().putString(KEY_REMOTE_ACTION_BINDINGS, RemoteBindings.serialize(bindings)).apply()
     }
 
     /** t189: write the EPG failure state in one step (single source: AutoUpdateConfig). */
