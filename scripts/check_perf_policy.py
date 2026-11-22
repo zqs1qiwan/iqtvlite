@@ -281,6 +281,15 @@ def main() -> int:
     # gating effect must depend on revealedRows.
     if "LaunchedEffect(visible, revealedRows, pendingScrollIndex)" not in drawer_code:
         problems.append("PlayerDrawer.kt: t15 correction effect must be keyed by revealedRows")
+    # t26: revealed-full reopen correction (focus not visible -> one scroll, once/debounced).
+    if "fun drawerFocusNeedsRevealCorrection(" not in policy:
+        problems.append("PerfPolicy.kt: drawerFocusNeedsRevealCorrection helper missing (t26)")
+    if "LaunchedEffect(visible, focusTargetIndex, revealedRows)" not in drawer_code:
+        problems.append("PlayerDrawer.kt: t26 reopen correction effect missing/keyed wrong")
+    if "PerfPolicy.drawerFocusNeedsRevealCorrection(" not in drawer_code:
+        problems.append("PlayerDrawer.kt: t26 must use drawerFocusNeedsRevealCorrection")
+    if "revealCorrectedKey" not in drawer_code or "drawer_reveal_correct" not in drawer_code:
+        problems.append("PlayerDrawer.kt: t26 once-marker (revealCorrectedKey) / log missing")
     # the old first-frame unconditional scrollToItem at open must be replaced by pending registration.
     if re.search(r"if \(targetIndex !in visibleIndices\) \{\s*runCatching \{ channelListState\.scrollToItem\(targetScroll\)", drawer_code):
         problems.append("PlayerDrawer.kt: old first-frame unconditional scrollToItem is back (t15 regression)")

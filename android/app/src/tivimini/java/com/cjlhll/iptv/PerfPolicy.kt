@@ -123,6 +123,27 @@ object PerfPolicy {
         return (focusIndex - 2).coerceIn(0, hi)
     }
 
+    /**
+     * t26（V4 残留）：revealed 已满时关→重开，焦点行若不在可见区，需要补一次滚动校正。
+     *
+     * 条件：焦点索引有效（>=0 且 < count）、揭示行数已覆盖焦点行（否则交给 t15 的门控，避免钳制）、
+     * 且焦点索引不在 [firstVisible, lastVisible] 可视窗口内。
+     * - 焦点可见 → false（不触发，防抖/防重滚）。
+     * - revealed 未满（焦点行还没组合出来）→ false（交给 t15 pending 门控，等揭示覆盖后再校正）。
+     */
+    fun drawerFocusNeedsRevealCorrection(
+        focusIndex: Int,
+        channelCount: Int,
+        revealedRows: Int,
+        firstVisibleIndex: Int,
+        lastVisibleIndex: Int,
+    ): Boolean {
+        if (focusIndex < 0 || focusIndex >= channelCount) return false
+        if (!drawerScrollCorrected(revealedRows, drawerScrollTargetIndex(focusIndex, channelCount))) return false
+        if (firstVisibleIndex < 0 || lastVisibleIndex < firstVisibleIndex) return false
+        return focusIndex < firstVisibleIndex || focusIndex > lastVisibleIndex
+    }
+
     /** 之后每帧追加多少行（t33：3→2，把单帧成本再压一半）。 */
     const val DRAWER_ROWS_PER_FRAME = 2
 

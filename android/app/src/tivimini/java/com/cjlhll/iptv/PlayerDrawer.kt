@@ -418,6 +418,43 @@ fun PlayerDrawer(
         PerfTrace.d { "drawer_scroll_correct target=$target revealed=$revealedRows" }
     }
 
+    // t26（V4 残留）：抽屉保持挂载 + revealed 已满时关→重开，t15 的 pending 门控不会重触发
+    // （hasInitializedDrawerFocus 已 true、selectedChannelUrl 未变），焦点行可能落在可见区外。
+    // 这里在「可见 + 焦点索引变化 + 揭示覆盖焦点行」时检查一次：若焦点不在 visibleItemsInfo
+    // 则补一次 scrollToItem(focus - lookahead)。用 snapshotFlow 等布局就绪、once 标记防抖防重滚。
+    val revealCorrectedKey = remember { mutableStateOf<Pair<Boolean, Int>?>(null) }
+    LaunchedEffect(visible, focusTargetIndex, revealedRows) {
+        if (!visible) {
+            revealCorrectedKey.value = null // 关闭时复位，下次开可再校正一次
+            return@LaunchedEffect
+        }
+        if (focusTargetIndex < 0 || channels.isEmpty()) return@LaunchedEffect
+        val key = visible to focusTargetIndex
+        if (revealCorrectedKey.value == key) return@LaunchedEffect // once：同一开合+同一焦点只校正一次
+        snapshotFlow {
+            val items = channelListState.layoutInfo.visibleItemsInfo
+            Triple(
+                items.firstOrNull()?.index ?: -1,
+                items.lastOrNull()?.index ?: -1,
+                items.isNotEmpty(),
+            )
+        }.collect { (first, last, hasLayout) ->
+            if (!hasLayout || revealCorrectedKey.value == key) return@collect
+            if (PerfPolicy.drawerFocusNeedsRevealCorrection(
+                    focusTargetIndex, channels.size, revealedRows, first, last,
+                )
+            ) {
+                revealCorrectedKey.value = key
+                val target = PerfPolicy.drawerScrollTargetIndex(focusTargetIndex, channels.size)
+                runCatching { channelListState.scrollToItem(target) }
+                PerfTrace.d { "drawer_reveal_correct target=$target focus=$focusTargetIndex revealed=$revealedRows first=$first last=$last" }
+            } else if (first in 0..last && focusTargetIndex in first..last) {
+                // 焦点已可见：标记已处理，避免后续 repeated layout 事件反复判定。
+                revealCorrectedKey.value = key
+            }
+        }
+    }
+
     // t39：滚动/布局驱动按需增长 —— 只要“最后一个可见项”接近已揭示末尾，就再揭示一个窗口，
     // 保证向下滚动永远有下一屏（用户感知与全量揭示一致，但不再有 72 个重帧）。
     LaunchedEffect(visible, channels.size) {

@@ -259,4 +259,49 @@ class PerfPolicyTest {
         assertEquals(0, PerfPolicy.drawerScrollTargetIndex(5, 1))
         assertEquals(0, PerfPolicy.drawerScrollTargetIndex(999, 2))
     }
+
+    // ── t26：revealed 已满但焦点不可见 → 补一次滚动校正 ─────────────────────
+    @Test
+    fun t26RevealFullFocusInvisibleTriggersCorrection() {
+        // 真机残留：revealed=141（已满）、焦点 idx114、可见 first=58 last=67 → 需校正。
+        assertTrue(
+            "焦点 idx114 不在可见区 58..67 → 触发",
+            PerfPolicy.drawerFocusNeedsRevealCorrection(114, 141, 141, 58, 67),
+        )
+        assertTrue(
+            "P8b：焦点 126 不在可见区 58..67 → 触发",
+            PerfPolicy.drawerFocusNeedsRevealCorrection(126, 141, 141, 58, 67),
+        )
+    }
+
+    @Test
+    fun t26FocusVisibleDoesNotTriggerCorrection() {
+        // 焦点在可见区内 → 不触发（防抖/防重滚）。
+        assertFalse(
+            "焦点 104 在可见区 100..111 → 不触发",
+            PerfPolicy.drawerFocusNeedsRevealCorrection(104, 141, 141, 100, 111),
+        )
+        assertFalse(
+            "焦点在边界 first → 不触发",
+            PerfPolicy.drawerFocusNeedsRevealCorrection(58, 141, 141, 58, 67),
+        )
+        assertFalse(
+            "焦点在边界 last → 不触发",
+            PerfPolicy.drawerFocusNeedsRevealCorrection(67, 141, 141, 58, 67),
+        )
+    }
+
+    @Test
+    fun t26RevealNotEnoughOrInvalidFocusDoesNotTrigger() {
+        // revealed 未满（焦点行还没组合出来）→ 交给 t15 pending 门控，不在这里触发。
+        assertFalse(
+            "revealed=60 未覆盖焦点 114 → 不触发",
+            PerfPolicy.drawerFocusNeedsRevealCorrection(114, 141, 60, 58, 67),
+        )
+        // 无效焦点索引不触发。
+        assertFalse(PerfPolicy.drawerFocusNeedsRevealCorrection(-1, 141, 141, 58, 67))
+        assertFalse(PerfPolicy.drawerFocusNeedsRevealCorrection(141, 141, 141, 58, 67))
+        // 无布局（first<0）不触发。
+        assertFalse(PerfPolicy.drawerFocusNeedsRevealCorrection(114, 141, 141, -1, -1))
+    }
 }
