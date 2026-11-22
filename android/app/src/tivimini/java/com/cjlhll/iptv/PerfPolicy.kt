@@ -144,6 +144,38 @@ object PerfPolicy {
         return focusIndex < firstVisibleIndex || focusIndex > lastVisibleIndex
     }
 
+    /**
+     * t29（单一真源）：统一滚动校正决策。
+     *
+     * 意图 [desiredFocusIndex] 是"希望处于可视区的焦点行索引"（=-1 无意图），并非首可见行本身；
+     * 真正 scrollToItem 的索引由 [drawerScrollTargetIndex] 派生。给定当前揭示行数与可见窗口，
+     * 返回唯一动作：
+     * - SCROLL：意图有效 + 揭示已覆盖焦点行 + 焦点行不在可视区 → 执行一次 scrollToItem；
+     * - CLEAR：焦点行已可见（无需滚，历史回归"焦点已可见不滚"）或意图无效 → 清意图不滚；
+     * - WAIT：意图有效但揭示尚未覆盖焦点行 → 等分帧揭示覆盖后再判（不滚、不清）。
+     */
+    enum class ScrollDecision { SCROLL, CLEAR, WAIT }
+
+    fun drawerScrollDecision(
+        desiredFocusIndex: Int,
+        channelCount: Int,
+        revealedRows: Int,
+        firstVisibleIndex: Int,
+        lastVisibleIndex: Int,
+    ): ScrollDecision {
+        if (desiredFocusIndex < 0 || desiredFocusIndex >= channelCount) return ScrollDecision.CLEAR
+        if (!drawerScrollCorrected(revealedRows, drawerScrollTargetIndex(desiredFocusIndex, channelCount))) {
+            return ScrollDecision.WAIT
+        }
+        if (firstVisibleIndex < 0 || lastVisibleIndex < firstVisibleIndex) return ScrollDecision.WAIT
+        // 焦点的"目标首可见行"已落在可视窗口 → 视为已就位、清意图不滚（防过冲回滚）。
+        return if (desiredFocusIndex in firstVisibleIndex..lastVisibleIndex) {
+            ScrollDecision.CLEAR
+        } else {
+            ScrollDecision.SCROLL
+        }
+    }
+
     /** 之后每帧追加多少行（t33：3→2，把单帧成本再压一半）。 */
     const val DRAWER_ROWS_PER_FRAME = 2
 

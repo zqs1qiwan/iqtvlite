@@ -304,4 +304,60 @@ class PerfPolicyTest {
         // 无布局（first<0）不触发。
         assertFalse(PerfPolicy.drawerFocusNeedsRevealCorrection(114, 141, 141, -1, -1))
     }
+
+    // ── t29：单一真源 drawerScrollDecision（SCROLL / CLEAR / WAIT） ──────────
+    @Test
+    fun t29SingleSourceDecisionScrollWhenFocusInvisible() {
+        // 焦点 114 不在可视区 58..67、revealed 已满 → SCROLL（深行 zap / P8b 关开）。
+        assertEquals(
+            PerfPolicy.ScrollDecision.SCROLL,
+            PerfPolicy.drawerScrollDecision(114, 141, 141, 58, 67),
+        )
+        assertEquals(
+            PerfPolicy.ScrollDecision.SCROLL,
+            PerfPolicy.drawerScrollDecision(126, 141, 141, 58, 67),
+        )
+    }
+
+    @Test
+    fun t29FocusAlreadyVisibleClearsWithoutScroll() {
+        // 历史回归「焦点已可见仍多滚一次」：焦点在可视区 → CLEAR（清意图不滚）。
+        assertEquals(
+            PerfPolicy.ScrollDecision.CLEAR,
+            PerfPolicy.drawerScrollDecision(104, 141, 141, 100, 111),
+        )
+        assertEquals(
+            "边界 first → CLEAR",
+            PerfPolicy.ScrollDecision.CLEAR,
+            PerfPolicy.drawerScrollDecision(58, 141, 141, 58, 67),
+        )
+        assertEquals(
+            "边界 last → CLEAR",
+            PerfPolicy.ScrollDecision.CLEAR,
+            PerfPolicy.drawerScrollDecision(67, 141, 141, 58, 67),
+        )
+    }
+
+    @Test
+    fun t29DecisionWaitAndClearEdgeCases() {
+        // 揭示未覆盖焦点行 → WAIT（等分帧揭示，不滚不清）。
+        assertEquals(
+            PerfPolicy.ScrollDecision.WAIT,
+            PerfPolicy.drawerScrollDecision(114, 141, 60, 58, 67),
+        )
+        // 无布局 → WAIT。
+        assertEquals(
+            PerfPolicy.ScrollDecision.WAIT,
+            PerfPolicy.drawerScrollDecision(114, 141, 141, -1, -1),
+        )
+        // 无意图(-1) / 越界焦点 → CLEAR（清意图）。
+        assertEquals(
+            PerfPolicy.ScrollDecision.CLEAR,
+            PerfPolicy.drawerScrollDecision(-1, 141, 141, 58, 67),
+        )
+        assertEquals(
+            PerfPolicy.ScrollDecision.CLEAR,
+            PerfPolicy.drawerScrollDecision(141, 141, 141, 58, 67),
+        )
+    }
 }

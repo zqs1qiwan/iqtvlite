@@ -261,38 +261,39 @@ def main() -> int:
     if "FULLFIX B2②" not in ACTIVITY.read_text(encoding="utf-8"):
         problems.append("PlayerActivity.kt: B2② info-card independence note missing")
 
-    # t15: scroll correction decoupled from row reveal (cold-open / P8b deep-row).
-    if "fun drawerScrollCorrected(" not in policy or "fun drawerScrollTargetIndex(" not in policy:
-        problems.append("PerfPolicy.kt: t15 scroll-correction pure helpers missing")
-    # V4 §4: scroll target must use channelCount-2 upper bound (999/147 -> 145, CI #216).
-    # 两种合法写法都接受：直接 coerceIn(0, channelCount - 2)，或先算 hi=channelCount-2 再 coerceIn(0, hi)。
-    # 单纯字符串匹配曾误杀带小 count 防御的正确实现（CI #219），故改为语义等价断言。
+    for token in ("drawerScrollCorrected(", "PerfPolicy.drawerScrollTargetIndex("):
+        if token not in drawer_code and token not in policy:
+            problems.append("scroll pure helper missing: " + token)
+    # V4 §4: scroll target upper bound channelCount-2 (semantic check; CI #219 accepted both forms).
     direct_bound = "coerceIn(0, channelCount - 2)" in policy
     via_hi = ("val hi = channelCount - 2" in policy and "coerceIn(0, hi)" in policy)
     if not (direct_bound or via_hi):
         problems.append("PerfPolicy.kt: drawerScrollTargetIndex must clamp upper bound to channelCount-2 (V4 §4)")
-    for token in ("pendingScrollIndex", "drawerScrollCorrected(revealedRows, pendingScrollIndex)",
-                  "drawer_scroll_correct", "PerfPolicy.drawerScrollTargetIndex("):
-        if token not in drawer_code:
-            problems.append("PlayerDrawer.kt: t15 token missing " + token)
-    # once semantics: pending must be cleared to -1 before scrolling.
-    if "pendingScrollIndex = -1" not in drawer_code:
-        problems.append("PlayerDrawer.kt: t15 pending once-clear (=-1) missing")
-    # gating effect must depend on revealedRows.
-    if "LaunchedEffect(visible, revealedRows, pendingScrollIndex)" not in drawer_code:
-        problems.append("PlayerDrawer.kt: t15 correction effect must be keyed by revealedRows")
-    # t26: revealed-full reopen correction (focus not visible -> one scroll, once/debounced).
-    if "fun drawerFocusNeedsRevealCorrection(" not in policy:
-        problems.append("PerfPolicy.kt: drawerFocusNeedsRevealCorrection helper missing (t26)")
-    if "LaunchedEffect(visible, focusTargetIndex, revealedRows)" not in drawer_code:
-        problems.append("PlayerDrawer.kt: t26 reopen correction effect missing/keyed wrong")
-    if "PerfPolicy.drawerFocusNeedsRevealCorrection(" not in drawer_code:
-        problems.append("PlayerDrawer.kt: t26 must use drawerFocusNeedsRevealCorrection")
-    if "revealCorrectedKey" not in drawer_code or "drawer_reveal_correct" not in drawer_code:
-        problems.append("PlayerDrawer.kt: t26 once-marker (revealCorrectedKey) / log missing")
-    # the old first-frame unconditional scrollToItem at open must be replaced by pending registration.
+    # t29（根源重构）：唯一滚动意图真源，删除旧两套机制，唯一校正 effect。
+    if "fun drawerScrollDecision(" not in policy or "enum class ScrollDecision" not in policy:
+        problems.append("PerfPolicy.kt: drawerScrollDecision / ScrollDecision (single source) missing (t29)")
+    if "var desiredScrollIndex by remember { mutableIntStateOf(-1) }" not in drawer_code:
+        problems.append("PlayerDrawer.kt: single source desiredScrollIndex missing (t29)")
+    # 旧两套机制必须彻底删除（禁止补丁式叠加）。
+    for dead in ("pendingScrollIndex", "revealCorrectedKey", "drawerFocusNeedsRevealCorrection"):
+        if dead in drawer_code:
+            problems.append("PlayerDrawer.kt: legacy scroll mechanism still present: " + dead + " (t29)")
+    if "LaunchedEffect(visible, desiredScrollIndex, revealedRows, channels.size)" not in drawer_code:
+        problems.append("PlayerDrawer.kt: single correction effect keyed by desiredScrollIndex missing (t29)")
+    if "PerfPolicy.drawerScrollDecision(" not in drawer_code:
+        problems.append("PlayerDrawer.kt: must use drawerScrollDecision (t29)")
+    for decision in ("ScrollDecision.WAIT", "ScrollDecision.CLEAR", "ScrollDecision.SCROLL"):
+        if decision not in drawer_code:
+            problems.append("PlayerDrawer.kt: unified effect missing decision branch " + decision)
+    # channelListState.scrollToItem 只允许在唯一校正 effect 内（其它列 group/program/date 不算）。
+    channel_scroll_calls = len(re.findall(r"channelListState\.scrollToItem\(", drawer_code))
+    if channel_scroll_calls != 1:
+        problems.append(
+            "PlayerDrawer.kt: channelListState.scrollToItem must appear exactly once (single source), found %d" % channel_scroll_calls
+        )
+    # 旧的首帧无条件 scrollToItem 不得回归。
     if re.search(r"if \(targetIndex !in visibleIndices\) \{\s*runCatching \{ channelListState\.scrollToItem\(targetScroll\)", drawer_code):
-        problems.append("PlayerDrawer.kt: old first-frame unconditional scrollToItem is back (t15 regression)")
+        problems.append("PlayerDrawer.kt: old first-frame unconditional scrollToItem is back (t29 regression)")
     # V4 §1: list initial index fixed to 0 (no first-frame clamp flicker); logicalFocused drives highlight.
     if "initialFirstVisibleItemIndex = 0" not in drawer_code:
         problems.append("PlayerDrawer.kt: channelListState initial index must be 0 (V4 §1)")
