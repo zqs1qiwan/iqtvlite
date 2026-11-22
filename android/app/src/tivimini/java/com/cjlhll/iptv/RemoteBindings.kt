@@ -62,6 +62,21 @@ object RemoteBindings {
     const val KEY_PAGE_DOWN = 93
     const val KEY_LAST_CHANNEL = 229
 
+    /** 设置页可配置的功能（按展示顺序）；NONE 等内部项不在 UI 列出。 */
+    val CONFIGURABLE_ACTIONS: List<RemoteAction> = listOf(
+        RemoteAction.CHANNEL_UP,
+        RemoteAction.CHANNEL_DOWN,
+        RemoteAction.OPEN_DRAWER,
+        RemoteAction.OPEN_SETTINGS,
+        RemoteAction.SHOW_INFO,
+        RemoteAction.RECENT_CHANNELS,
+        RemoteAction.LAST_CHANNEL,
+        RemoteAction.RETURN_LIVE,
+        RemoteAction.SEEK_BACK,
+        RemoteAction.SEEK_FORWARD,
+        RemoteAction.EXIT_APP,
+    )
+
     /** 默认绑定：与旧实现（RemoteHabits.DEFAULT）行为完全等价。 */
     val DEFAULT: List<KeyBinding> = listOf(
         KeyBinding(RemoteAction.CHANNEL_UP, setOf(KEY_DPAD_UP, KEY_CHANNEL_UP, KEY_PAGE_UP)),

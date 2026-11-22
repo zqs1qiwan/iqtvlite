@@ -82,6 +82,7 @@ def main() -> int:
     drawer = DRAWER.read_text(encoding="utf-8")
     drawer_code = strip_comments(drawer)
     activity = ACTIVITY.read_text(encoding="utf-8")
+    activity_code = strip_comments(activity)
 
     # 1) root order + titles
     order_block = re.search(r"ROOT_ORDER[^=]*=\s*listOf\((.*?)\)", model, re.S)
@@ -162,6 +163,30 @@ def main() -> int:
     # 8) info card and settings must not fight for keys
     if "isInfoCardFocused" not in activity:
         problems.append("PlayerActivity.kt: the info-card focus guard disappeared (t4 regression)")
+
+    # 9) FULLFIX §7 (function->key full mapping): dispatch goes through the central router.
+    bindings = SRC / "RemoteBindings.kt"
+    if not bindings.exists():
+        problems.append("RemoteBindings.kt: function->key model missing (FULLFIX §7)")
+    else:
+        btext = bindings.read_text(encoding="utf-8")
+        for token in ("enum class RemoteAction", "enum class UiContext", "data class KeyBinding",
+                      "fun resolve(", "fun resolveWith(", "fun serialize(", "fun parse(",
+                      "fun migrate(", "fun bind("):
+            if token not in btext:
+                problems.append("RemoteBindings.kt: missing " + token)
+    if "RemoteBindings.resolveWith(remoteBindings" not in activity_code:
+        problems.append("PlayerActivity.kt: dispatch must resolve via RemoteBindings.resolveWith (FULLFIX §7)")
+    if "handleCapture(event)" not in activity_code:
+        problems.append("PlayerActivity.kt: key-capture guard missing (FULLFIX §7)")
+    if re.search(r"RemoteHabits\.onUpDown\(", activity_code) or re.search(r"RemoteHabits\.onOk\(", activity_code):
+        problems.append("PlayerActivity.kt: old RemoteHabits.onUpDown/onOk must not drive dispatch (FULLFIX §7)")
+    drawer_code = strip_comments(drawer)
+    for tag in ("settings_remote_action_", "settings_remote_bind_long_", "settings_remote_bindings_reset"):
+        if tag not in drawer_code:
+            problems.append("SettingsDrawer.kt: function->key binding UI tag missing: " + tag)
+    if "RemoteBindings.bindingSummary(" not in drawer_code:
+        problems.append("SettingsDrawer.kt: binding rows must show RemoteBindings.bindingSummary (FULLFIX §7)")
 
     if problems:
         for p in problems:

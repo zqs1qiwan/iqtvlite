@@ -112,6 +112,12 @@ fun SettingsDrawer(
     onCycleRemoteDigits: () -> Unit = {},
     onToggleRemoteChannelKeys: () -> Unit = {},
     onResetRemoteHabits: () -> Unit = {},
+    // FULLFIX §7：功能→按键绑定（动态 UI + 捕获态），与 Activity dispatch 共用同一真源。
+    remoteBindings: List<KeyBinding> = RemoteBindings.DEFAULT,
+    captureRequest: Pair<RemoteAction, Boolean>? = null,
+    onStartCapture: (RemoteAction, Boolean) -> Unit = { _, _ -> },
+    onCancelCapture: () -> Unit = {},
+    onResetRemoteBindings: () -> Unit = {},
     autoUpdatePlaylistLabel: String = "启动时",
     autoUpdateEpgLabel: String = "启动时",
     lastUpdateSummary: String = "",
@@ -329,6 +335,11 @@ fun SettingsDrawer(
                         onCycleDigits = onCycleRemoteDigits,
                         onToggleChannelKeys = onToggleRemoteChannelKeys,
                         onReset = onResetRemoteHabits,
+                        bindings = remoteBindings,
+                        captureRequest = captureRequest,
+                        onStartCapture = onStartCapture,
+                        onCancelCapture = onCancelCapture,
+                        onResetBindings = onResetRemoteBindings,
                         scroll = scrollFor(SettingsPage.REMOTE),
                         requesterOf = ::requesterOf,
                         onFocused = { pageLastFocus[SettingsPage.REMOTE.id] = it },
@@ -573,6 +584,12 @@ private fun SettingsRemotePage(
     onCycleDigits: () -> Unit,
     onToggleChannelKeys: () -> Unit,
     onReset: () -> Unit,
+    // FULLFIX §7：功能→按键动态绑定行 + 捕获态。
+    bindings: List<KeyBinding> = RemoteBindings.DEFAULT,
+    captureRequest: Pair<RemoteAction, Boolean>? = null,
+    onStartCapture: (RemoteAction, Boolean) -> Unit = { _, _ -> },
+    onCancelCapture: () -> Unit = {},
+    onResetBindings: () -> Unit = {},
     scroll: ScrollState,
     requesterOf: (String) -> FocusRequester,
     onFocused: (String) -> Unit,
@@ -631,7 +648,46 @@ private fun SettingsRemotePage(
             onFocused = onFocused,
             onClick = onReset
         )
-        HelpText("默认：换台 / 显示信息卡 / 关闭抽屉 / 直接跳台 / 频道键启用")
+        RowGap()
+
+        // ── FULLFIX §7：功能 → 按键全映射（TiviMate 式） ──────────────────
+        // 每个功能一行，显示短按/长按绑定摘要；点击「短按绑定/长按绑定」子项进入捕获态，
+        // Activity 在 dispatchKeyEvent 里消费下一个键写回绑定。行 tag 稳定，可 JVM/门禁断言。
+        SettingsGroupHeader("功能 → 按键（短按 / 长按）")
+        if (captureRequest != null) {
+            HelpText("请按任意键完成绑定（Back 取消）…", color = MaterialTheme.colorScheme.primary)
+        }
+        for (action in RemoteBindings.CONFIGURABLE_ACTIONS) {
+            val binding = bindings.firstOrNull { it.action == action }
+            val capturingShort = captureRequest?.let { it.first == action && !it.second } == true
+            val capturingLong = captureRequest?.let { it.first == action && it.second } == true
+            val shortText = if (capturingShort) "请按键…" else RemoteBindings.bindingSummary(binding, false)
+            val longText = if (capturingLong) "请按键…" else RemoteBindings.bindingSummary(binding, true)
+            SettingsItem(
+                text = "${action.label}：短[$shortText] 长[$longText]",
+                focusRequester = requesterOf("settings_remote_action_${action.name}"),
+                tag = "settings_remote_action_${action.name}",
+                onFocused = onFocused,
+                onClick = { onStartCapture(action, false) },
+            )
+            RowGap()
+            SettingsItem(
+                text = if (capturingLong) "长按：请按任意键…" else "绑定长按键（${action.label}）",
+                focusRequester = requesterOf("settings_remote_bind_long_${action.name}"),
+                tag = "settings_remote_bind_long_${action.name}",
+                onFocused = onFocused,
+                onClick = { onStartCapture(action, true) },
+            )
+            RowGap()
+        }
+        SettingsItem(
+            text = "恢复默认按键映射",
+            focusRequester = requesterOf("settings_remote_bindings_reset"),
+            tag = "settings_remote_bindings_reset",
+            onFocused = onFocused,
+            onClick = onResetBindings,
+        )
+        HelpText("默认：↑↓换台 · ←列表 · →设置 · OK信息卡；上下键/OK/Back 旧开关仍保留兼容。")
         HelpText("频道列表：← 　设置：→")
     }
 }

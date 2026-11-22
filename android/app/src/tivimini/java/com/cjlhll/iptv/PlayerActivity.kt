@@ -119,6 +119,11 @@ class PlayerActivity : ComponentActivity() {
     // straight into this field through a controller, so the NEXT key event already uses it even
     // though the SettingsDrawer lives in the same Activity and never triggers onResume().
     private var remote = RemoteHabits.DEFAULT
+    // FULLFIX §7：功能→按键绑定（新旧并存；dispatchKeyEvent 读这份）。mutableStateOf 让设置页
+    // 在捕获写入后立即重组显示新摘要（Activity 里已有 digits by mutableStateOf 的先例）。
+    private var remoteBindings by mutableStateOf(RemoteBindings.DEFAULT)
+    /** FULLFIX §7：设置页按键捕获请求；非 null 时下一个按键只被记录，不执行原动作。 */
+    private var captureRequest by mutableStateOf<Pair<RemoteAction, Boolean>?>(null) // action to longPress?
     private var setInfoBannerOpen: ((Boolean) -> Unit)? = null
     private var isInfoBannerOpen: Boolean = false
     // t4 (INFO_CARD_V2 §4.2-1/2)：卡片聚焦是独立于“可见”的正交状态——
@@ -137,12 +142,14 @@ class PlayerActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         remote = Prefs.getRemoteSettings(this)
+        remoteBindings = Prefs.getRemoteBindings(this)
     }
 
     @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         remote = Prefs.getRemoteSettings(this)
+        remoteBindings = Prefs.getRemoteBindings(this)
 
         val videoUrl = intent.getStringExtra("VIDEO_URL") ?: ""
         val videoTitle = intent.getStringExtra("VIDEO_TITLE") ?: "Live"
@@ -205,6 +212,12 @@ class PlayerActivity : ComponentActivity() {
                         onRecentChannelsOpenChanged = { isRecentChannelsOpen = it },
                         setAudioDialogOpenController = { setAudioDialogOpen = it },
                         onRemoteSettingsChanged = { settings -> remote = settings },
+                        // FULLFIX §7：绑定状态 + 捕获回调（dispatch 与设置 UI 共用同一真源）。
+                        remoteBindings = remoteBindings,
+                        captureRequest = captureRequest,
+                        onStartCapture = { action, longPress -> captureRequest = action to longPress },
+                        onCancelCapture = { captureRequest = null },
+                        onBindingsChanged = { bindings -> remoteBindings = bindings },
                         onAudioDialogOpenChanged = { isAudioDialogOpen = it },
                         onDrawerOpenChanged = { isDrawerOpen = it },
                         onDrawerActiveColumnChanged = { drawerActiveColumn = it },
@@ -259,11 +272,44 @@ class PlayerActivity : ComponentActivity() {
         }
     }
 
+    // ── FULLFIX §7：功能→按键中央 router ──────────────────────────────────
+    /** 当前解析上下文：回看用 CATCHUP，否则 PLAYER_ONLY（覆盖层由各分支守卫先行处理）。 */
+    private fun playerContext(): UiContext =
+        if (isCatchupPlayback) UiContext.CATCHUP else UiContext.PLAYER_ONLY
+
+    /** 长按判定：isLongPress 或已有 repeat（与 §7.2 一致）。 */
+    private fun isLongPressKey(event: KeyEvent): Boolean =
+        event.isLongPress || event.repeatCount > 0
+
+    /** 中央解析：任何按键 → 当前绑定下的功能（覆盖层打开时由调用方守卫，不进这里）。 */
+    private fun resolvePlayerAction(event: KeyEvent): RemoteAction? =
+        RemoteBindings.resolveWith(remoteBindings, event.keyCode, isLongPressKey(event), playerContext())
+
+    /**
+     * 捕获态：下一个按键只记录绑定，不执行原动作（类似 digit OSD 守卫）。
+     * @return true 表示该键被捕获消费，调用方应立即 return。
+     */
+    private fun handleCapture(event: KeyEvent): Boolean {
+        if (event.action != KeyEvent.ACTION_DOWN) return false
+        val req = captureRequest ?: return false
+        // BACK 允许取消捕获（不写入绑定）。
+        if (event.keyCode == KeyEvent.KEYCODE_BACK) {
+            captureRequest = null
+            return true
+        }
+        remoteBindings = RemoteBindings.bind(remoteBindings, req.first, event.keyCode, req.second)
+        Prefs.setRemoteBindings(this, remoteBindings)
+        captureRequest = null
+        return true
+    }
+
     // TV Activity must route unhandled DPAD before Compose; only the inherited core bridge is restricted.
     @android.annotation.SuppressLint("RestrictedApi")
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (event.action == KeyEvent.ACTION_UP && event.keyCode in KeyEvent.KEYCODE_0..KeyEvent.KEYCODE_9) return true
         if (event.action == KeyEvent.ACTION_DOWN) {
+            // FULLFIX §7：捕获态优先——设置页点“绑定按键”后，下一个键只写入绑定，不执行原动作。
+            if (handleCapture(event)) return true
             // t223: an open overlay must never leave the digit OSD on top of it.
             if (!DigitOsdPolicy.visibleWhen(
                     isDrawerOpen || isSettingsDrawerOpen || isQualityDialogOpen ||
@@ -335,16 +381,16 @@ class PlayerActivity : ComponentActivity() {
                 KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
                     if (!isDrawerOpen && !isSettingsDrawerOpen && !isQualityDialogOpen && !isRecentChannelsOpen && !isAudioDialogOpen) {
                         // t4 (INFO_CARD_V2 D-C2)：两段式 OK —— 卡片已可见且习惯是“显示信息卡”时，
-                        // 先问 Compose 能否进入最近观看聚焦；不能（条为空/回看/快进）则只重新计时。
-                        // 遮罩优先不变：本分支只在所有覆盖层关闭时才会执行。
-                        if (isInfoBannerOpen && remote.ok == RemoteHabits.Ok.CONFIRM &&
+                        // FULLFIX §7：OK 目标由中央 router 解析（默认等价旧 onOk：信息卡/打开列表）。
+                        val okAction = resolvePlayerAction(event)
+                        // 两段式 OK：卡片已可见且当前 OK 绑定=显示信息卡时，先进入最近观看聚焦。
+                        if (isInfoBannerOpen && okAction == RemoteAction.SHOW_INFO &&
                             setInfoCardOk?.invoke() == true
                         ) return true
-                        // t186 (F1): the OK habit decides between opening the list and confirming.
-                        when (RemoteHabits.onOk(remote, overlayOpen = false, catchupPlayback = isCatchupPlayback)) {
-                            RemoteHabits.OkAction.OPEN_DRAWER -> sidebarController.openDrawer()
-                            RemoteHabits.OkAction.SHOW_INFO -> setInfoBannerOpen?.invoke(true)
-                            RemoteHabits.OkAction.NONE -> Unit
+                        when (okAction) {
+                            RemoteAction.OPEN_DRAWER -> sidebarController.openDrawer()
+                            RemoteAction.SHOW_INFO -> setInfoBannerOpen?.invoke(true)
+                            else -> Unit
                         }
                         return true
                     }
@@ -352,32 +398,39 @@ class PlayerActivity : ComponentActivity() {
 
                 KeyEvent.KEYCODE_DPAD_LEFT -> {
                     if (!isDrawerOpen && !isSettingsDrawerOpen && !isQualityDialogOpen && !isRecentChannelsOpen && !isAudioDialogOpen) {
-                        if (isCatchupPlayback) {
-                            val step = calculateSeekStep(event.repeatCount)
-                            if (onCatchupSeek?.invoke(-step) == true) return true
-                        } else {
-                            sidebarController.openDrawer()
-                            return true
+                        // FULLFIX §7：LEFT 由 router 解析（默认 PLAYER_ONLY=打开列表 / CATCHUP=快退）。
+                        when (resolvePlayerAction(event)) {
+                            RemoteAction.SEEK_BACK -> {
+                                val step = calculateSeekStep(event.repeatCount)
+                                if (onCatchupSeek?.invoke(-step) == true) return true
+                            }
+                            RemoteAction.OPEN_DRAWER -> { sidebarController.openDrawer(); return true }
+                            else -> Unit
                         }
                     }
                 }
 
                 KeyEvent.KEYCODE_DPAD_RIGHT -> {
                     if (!isDrawerOpen && !isSettingsDrawerOpen && !isQualityDialogOpen && !isRecentChannelsOpen && !isAudioDialogOpen) {
-                        if (isCatchupPlayback) {
-                            val step = calculateSeekStep(event.repeatCount)
-                            if (onCatchupSeek?.invoke(step) == true) return true
-                        } else {
-                            setSettingsDrawerOpen?.invoke(true)
-                            return true
+                        // FULLFIX §7：RIGHT 由 router 解析（默认 PLAYER_ONLY=打开设置 / CATCHUP=快进）。
+                        when (resolvePlayerAction(event)) {
+                            RemoteAction.SEEK_FORWARD -> {
+                                val step = calculateSeekStep(event.repeatCount)
+                                if (onCatchupSeek?.invoke(step) == true) return true
+                            }
+                            RemoteAction.OPEN_SETTINGS -> { setSettingsDrawerOpen?.invoke(true); return true }
+                            else -> Unit
                         }
                     }
                 }
 
                 KeyEvent.KEYCODE_MENU -> {
                     if (!isDrawerOpen && !isSettingsDrawerOpen && !isQualityDialogOpen && !isRecentChannelsOpen && !isAudioDialogOpen) {
-                        setSettingsDrawerOpen?.invoke(true)
-                        return true
+                        // FULLFIX §7：MENU 由 router 解析（默认=打开设置）。
+                        if (resolvePlayerAction(event) == RemoteAction.OPEN_SETTINGS) {
+                            setSettingsDrawerOpen?.invoke(true)
+                            return true
+                        }
                     }
                 }
 
@@ -426,7 +479,13 @@ class PlayerActivity : ComponentActivity() {
 
                     // t186 (F1): 直接退出 exits on the first BACK; 关闭抽屉 keeps the historical
                     // double-press guard so a stray press never kills playback.
-                    if (RemoteHabits.onBack(remote, overlayOpen = false) == RemoteHabits.BackAction.EXIT) {
+                    // FULLFIX §7：是否"直接退出"由绑定决定（DEFAULT 的 BACK 长按=RETURN_LIVE，
+                    // 短按不绑 EXIT_APP → 保持双按退出；migrate(back=EXIT) 才立即退出）。
+                    val backIsExit = resolvePlayerAction(event) == RemoteAction.EXIT_APP ||
+                        (isLongPressKey(event) && RemoteBindings.resolveWith(
+                            remoteBindings, event.keyCode, true, UiContext.PLAYER_ONLY
+                        ) == RemoteAction.EXIT_APP)
+                    if (backIsExit) {
                         // t193 (REMOTE-BACK-01): explicit finish(); the habit no longer depends on the
                         // key reaching the system back dispatch.
                         finish()
@@ -443,19 +502,14 @@ class PlayerActivity : ComponentActivity() {
                 KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_CHANNEL_UP, KeyEvent.KEYCODE_PAGE_UP -> {
                     if (!isDrawerOpen && !isSettingsDrawerOpen && !isQualityDialogOpen && !isRecentChannelsOpen && !isAudioDialogOpen) {
                         if (isCatchupPlayback) {
-                            setInfoBannerOpen?.invoke(true)
+                            // FULLFIX §7：回看 UP → SHOW_INFO（router 的 CATCHUP 语义）。
+                            if (resolvePlayerAction(event) == RemoteAction.SHOW_INFO) setInfoBannerOpen?.invoke(true)
                             return true
                         }
-                        // t186: 166/167 can be disabled; D-pad up follows the 上下键 habit.
-                        val isChannelKey = event.keyCode == KeyEvent.KEYCODE_CHANNEL_UP ||
-                            event.keyCode == KeyEvent.KEYCODE_PAGE_UP
-                        if (isChannelKey && !RemoteHabits.channelKeysEnabled(remote)) return true
-                        when (RemoteHabits.onUpDown(remote, overlayOpen = false, up = true)) {
-                            RemoteHabits.UpDownAction.CHANNEL_UP -> if (onChannelStep?.invoke(-1) == true) return true
-                            RemoteHabits.UpDownAction.OPEN_DRAWER -> {
-                                sidebarController.openDrawer()
-                                return true
-                            }
+                        // FULLFIX §7：UP 的具体动作由 router 解析（默认换台，可重绑呼出列表）。
+                        when (resolvePlayerAction(event)) {
+                            RemoteAction.CHANNEL_UP -> if (onChannelStep?.invoke(-1) == true) return true
+                            RemoteAction.OPEN_DRAWER -> { sidebarController.openDrawer(); return true }
                             else -> Unit
                         }
                     }
@@ -464,18 +518,13 @@ class PlayerActivity : ComponentActivity() {
                 KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_CHANNEL_DOWN, KeyEvent.KEYCODE_PAGE_DOWN -> {
                     if (!isDrawerOpen && !isSettingsDrawerOpen && !isQualityDialogOpen && !isRecentChannelsOpen && !isAudioDialogOpen) {
                         if (isCatchupPlayback) {
-                            setInfoBannerOpen?.invoke(true)
+                            if (resolvePlayerAction(event) == RemoteAction.SHOW_INFO) setInfoBannerOpen?.invoke(true)
                             return true
                         }
-                        val isChannelKey = event.keyCode == KeyEvent.KEYCODE_CHANNEL_DOWN ||
-                            event.keyCode == KeyEvent.KEYCODE_PAGE_DOWN
-                        if (isChannelKey && !RemoteHabits.channelKeysEnabled(remote)) return true
-                        when (RemoteHabits.onUpDown(remote, overlayOpen = false, up = false)) {
-                            RemoteHabits.UpDownAction.CHANNEL_DOWN -> if (onChannelStep?.invoke(1) == true) return true
-                            RemoteHabits.UpDownAction.OPEN_DRAWER -> {
-                                sidebarController.openDrawer()
-                                return true
-                            }
+                        // FULLFIX §7：DOWN 的具体动作由 router 解析（默认换台，可重绑呼出列表）。
+                        when (resolvePlayerAction(event)) {
+                            RemoteAction.CHANNEL_DOWN -> if (onChannelStep?.invoke(1) == true) return true
+                            RemoteAction.OPEN_DRAWER -> { sidebarController.openDrawer(); return true }
                             else -> Unit
                         }
                     }
@@ -502,6 +551,12 @@ fun VideoPlayerScreen(
     onRecentChannelsOpenChanged: (Boolean) -> Unit,
     setAudioDialogOpenController: (((Boolean) -> Unit)?) -> Unit,
     onRemoteSettingsChanged: (RemoteHabits.Settings) -> Unit,
+    // FULLFIX §7：功能→按键绑定状态与捕获控制（来自 Activity，dispatch 与 UI 共用同一真源）。
+    remoteBindings: List<KeyBinding> = RemoteBindings.DEFAULT,
+    captureRequest: Pair<RemoteAction, Boolean>? = null,
+    onStartCapture: (RemoteAction, Boolean) -> Unit = { _, _ -> },
+    onCancelCapture: () -> Unit = {},
+    onBindingsChanged: (List<KeyBinding>) -> Unit = {},
     onAudioDialogOpenChanged: (Boolean) -> Unit,
     onDrawerOpenChanged: (Boolean) -> Unit,
     onDrawerActiveColumnChanged: (DrawerColumn?) -> Unit,
@@ -1752,6 +1807,16 @@ fun VideoPlayerScreen(
                 val next = !remoteHabits.channelKeysEnabled
                 Prefs.setRemoteChannelKeys(context, next)
                 remoteHabits = remoteHabits.copy(channelKeysEnabled = next)
+            },
+            // FULLFIX §7：功能→按键绑定 UI（动态行 + 捕获）。
+            remoteBindings = remoteBindings,
+            captureRequest = captureRequest,
+            onStartCapture = { action, longPress -> onStartCapture(action, longPress) },
+            onCancelCapture = { onCancelCapture() },
+            onResetRemoteBindings = {
+                onBindingsChanged(RemoteBindings.DEFAULT)
+                Prefs.setRemoteBindings(context, RemoteBindings.DEFAULT)
+                onCancelCapture()
             },
             onResetRemoteHabits = {
                 Prefs.resetRemoteSettings(context)
