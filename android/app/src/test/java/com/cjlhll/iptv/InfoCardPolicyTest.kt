@@ -88,7 +88,7 @@ class InfoCardPolicyTest {
         assertEquals(InfoCardPolicy.MAX_RECENT, card.size)
         assertFalse("current channel must not appear", card.contains("ch3"))
         assertEquals("order is preserved (newest first)", "ch1", card.first())
-        assertEquals(6, InfoCardPolicy.MAX_RECENT)
+        assertEquals(4, InfoCardPolicy.MAX_RECENT) // V4：底部最近观看 4 个 logo
     }
 
     @Test

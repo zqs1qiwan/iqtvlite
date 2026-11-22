@@ -158,6 +158,7 @@ class SidebarControllerTest {
     @Test
     fun selectGroupIsIdempotentWhenNameUnchanged() {
         val c = controller()
+        c.selectGroup("央视频道") // 先切到该组，之后同组调用才谈得上"幂等"
         val before = c.value
         c.selectGroup("央视频道")
         val after = c.value
@@ -167,6 +168,7 @@ class SidebarControllerTest {
     @Test
     fun selectGroupResetFocusClearsMemoryAndFocus() {
         val c = controller()
+        c.selectGroup("央视频道") // 先切组，focusChannel 才按此组名记忆
         c.openDrawer()
         c.focusChannel("a2")
         assertEquals("a2", c.lastFocusedUrlFor("央视频道"))

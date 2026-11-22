@@ -116,8 +116,12 @@ object PerfPolicy {
      * （与 PerfPolicyTest.t15ScrollTargetUsesSafeFirstVisibleClamp 一致，修复 CI #216）。
      * 语义：末尾目标仍留 2 行上下文，符合"留 2 行前置"注释；空/1 组 → 0。
      */
-    fun drawerScrollTargetIndex(focusIndex: Int, channelCount: Int): Int =
-        if (channelCount <= 0) 0 else (focusIndex - 2).coerceIn(0, channelCount - 2)
+    fun drawerScrollTargetIndex(focusIndex: Int, channelCount: Int): Int {
+        if (channelCount <= 0) return 0
+        val hi = channelCount - 2
+        if (hi <= 0) return 0 // 1/2 行时无前置 2 行上下文，安全返回 0（避免 coerceIn(0,-1) 抛异常）
+        return (focusIndex - 2).coerceIn(0, hi)
+    }
 
     /** 之后每帧追加多少行（t33：3→2，把单帧成本再压一半）。 */
     const val DRAWER_ROWS_PER_FRAME = 2
