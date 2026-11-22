@@ -1,0 +1,13 @@
+MP2=2
+digits=1125
+lastCh=1
+infocard=miss
+L1_6=yes
+buffer500=yes
+BACK1=ok BACK2=ok
+Fatal=0
+grey=0
+dropped=0
+keys=0
+jingcai=off
+PSS=
