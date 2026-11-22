@@ -28,6 +28,9 @@ data class SidebarState(
     val showGroups: Boolean = false,
     val showDates: Boolean = false,
     val selectedProgramKey: String? = null,
+    // FULLFIX §2：每个分组的「上次浏览焦点」URL（会话内记忆，不持久化）。
+    // 与 focusedChannelUrl 正交：后者是当前焦点，这里是跨开关/切组恢复用的按组记忆。
+    val lastFocusedByGroup: Map<String, String> = emptyMap(),
     // NS-03: EPG (large maps) is kept OUT of the StateFlow equality; only a version counter changes.
     val epgVersion: Int = 0,
 ) {
@@ -118,7 +121,14 @@ class SidebarController {
 
     // ---- focus / channel stepping ----
 
-    fun focusChannel(url: String?) = _state.update { it.copy(focusedChannelUrl = url) }
+    // FULLFIX §2：focusChannel 同时按当前 selectedGroup 记住浏览焦点；selectGroup 不清该 map。
+    fun focusChannel(url: String?) = _state.update { s ->
+        val next = if (url.isNullOrBlank()) s.lastFocusedByGroup else s.lastFocusedByGroup + (s.selectedGroup to url)
+        s.copy(focusedChannelUrl = url, lastFocusedByGroup = next)
+    }
+
+    /** FULLFIX §2：查询某组上次浏览焦点（URL 在该组已不存在时由调用方回退到 0）。 */
+    fun lastFocusedUrlFor(group: String): String? = _state.value.lastFocusedByGroup[group]
 
     fun effectiveFocusedChannelUrl(): String? = _state.value.focusedChannelUrl ?: _state.value.selectedChannelUrl
 

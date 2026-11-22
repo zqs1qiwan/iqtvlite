@@ -126,14 +126,16 @@ def main() -> int:
         problems.append("PlayerDrawer.kt: focus-driven scroll follow missing (t39)")
     if "const val DRAWER_LOOKAHEAD_ROWS = 16" not in policy or "const val DRAWER_SCREEN_ROWS = 12" not in policy:
         problems.append("PerfPolicy.kt: DRAWER_LOOKAHEAD_ROWS=12 / DRAWER_SCREEN_ROWS=12 required (t56)")
-    # t42: lean channel row (logo + number + name only) and bounded open window with step=2
-    # t44: subtitle only on the focused row (guarded by `focused`), heavy widgets still banned.
-    if "PerfPolicy.DRAWER_FOCUSED_SUBTITLE" not in drawer_code:
-        problems.append("PlayerDrawer.kt: focused-subtitle flag missing (t44)")
-    if "val programTitle = if (PerfPolicy.DRAWER_FOCUSED_SUBTITLE && focused)" not in drawer_code:
-        problems.append("PlayerDrawer.kt: subtitle must be gated on focused (t44)")
+    # FULLFIX §1: all rows (focused AND non-focused) now compose the subtitle; `focused` only
+    # drives colour/progress emphasis. The master flag DRAWER_FOCUSED_SUBTITLE is still present
+    # and is routed through PerfPolicy.rowSubtitleVisible (one-line rollback).
+    # (FULLFIX §1) flag lives in PerfPolicy (the master switch), checked against the policy text.
     if "const val DRAWER_FOCUSED_SUBTITLE = true" not in policy:
         problems.append("PerfPolicy.kt: DRAWER_FOCUSED_SUBTITLE must default true (t44)")
+    if "PerfPolicy.rowSubtitleVisible(" not in drawer_code:
+        problems.append("PlayerDrawer.kt: subtitle visibility must go through PerfPolicy.rowSubtitleVisible (FULLFIX §1)")
+    if re.search(r"val programTitle = if \(PerfPolicy\.DRAWER_FOCUSED_SUBTITLE && focused\)", drawer_code):
+        problems.append("PlayerDrawer.kt: old focused-only subtitle gate is back (FULLFIX §1 regression)")
     # t48: subtitle residue guard (clip + keyed subtree) and 18-row open window
     if "clipToBounds()" not in drawer_code:
         problems.append("PlayerDrawer.kt: row content must be clipped (t48 residue guard)")
@@ -141,9 +143,12 @@ def main() -> int:
         problems.append("PlayerDrawer.kt: subtitle must live in its own keyed node key(\"sub_$index\") (t58 residue fix)")
     if "const val DRAWER_OPEN_WINDOW_ROWS = 28" not in policy:
         problems.append("PerfPolicy.kt: DRAWER_OPEN_WINDOW_ROWS must be 20 (t56)")
-    # t58: separate cached layers (static background + content + list) to cut fixed per-frame draw cost
-    if drawer_code.count("graphicsLayer()") < 3:
-        problems.append("PlayerDrawer.kt: expected >=3 graphicsLayer() (background/content/list) for t58 layer caching")
+    # t58: separate cached layers (static background + content + list) to cut fixed per-frame draw cost.
+    # FULLFIX §3: the background layer now has an alpha lambda, so count both `graphicsLayer()` and
+    # `graphicsLayer {` forms — still exactly 3 cached layers (background/content/list).
+    layer_count = drawer_code.count("graphicsLayer()") + drawer_code.count("graphicsLayer {")
+    if layer_count < 3:
+        problems.append("PlayerDrawer.kt: expected >=3 graphicsLayer (background/content/list) for t58 layer caching")
     if "softWrap = false" in drawer_code:
         problems.append("PlayerDrawer.kt: softWrap = false must be removed (t60 residue root fix)")
     if "TextSanitize.programTitle(" not in drawer_code:
@@ -172,14 +177,20 @@ def main() -> int:
     # Back must still close the drawer (S1 must not change the Back branch).
     if "it.key == Key.Back" not in drawer_code or "onClose()" not in drawer_code:
         problems.append("PlayerDrawer.kt: Back branch must still close the drawer (S1 regression)")
-    # the channel row must not carry the EPG subtitle / marquee / progress bar any more
+    # FULLFIX §1: rich row restored — ThinProgressBar called in the channel row, "无信息" fallback
+    # present, 3dp progress helper kept. Heavy widgets (marquee / SubcomposeLayout) still banned.
     row_start = drawer_code.find("private fun DrawerChannelItem(")
     row_end = drawer_code.find("private fun ThinProgressBar(", row_start)
     if row_start != -1 and row_end > row_start:
         row = drawer_code[row_start:row_end]
-        for banned in ("FocusMarqueeText(", "ThinProgressBar(", "无信息", "SubcomposeLayout"):
+        for banned in ("FocusMarqueeText(", "SubcomposeLayout"):
             if banned in row:
-                problems.append("DrawerChannelItem still contains " + banned + " (t42 lean row)")
+                problems.append("DrawerChannelItem still contains " + banned + " (FULLFIX §1)")
+        for required in ("ThinProgressBar(", "无信息", 'key("sub_$index")'):
+            if required not in row:
+                problems.append("DrawerChannelItem missing rich-row token " + required + " (FULLFIX §1)")
+    if ".height(3.dp)" not in drawer_code:
+        problems.append("PlayerDrawer.kt: ThinProgressBar must be 3dp (FULLFIX §1)")
     # t46: single frame-paced reveal pump (target + 2 rows/frame), no one-shot bulk growth
     for token in ("revealTarget", "snapshotFlow { revealTarget }", "drawer_row_subtitle",
                   "row_focus idx=", "via=key"):
@@ -195,8 +206,33 @@ def main() -> int:
         problems.append("PerfPolicy.kt: DRAWER_ROWS_PER_FRAME must be 1 (t56)")
     if "const val DRAWER_FIRST_FRAME_ROWS = 3" not in policy:
         problems.append("PerfPolicy.kt: DRAWER_FIRST_FRAME_ROWS must be 2 (t56)")
-    if "const val DRAWER_ROW_HEIGHT_DP = 56" not in policy:
-        problems.append("PerfPolicy.kt: DRAWER_ROW_HEIGHT_DP must be 56")
+    if "const val DRAWER_ROW_HEIGHT_DP = 64" not in policy:
+        problems.append("PerfPolicy.kt: DRAWER_ROW_HEIGHT_DP must be 64 (FULLFIX §1)")
+    # FULLFIX §2: initial scroll index must consult the remembered browse focus (not only playing URL).
+    if "remember(channelIndexByUrl, selectedChannelUrl, openFocusUrl)" not in drawer_code:
+        problems.append("PlayerDrawer.kt: initialScrollIndex must use frozen openFocusUrl (FULLFIX §2)")
+    if "remember(visible) { if (visible) initialFocusUrl else null }" not in drawer_code:
+        problems.append("PlayerDrawer.kt: restore focus must be frozen at drawer open (FULLFIX §2)")
+    if "PerfPolicy.drawerInitialIndex(" not in drawer_code:
+        problems.append("PlayerDrawer.kt: initial index must go through PerfPolicy.drawerInitialIndex (FULLFIX §2)")
+    if "initialFocusUrl: String? = null" not in drawer_code:
+        problems.append("PlayerDrawer.kt: missing initialFocusUrl parameter (FULLFIX §2)")
+    if "fun drawerInitialIndex(" not in policy:
+        problems.append("PerfPolicy.kt: drawerInitialIndex pure helper missing (FULLFIX §2)")
+    if "lastFocusedByGroup" not in (SRC / "SidebarController.kt").read_text(encoding="utf-8"):
+        problems.append("SidebarController.kt: per-group focus memory missing (FULLFIX §2)")
+    # FULLFIX §3: translucent background must be applied as a graphicsLayer alpha on the cached
+    # static layer (not surface.copy(alpha=...)), and the container paint stays opaque.
+    if "surface.copy(alpha = 0.92f)" in drawer_code:
+        problems.append("PlayerDrawer.kt: container must not use surface.copy(alpha=0.92f) (FULLFIX §3 perf)")
+    if "PerfPolicy.drawerContainerAlpha(" not in drawer_code:
+        problems.append("PlayerDrawer.kt: background layer must use PerfPolicy.drawerContainerAlpha (FULLFIX §3)")
+    if "alpha = PerfPolicy.drawerContainerAlpha(" not in drawer_code:
+        problems.append("PlayerDrawer.kt: graphicsLayer alpha assignment missing (FULLFIX §3)")
+    if "const val DRAWER_CONTAINER_ALPHA = 0.92f" not in policy:
+        problems.append("PerfPolicy.kt: DRAWER_CONTAINER_ALPHA=0.92f missing (FULLFIX §3)")
+    if "fun drawerContainerAlpha(" not in policy:
+        problems.append("PerfPolicy.kt: drawerContainerAlpha helper missing (FULLFIX §3)")
 
     if "if (showContent)" not in drawer_code:
         problems.append("PlayerDrawer.kt: drawer list content must be gated by showContent (do not compose when closed)")

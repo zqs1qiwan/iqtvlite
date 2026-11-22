@@ -134,12 +134,17 @@ fun PlayerDrawer(
     onClose: () -> Unit,
     onActiveColumnChanged: (DrawerColumn) -> Unit = {},
     requestedActiveColumn: DrawerColumn? = null,
+    // FULLFIX §2：上次浏览焦点（按组记忆，由 SidebarController 提供）。
+    initialFocusUrl: String? = null,
+    /** FULLFIX §2：把抽屉内真实浏览焦点回写给 SidebarController（按组记忆）。 */
+    onFocusedChannelChanged: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    // t20（E4）：不透明容器，避免每帧对整层 1080p 面板做 alpha 合成（framestats 里 Draw 118–162ms）。
-    val container = if (PerfPolicy.DRAWER_OPAQUE_CONTAINER) MaterialTheme.colorScheme.surface
-    else MaterialTheme.colorScheme.surface.copy(alpha = 0.92f)
+    // FULLFIX §3：paint 始终用**不透明** surface（t20 性能不回退）；半透明只加在
+    // 已录制好的静态背景 layer 的 graphicsLayer.alpha 上（一处 layer blend，不是每个
+    // draw command 参与整层合成）。container 一律不透明，旧 `surface.copy(alpha=...)` 已删除。
+    val container = MaterialTheme.colorScheme.surface
     val scrim = Color.Transparent
     val shape = RoundedCornerShape(0.dp)
     val prefetchDensity = LocalDensity.current
@@ -325,9 +330,16 @@ fun PlayerDrawer(
 
     val groupListState = rememberLazyListState()
 
-    val initialScrollIndex = remember(channelIndexByUrl, selectedChannelUrl) {
-        val url = selectedChannelUrl
-        if (!url.isNullOrBlank()) channelIndexByUrl[url] ?: 0 else 0
+    // FULLFIX §2：把「打开时的恢复焦点」冻结在开抽屉这一刻。抽屉内浏览会通过
+    // onFocusedChannelChanged 回写 SidebarController → Activity 传入新的 initialFocusUrl；
+    // 若让它直接驱动 initialScrollIndex，每次移动焦点都会重触发打开窗口 effect
+    // （revealedRows 被重置成 3 → 行数闪烁 + 性能回退）。remember(visible) 的 key 只在
+    // 开合翻转时重算，正好拿到当时的恢复位置；切组用下方 live 的 initialFocusUrl 单独处理。
+    val openFocusUrl = remember(visible) { if (visible) initialFocusUrl else null }
+
+    // FULLFIX §2：优先用上次浏览焦点（按组记忆），其次播放台 —— 这是「不再回开头」的核心单变量。
+    val initialScrollIndex = remember(channelIndexByUrl, selectedChannelUrl, openFocusUrl) {
+        PerfPolicy.drawerInitialIndex(openFocusUrl, selectedChannelUrl, channelIndexByUrl)
     }
 
     val channelListState = rememberLazyListState(
@@ -517,7 +529,8 @@ fun PlayerDrawer(
 
         if (!hasInitializedDrawerFocus) {
             hasInitializedDrawerFocus = true
-            val targetUrl = selectedChannelUrl ?: channels.firstOrNull()?.url
+            val targetUrl = openFocusUrl?.takeIf { channelIndexByUrl.containsKey(it) }
+                ?: selectedChannelUrl ?: channels.firstOrNull()?.url
             if (targetUrl != null) {
                 focusedChannelUrl = targetUrl
                 stableFocusedChannelUrl = targetUrl
@@ -561,11 +574,17 @@ fun PlayerDrawer(
     LaunchedEffect(selectedGroup) {
         if (!visible) return@LaunchedEffect
         if (!showGroups) return@LaunchedEffect
+        // FULLFIX §2：切组不再硬编码回 0——用该组上次浏览焦点（由 Activity 随 selectedGroup 传入）。
+        // 旧实现 `focusedChannelUrl = null` + `scrollToItem(0)` 是「切组回开头」的直接根因。
         groupChangedFlag = true
-        focusedChannelUrl = null
+        val remembered = initialFocusUrl?.takeIf { channelIndexByUrl.containsKey(it) }
+        focusedChannelUrl = remembered
         if (channels.isEmpty()) return@LaunchedEffect
+        val idx = remembered?.let { channelIndexByUrl[it] } ?: 0
         runCatching {
-            channelListState.scrollToItem(0)
+            channelListState.scrollToItem(
+                PerfPolicy.drawerSafeFirstVisibleIndex((idx - 2).coerceAtLeast(0), channels.size)
+            )
         }
     }
 
@@ -889,6 +908,7 @@ fun PlayerDrawer(
                             true
                         } else {
                             focusedChannelUrl = channels[next].url
+                            onFocusedChannelChanged(channels[next].url)
                             pendingFocusToChannels = true
                             PerfTrace.d { "row_focus idx=$next via=key down=$down" }
                             true
@@ -930,7 +950,11 @@ fun PlayerDrawer(
                         .fillMaxHeight()
                         .width(drawerWidth)
                         .offset(x = drawerOffsetX)
-                        .graphicsLayer()
+                        // FULLFIX §3：半透明只作用于这张已缓存的静态背景 layer（GPU 一次 layer blend），
+                        // 内容层/列表层不受影响，三层 graphicsLayer 与 t58 缓存结构不变。
+                        .graphicsLayer {
+                            alpha = PerfPolicy.drawerContainerAlpha(PerfPolicy.DRAWER_OPAQUE_CONTAINER)
+                        }
                         .background(container)
                 )
             }
@@ -1021,6 +1045,7 @@ fun PlayerDrawer(
                                         activeColumn = DrawerColumn.Channels
                                         if (!isFocusRestoring) {
                                             focusedChannelUrl = ch.url
+                                            onFocusedChannelChanged(ch.url)
                                             groupChangedFlag = false
                                         }
                                         showDates = false
@@ -1030,6 +1055,7 @@ fun PlayerDrawer(
                                     },
                                     onClick = {
                                         focusedChannelUrl = ch.url
+                                        onFocusedChannelChanged(ch.url)
                                         // pendingFocusToChannels = true
                                         onSelectChannel(ch)
                                     }
@@ -1303,15 +1329,15 @@ private fun DrawerChannelItem(
             height = 40.dp
         )
         Spacer(modifier = Modifier.width(12.dp))
-        // t42（单行成本减法）：非聚焦行只留「台标 + 序号 + 台名」（约 2 个节点，零副文本成本）。
-        // t44（信息不减法）：**只有聚焦行**才组合节目副标题 + 2dp 进度 —— 每帧最多 1 行，
-        // 且聚焦切换时旧行立即释放；不用 FocusMarqueeText/ThinProgressBar（避免动画节点与额外 draw）。
+        // FULLFIX §1：所有行都组合副标题（台名 + 节目/无信息 + 进度），不再只给聚焦行。
+        // focused 只影响颜色/进度强调，不影响是否组合；总开关 DRAWER_FOCUSED_SUBTITLE 仍在，
+        // 一行改 false 可回到「全行无副标题」。
         // t60：先清洗不可见字符（NBSP/全角空格/零宽），避免首字被挤成单独一行（残影根因）。
-        val programTitle = if (PerfPolicy.DRAWER_FOCUSED_SUBTITLE && focused) TextSanitize.programTitle(nowProgram?.title) else null
-        // t48（修残影）：聚焦/非聚焦两种行结构用 `key(...)` 隔开 —— 失焦时整棵副标题子树**销毁重建**，
-        // 不会再复用旧布局/旧 draw 命令；配合外层 clipToBounds，杜绝 t47 观测到的单字残影（城/军/武/音）。
-        if (!programTitle.isNullOrBlank()) {
-            key("sub_$index") {
+        val showSubtitle = PerfPolicy.rowSubtitleVisible(focused)
+        val programTitle = if (showSubtitle) TextSanitize.programTitle(nowProgram?.title) else null
+        // t48（修残影）：整棵副标题子树用 key 隔开 —— 失焦时销毁重建，不复用旧 draw 命令；
+        // 配合外层 clipToBounds，杜绝单字残影（城/军/武/音）。
+        key("sub_$index") {
             Column(modifier = Modifier.weight(1f, fill = true)) {
                 Text(
                     text = label,
@@ -1320,22 +1346,25 @@ private fun DrawerChannelItem(
                     style = MaterialTheme.typography.titleMedium,
                     color = contentColor
                 )
-                // 固定 16dp 高的盒子承载副标题：不给文字任何溢出/裁剪到行外的机会。
+                // FULLFIX §1：无节目显示「无信息」（恢复初始设计），仍固定 16dp 高并 clip。
                 Box(modifier = Modifier.height(16.dp).fillMaxWidth().clipToBounds()) {
                     Text(
-                        text = programTitle,
+                        text = if (!programTitle.isNullOrBlank()) programTitle else "无信息",
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         style = MaterialTheme.typography.bodySmall,
                         fontSize = 11.sp,
                         lineHeight = 14.sp,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f),
+                        color = if (programTitle.isNullOrBlank()) {
+                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f)
+                        } else {
+                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f)
+                        },
                         // t46：给验收一个可断言的语义节点（t45 在语义树里没观测到副标题）。
-                        // t60：不再用 softWrap=false（那会把文字测成极窄宽），改为单行 ellipsis + 确定宽度；
+                        // t60：不用 softWrap=false（会把文字测成极窄宽），单行 ellipsis + 确定宽度；
                         // onTextLayout 里探测“过窄/多行”并打点，供验收断言。
                         onTextLayout = { result ->
                             val w = result.size.width
-                            // 24px ≈ 8dp@3x 的保守阈值；真正要抓的是“被测量成极窄”的异常
                             if (w < 24 || result.lineCount > 1) {
                                 PerfTrace.d { "sub_narrow idx=$index w=$w lines=${result.lineCount}" }
                             }
@@ -1345,35 +1374,16 @@ private fun DrawerChannelItem(
                             .testTag("drawer_row_subtitle")
                     )
                 }
+                // FULLFIX §1：进度恢复 3dp ThinProgressBar（复用现存 helper，focused 时强调更高）。
                 val progress = nowProgram?.progress
                 if (progress != null) {
-                    // 2dp 进度：两个 Box（底 + 前景 fillMaxWidth(fraction)），不引入 SubcomposeLayout。
-                    Box(
-                        modifier = Modifier
-                            .padding(top = 2.dp)
-                            .fillMaxWidth()
-                            .height(2.dp)
-                            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.18f))
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth(progress.coerceIn(0f, 1f))
-                                .fillMaxHeight()
-                                .background(MaterialTheme.colorScheme.primary)
-                        )
-                    }
+                    ThinProgressBar(
+                        progress = progress,
+                        focused = focused,
+                        modifier = Modifier.padding(top = 4.dp).fillMaxWidth()
+                    )
                 }
             }
-            }
-        } else {
-            Text(
-                text = label,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                style = MaterialTheme.typography.titleMedium,
-                color = contentColor,
-                modifier = Modifier.weight(1f, fill = true)
-            )
         }
     }
 }

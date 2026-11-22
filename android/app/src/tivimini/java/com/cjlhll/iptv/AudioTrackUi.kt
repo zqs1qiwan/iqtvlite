@@ -123,6 +123,13 @@ object AudioTrackUi {
         return byOverride ?: raws.firstOrNull { it.selected } ?: raws.first()
     }
 
+    /** FULLFIX §4.2②：实际播放音轨的声道数（从 Format 取，不再是 video Format 的 channelCount）。 */
+    fun selectedChannelCount(
+        raws: List<Raw>,
+        overrideGroup: Int = -1,
+        overrideTrack: Int = -1,
+    ): Int = currentTrack(raws, overrideGroup, overrideTrack)?.channels ?: -1
+
     /** The line shown in the info banner / settings row; null when there is nothing to show. */
     fun summary(raws: List<Raw>, overrideGroup: Int = -1, overrideTrack: Int = -1): String? {
         val current = currentTrack(raws, overrideGroup, overrideTrack) ?: return null

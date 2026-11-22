@@ -247,14 +247,27 @@ object InfoCardPolicy {
         java.time.Instant.ofEpochMilli(millis).atZone(java.time.ZoneId.systemDefault()).toLocalTime()
             .format(cardClockFormatter)
 
-    /** 台名下小字：`频道 N · 分组 · 音频编码`（存在项才拼接）。 */
-    fun smallMetaLine(number: Int, group: String?, audioCodec: String?): String {
-        val parts = ArrayList<String>(3)
+    /**
+     * FULLFIX §4.2①：台名下小字只留 `频道 N · 分组`，不再拼音频编码（编码移到技术行）。
+     * 旧签名为 `(number, group, audioCodec)`；audioCodec 分支已删除，防止回退。
+     */
+    fun smallMetaLine(number: Int, group: String?): String {
+        val parts = ArrayList<String>(2)
         if (number > 0) parts.add("频道 $number")
         group?.takeIf { it.isNotBlank() }?.let { parts.add(it.trim()) }
-        audioCodec?.takeIf { it.isNotBlank() }?.let { parts.add(it.trim()) }
         return parts.joinToString(" · ")
     }
+
+    /**
+     * FULLFIX §4.2②：徽标数据源的主值/回退取值。
+     * 主值 > 0 用主值，否则用回退值（仍 <=0 返回 null → 策略层隐藏，不显示 "—"）。
+     */
+    fun takePositive(primary: Float, fallback: Float): Float? =
+        if (primary > 0f) primary else fallback.takeIf { it > 0f }
+
+    /** FULLFIX §4.2②：码率版 takePositive（Int）。 */
+    fun takePositive(primary: Int, fallback: Int): Int? =
+        if (primary > 0) primary else fallback.takeIf { it > 0 }
 
     /** 入口提示（captain 要求：OK 默认改为显示信息卡后，频道列表入口必须可见）。 */
     const val ENTRY_HINT = "← 频道列表　·　→ 设置"

@@ -183,8 +183,30 @@ def main() -> int:
     if 'else -> "SDR"' not in policy:
         problems.append("InfoCardPolicy.kt: dynamicRange must default to SDR")
 
-
-    if problems:
+    # 8) FULLFIX §4: v3.1 info-card layout / data-source corrections.
+    if re.search(r"fun smallMetaLine\([^)]*audioCodec", policy):
+        problems.append("InfoCardPolicy.kt: smallMetaLine must NOT carry audioCodec (FULLFIX §4.2①)")
+    if "fun smallMetaLine(number: Int, group: String?): String" not in policy:
+        problems.append("InfoCardPolicy.kt: smallMetaLine(number, group) missing (FULLFIX §4.2①)")
+    if "fun takePositive(" not in policy:
+        problems.append("InfoCardPolicy.kt: takePositive fallback helper missing (FULLFIX §4.2②)")
+    if "fun selectedChannelCount(" not in SRC.joinpath("AudioTrackUi.kt").read_text(encoding="utf-8"):
+        problems.append("AudioTrackUi.kt: selectedChannelCount helper missing (FULLFIX §4.2②)")
+    if "audioChannelCount: Int = -1" not in banner:
+        problems.append("ChannelInfoBanner.kt: audioChannelCount param missing (FULLFIX §4.2②)")
+    if "videoBitrateFallback: Int = -1" not in banner or "frameRateFallback: Float = -1f" not in banner:
+        problems.append("ChannelInfoBanner.kt: bitrate/frameRate fallback params missing (FULLFIX §4.2②)")
+    if "vf?.channelCount" in banner:
+        problems.append("ChannelInfoBanner.kt: channel count must NOT come from video Format (FULLFIX §4.2②)")
+    if "InfoCardPolicy.takePositive(" not in banner:
+        problems.append("ChannelInfoBanner.kt: badge sources must use InfoCardPolicy.takePositive (FULLFIX §4.2②)")
+    # DP table: container 16dp top/bottom, no double 40dp horizontal padding, fixed row heights.
+    if "top = 16.dp, bottom = 16.dp" not in banner:
+        problems.append("ChannelInfoBanner.kt: container padding must be 16dp (FULLFIX §4.2③)")
+    if banner.count("padding(start = 40.dp") > 1:
+        problems.append("ChannelInfoBanner.kt: double 40dp horizontal padding still present (FULLFIX §4.2③)")
+    if ".height(64.dp)" not in banner or ".clipToBounds()" not in banner:
+        problems.append("ChannelInfoBanner.kt: recent strip needs height(64)+clipToBounds (FULLFIX §4.2③/U1)")
         for p in problems:
             print(f"check_info_card: FAIL {p}")
         return 1

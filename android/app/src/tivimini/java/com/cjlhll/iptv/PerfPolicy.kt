@@ -25,10 +25,24 @@ object PerfPolicy {
         if (focused && drawerVisible) MARQUEE_ITERATIONS else 0
 
     /**
-     * t20（E4）：抽屉容器用**不透明** surface，而不是 `surface.copy(alpha=0.92f)`。
-     * 半透明层会迫使每一帧对 1080p 面板做整层 alpha 合成（弱机 GPU 上很贵）。
+     * t20（E4）：抽屉容器 paint 保持**不透明** surface，避免每帧对 1080p 面板做整层 alpha 合成
+     * （framestats 里 Draw 118–162ms）。
+     *
+     * FULLFIX §3：该开关现在只决定**背景静态 layer** 是否叠加半透明：
+     * - `true`  → layer alpha = 1f（完全回到旧的实心面板，单变量回退用）；
+     * - `false` → layer alpha = [DRAWER_CONTAINER_ALPHA]（0.92f，与信息卡/设置抽屉一致）。
+     *
+     * 注意：paint 本身始终是不透明的 `surface`，半透明只作用在已录制好的一张 layer 上，
+     * 不是把 `surface.copy(alpha=...)` 交给每个 draw command（那正是 t20 的卡顿成因）。
      */
-    const val DRAWER_OPAQUE_CONTAINER = true
+    const val DRAWER_OPAQUE_CONTAINER = false
+
+    /** FULLFIX §3：抽屉背景静态 layer 的半透明度（与信息卡一致）。 */
+    const val DRAWER_CONTAINER_ALPHA = 0.92f
+
+    /** FULLFIX §3：把「不透明绘制」开关翻译成 layer alpha；true = 1f，false = 0.92f。 */
+    fun drawerContainerAlpha(opaque: Boolean): Float =
+        if (opaque) 1f else DRAWER_CONTAINER_ALPHA
 
     /**
      * t29（D4）：打开抽屉后的内容组合方式 —— **分帧增量组合**，不再"延迟后一次性组合"。
@@ -89,7 +103,34 @@ object PerfPolicy {
 
 
     /** 抽屉行固定高度（t33：固定行高，避免逐行测量/文字重排）。 */
-    const val DRAWER_ROW_HEIGHT_DP = 56
+    const val DRAWER_ROW_HEIGHT_DP = 64
+
+    // ── FULLFIX §1/§2：选台行丰富度 + 上次位置恢复（单变量、纯函数） ──────────
+
+    /**
+     * FULLFIX §1：频道行副标题是否组合。
+     *
+     * 旧 t44 实现只有聚焦行才组合副标题（`DRAWER_FOCUSED_SUBTITLE && focused`），
+     * 导致非聚焦行「被精简过度」。现在所有行都组合，focused 只影响颜色/进度强调。
+     * 仍保留总开关 [DRAWER_FOCUSED_SUBTITLE]，可一行回退到「完全无副标题」。
+     */
+    fun rowSubtitleVisible(focused: Boolean): Boolean = DRAWER_FOCUSED_SUBTITLE
+
+    /**
+     * FULLFIX §2：抽屉初始滚动索引的单一真源。
+     *
+     * 优先用上次浏览焦点（按组记忆），其次播放台，都没有则 0。
+     * 只做 URL→索引查表，不抛异常；调用方继续使用 [drawerSafeOpenTarget] 做安全钳制。
+     */
+    fun drawerInitialIndex(
+        lastFocusedUrl: String?,
+        selectedUrl: String?,
+        indexByUrl: Map<String, Int>,
+    ): Int {
+        val url = lastFocusedUrl ?: selectedUrl
+        if (url.isNullOrBlank()) return 0
+        return indexByUrl[url] ?: 0
+    }
 
     /**
      * t39（滚动跟随）：焦点走到底部时一次多揭示几行，保证连续 DOWN 不会“撞到列表末尾”。

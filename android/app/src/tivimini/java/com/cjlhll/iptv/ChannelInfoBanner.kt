@@ -19,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -61,6 +62,10 @@ fun ChannelInfoBanner(
     videoFormat: Format?,
     // t175: current audio track (language · codec · channels); omitted entirely when null.
     audioLabel: String? = null,
+    // FULLFIX §4.2②：声道数取实际播放音轨 Format；码率/帧率主值缺失时的回退（来自当前 Format）。
+    audioChannelCount: Int = -1,
+    videoBitrateFallback: Int = -1,
+    frameRateFallback: Float = -1f,
     catchupConfiguration: CatchupConfiguration? = null,
     // t24（INFO_CARD_V3）：右侧节目行所需信息（起止/当前时刻/分组小字）。
     programStartMs: Long = 0L,
@@ -139,10 +144,13 @@ fun ChannelInfoBanner(
     }
 
     // t24（INFO_CARD_V3）：右上徽标 / 技术行 / 节目行 / 小字（全部来自 InfoCardPolicy 纯函数）。
+    // FULLFIX §4.2②：帧率/码率用主值优先、回退补齐；声道用音频 Format 的 channelCount（不再取 vf）。
     val vf = videoFormat
+    val frameRate = InfoCardPolicy.takePositive(vf?.frameRate ?: -1f, frameRateFallback)
+    val bitrate = InfoCardPolicy.takePositive(vf?.bitrate ?: -1, videoBitrateFallback)
     val badgePlan = InfoCardPolicy.planBadges(
         InfoCardPolicy.badgeCandidates(
-            vf?.width ?: 0, vf?.height ?: 0, vf?.frameRate ?: -1f, vf?.bitrate ?: -1, vf?.channelCount ?: -1,
+            vf?.width ?: 0, vf?.height ?: 0, frameRate ?: -1f, bitrate ?: -1, audioChannelCount,
         )
     )
     val videoCodec = InfoCardPolicy.videoCodecLabel(vf?.sampleMimeType, vf?.codecs)
@@ -157,7 +165,8 @@ fun ChannelInfoBanner(
         nowMillis = nowMillis,
         catchup = catchupConfiguration != null,
     )
-    val smallMeta = InfoCardPolicy.smallMetaLine(channelNumber, groupLabel, audioCodec)
+    // FULLFIX §4.2①：台标下只留「频道 N · 分组」，编码已移到技术行。
+    val smallMeta = InfoCardPolicy.smallMetaLine(channelNumber, groupLabel)
     val progressValue: Float? = programProgress ?: catchupConfiguration?.let { c ->
         val d = (c.endMillis - c.startMillis).toFloat()
         if (d <= 0f) null else ((c.positionMs - c.startMillis).toFloat() / d).coerceIn(0f, 1f)
@@ -188,7 +197,7 @@ fun ChannelInfoBanner(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = 40.dp, end = 40.dp, top = 20.dp, bottom = 20.dp)
+                    .padding(start = 40.dp, end = 40.dp, top = 16.dp, bottom = 16.dp)
             ) {
                 // ── 右上徽标行（单行、右对齐、固定 24dp、绝不换行） ──────────────
                 Row(
@@ -209,7 +218,7 @@ fun ChannelInfoBanner(
                         )
                     }
                 }
-                Spacer(modifier = Modifier.height(6.dp))
+                Spacer(modifier = Modifier.height(4.dp))
 
                 // ── 主行：台标(160×96) + 台名(34sp) 同行；右侧节目列 ────────────────
                 Row(
@@ -288,7 +297,7 @@ fun ChannelInfoBanner(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(2.dp))
 
                 // ── 技术行（单行 12sp α0.60；编码·音频·HDR + 溢出徽标） ────────────
                 if (techText.isNotEmpty()) {
@@ -305,13 +314,17 @@ fun ChannelInfoBanner(
                     )
                 }
 
+                // FULLFIX §4.2③：技术→最近标签 6dp（替代原隐式留白）
+                Spacer(modifier = Modifier.height(6.dp))
+
                 // ── 底部：最近观看快跳（≤6；空/回看/快进中整条不渲染） ──────────────
                 if (showRecent) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(start = 40.dp, end = 40.dp, bottom = 8.dp)
+                            // FULLFIX §4.2③：去掉内层 40dp 左右 padding（父 Column 已有），只留 bottom 间距。
+                            .padding(bottom = 6.dp)
                     ) {
                         Text(
                             text = "最近观看",
@@ -341,7 +354,8 @@ fun ChannelInfoBanner(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(start = 40.dp, end = 40.dp, bottom = 16.dp)
+                            // FULLFIX §4.2③：无最近条时同样去掉内层左右 40dp。
+                            .padding(bottom = 16.dp)
                     ) {
                         Spacer(modifier = Modifier.weight(1f))
                         EntryHint()
@@ -398,8 +412,11 @@ private fun RecentStrip(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 40.dp, end = 40.dp)
-            .testTag("info_card_recent_row")
+            // FULLFIX §4.2③/U1：去掉内层 40dp 左右 padding（父 Column 已有）；固定高 + clip 防末尾贴边溢出。
+            .height(64.dp)
+            .clipToBounds()
+            .testTag("info_card_recent_row"),
+        verticalArrangement = Arrangement.Start,
     ) {
         items.forEachIndexed { index, item ->
             var isFocused by remember(item.title, index) { mutableStateOf(false) }

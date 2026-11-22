@@ -1563,7 +1563,10 @@ fun VideoPlayerScreen(
             },
             onClose = { sidebarController.closeDrawer() },
             onActiveColumnChanged = { sidebarController.setActiveColumn(it) },
-            requestedActiveColumn = drawerActiveColumn
+            requestedActiveColumn = drawerActiveColumn,
+            // FULLFIX §2：把该组上次浏览焦点传给抽屉（不回开头），并接收抽屉内真实浏览焦点回写。
+            initialFocusUrl = sidebarController.lastFocusedUrlFor(selectedGroup),
+            onFocusedChannelChanged = { url -> sidebarController.focusChannel(url) }
         )
 
         val qualityDialogGroup = channelGroups.getOrNull(
@@ -2008,6 +2011,10 @@ fun VideoPlayerScreen(
                     channelNumber = displayNumber,
                     videoFormat = videoFormat,
                     audioLabel = AudioTrackUi.summary(audioTracks, audioOverrideGroup, audioOverrideTrack),
+                    // FULLFIX §4.2②：声道数取实际播放音轨 Format（不再是 video Format 的 channelCount）。
+                    audioChannelCount = AudioTrackUi.selectedChannelCount(
+                        audioTracks, audioOverrideGroup, audioOverrideTrack
+                    ),
                     catchupConfiguration = catchupConfig,
                     programStartMs = bannerProgramStart,
                     programEndMs = bannerProgramEnd,

@@ -24,15 +24,35 @@ class PerfPolicyTest {
     }
 
     @Test
-    fun drawerUsesOpaqueContainerToAvoidFullLayerAlphaBlend() {
-        assertTrue("E4：抽屉容器必须不透明（避免每帧整层 alpha 合成）", PerfPolicy.DRAWER_OPAQUE_CONTAINER)
+    fun drawerUsesOpaquePaintWithCachedLayerAlpha() {
+        // FULLFIX §3：paint 仍不透明（容器 surface 无 copy(alpha)），半透明只加在已缓存的
+        // 静态背景 layer 上；DRAWER_OPAQUE_CONTAINER 现在只决定 layer alpha（true=1f 回退）。
+        assertTrue("容器 paint 走不透明 surface，不给每个 draw command 加 alpha", PerfPolicy.DRAWER_OPAQUE_CONTAINER == false)
+        assertEquals(0.92f, PerfPolicy.DRAWER_CONTAINER_ALPHA)
+        assertEquals(1f, PerfPolicy.drawerContainerAlpha(true))
+        assertEquals(0.92f, PerfPolicy.drawerContainerAlpha(false))
         // t29（D4）：不再延迟——从第 0 帧起分帧增量组合，首屏 10 行、每帧 +3 行。
         assertEquals("去掉 120ms 延迟，从第 0 帧开始", 0L, PerfPolicy.DRAWER_DEFER_CONTENT_MS)
         assertTrue(PerfPolicy.DRAWER_INCREMENTAL_ROWS)
         assertEquals("t58：首帧 3 行（回 vc10187）", 3, PerfPolicy.DRAWER_FIRST_FRAME_ROWS)
         assertEquals("t58：每帧 2 行（回 vc10187 最佳）", 2, PerfPolicy.DRAWER_ROWS_PER_FRAME)
-        assertEquals("t36：固定行高保留", 56, PerfPolicy.DRAWER_ROW_HEIGHT_DP)
+        assertEquals("FULLFIX §1：行高 56→64", 64, PerfPolicy.DRAWER_ROW_HEIGHT_DP)
         assertEquals("D1：不额外预组合（严格可见区）", 0, PerfPolicy.DRAWER_OVERSCAN_ITEMS)
+    }
+
+    @Test
+    fun fullfixRichRowsAndInitialIndex() {
+        // FULLFIX §1：所有行（聚焦/非聚焦）都组合副标题。
+        assertTrue("非聚焦行也显示副标题", PerfPolicy.rowSubtitleVisible(false))
+        assertTrue("聚焦行显示副标题", PerfPolicy.rowSubtitleVisible(true))
+
+        // FULLFIX §2：初始索引优先上次浏览焦点，其次播放台，越界/空值回 0。
+        val idx = mapOf("a1" to 0, "a2" to 12, "b1" to 40)
+        assertEquals(40, PerfPolicy.drawerInitialIndex("b1", "a1", idx))
+        assertEquals(0, PerfPolicy.drawerInitialIndex(null, "a1", idx))
+        assertEquals(12, PerfPolicy.drawerInitialIndex("a2", null, idx))
+        assertEquals(0, PerfPolicy.drawerInitialIndex("gone", "a1", idx)) // 上次焦点不在当前组 → 0（与规格公式一致）
+        assertEquals(0, PerfPolicy.drawerInitialIndex(null, null, idx))
     }
 
     @Test

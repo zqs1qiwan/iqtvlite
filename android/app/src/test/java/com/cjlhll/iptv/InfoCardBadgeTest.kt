@@ -114,13 +114,36 @@ class InfoCardBadgeTest {
         assertTrue(almost.contains("<1 分钟"))
     }
 
-    // ── 台名下小字 ─────────────────────────────────────────────────────────
+    // ── 台名下小字（FULLFIX §4.2①：只留频道 N / 分组，编码移到技术行） ──────
     @Test
-    fun smallMetaLineJoinsExistingParts() {
-        assertEquals("频道 12 · 央视频道 · MPEG-L2", InfoCardPolicy.smallMetaLine(12, "央视频道", "MPEG-L2"))
-        assertEquals("频道 12", InfoCardPolicy.smallMetaLine(12, null, null))
-        assertEquals("央视频道", InfoCardPolicy.smallMetaLine(0, "央视频道", null))
-        assertEquals("", InfoCardPolicy.smallMetaLine(0, null, null))
-        assertEquals("AAC", InfoCardPolicy.smallMetaLine(0, "  ", "AAC"))
+    fun smallMetaLineJoinsOnlyNumberAndGroup() {
+        assertEquals("频道 12 · 央视频道", InfoCardPolicy.smallMetaLine(12, "央视频道"))
+        assertEquals("频道 12", InfoCardPolicy.smallMetaLine(12, null))
+        assertEquals("央视频道", InfoCardPolicy.smallMetaLine(0, "央视频道"))
+        assertEquals("", InfoCardPolicy.smallMetaLine(0, null))
+        assertEquals("央视频道", InfoCardPolicy.smallMetaLine(0, "  央视频道  "))
+        assertEquals("", InfoCardPolicy.smallMetaLine(0, "  "))
+    }
+
+    // ── FULLFIX §4.2②：徽标数据源主值/回退 ──────────────────────────────────
+    @Test
+    fun takePositivePrefersPrimaryThenFallbackThenNull() {
+        assertEquals(50f, InfoCardPolicy.takePositive(50f, 25f))
+        assertEquals(25f, InfoCardPolicy.takePositive(-1f, 25f))
+        assertEquals(25f, InfoCardPolicy.takePositive(0f, 25f))
+        assertNull("两者无效 → null（隐藏，不显示 —）", InfoCardPolicy.takePositive(-1f, -1f))
+        assertNull(InfoCardPolicy.takePositive(0f, 0f))
+
+        assertEquals(8_300_000, InfoCardPolicy.takePositive(8_300_000, 5_000_000))
+        assertEquals(5_000_000, InfoCardPolicy.takePositive(-1, 5_000_000))
+        assertNull(InfoCardPolicy.takePositive(0, 0))
+    }
+
+    @Test
+    fun badgeCandidatesUseCorrectedAudioChannelSource() {
+        // 声道来自音频 Format（audioChannelCount），帧率/码率来自 vf + 回退；仍按优先级隐藏未知。
+        val cand = InfoCardPolicy.badgeCandidates(1920, 1080, 50f, -1, 2)
+        assertEquals(listOf("FHD", "50fps", "2ch"), cand.map { it.label })
+        assertFalse("未知码率隐藏、不占位", cand.any { it.key == "bitrate" })
     }
 }

@@ -119,4 +119,36 @@ class SidebarControllerTest {
         assertNull(c.stepChannel(1))
         assertNull(c.channelNumber("x"))
     }
+
+    // ── FULLFIX §2：按组记忆上次浏览焦点（切组不再回开头） ──────────────────
+    @Test
+    fun lastFocusedUrlIsRememberedPerGroupAcrossSwitches() {
+        val c = controller()
+        c.openDrawer()
+        c.selectGroup("央视频道")
+        c.focusChannel("a2")
+        c.selectGroup("卫视")
+        c.focusChannel("b1")
+        // 切回原组，按组记忆各自保留。
+        assertEquals("a2", c.lastFocusedUrlFor("央视频道"))
+        assertEquals("b1", c.lastFocusedUrlFor("卫视"))
+        assertNull(c.lastFocusedUrlFor("地方"))
+        // selectGroup 不清除记忆。
+        c.selectGroup("地方")
+        assertEquals("a2", c.lastFocusedUrlFor("央视频道"))
+    }
+
+    @Test
+    fun reopenUsesRememberedBrowseFocusNotPlayingChannel() {
+        val c = controller()
+        c.setSelection(0, 0) // 播放 a1
+        c.openDrawer()
+        c.focusChannel("a2") // 浏览到 a2
+        c.closeDrawer()
+        assertEquals("a2", c.value.focusedChannelUrl)
+        assertEquals("a2", c.lastFocusedUrlFor("央视频道"))
+        // 再次打开仍保留浏览焦点 a2（不是播放台 a1）。
+        c.openDrawer()
+        assertEquals("a2", c.value.focusedChannelUrl)
+    }
 }
