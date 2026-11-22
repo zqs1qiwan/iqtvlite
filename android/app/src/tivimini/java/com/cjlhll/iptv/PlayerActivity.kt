@@ -286,6 +286,20 @@ class PlayerActivity : ComponentActivity() {
         RemoteBindings.resolveWith(remoteBindings, event.keyCode, isLongPressKey(event), playerContext())
 
     /**
+     * t10：被 dispatch 的固定 `when(keyCode)` 分支覆盖的按键集合。
+     * 通用 fallback 只对**不在本集合**的任意键（如 F1=131）生效，避免与固定分支双触发。
+     */
+    private fun isFixedRoutedKey(keycode: Int): Boolean = when (keycode) {
+        KeyEvent.KEYCODE_LAST_CHANNEL, KeyEvent.KEYCODE_MEDIA_PREVIOUS,
+        KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER,
+        KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT,
+        KeyEvent.KEYCODE_MENU, KeyEvent.KEYCODE_BACK,
+        KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_CHANNEL_UP, KeyEvent.KEYCODE_PAGE_UP,
+        KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_CHANNEL_DOWN, KeyEvent.KEYCODE_PAGE_DOWN -> true
+        else -> false
+    }
+
+    /**
      * 捕获态：下一个按键只记录绑定，不执行原动作（类似 digit OSD 守卫）。
      * @return true 表示该键被捕获消费，调用方应立即 return。
      */
@@ -528,6 +542,35 @@ class PlayerActivity : ComponentActivity() {
                             else -> Unit
                         }
                     }
+                }
+            }
+
+            // ── t10：通用 fallback —— 任意自定义键（F1=131 等）走中央 router ──────────
+            // 固定 when(keyCode) 分支未覆盖的 ACTION_DOWN 键，若已被绑定则按 RemoteAction 分发。
+            // 守卫：捕获态（handleCapture，最前）、数字 OSD、信息卡 FOCUSED（均已在上方处理）、
+            // 遮罩打开（overlayOpen）一律不走 fallback；resolvePlayerAction 内部按 CATCHUP/PLAYER_ONLY
+            // 上下文解析。固定键由上面的分支处理并 return，不会走到这里（避免双触发）。
+            if (!isFixedRoutedKey(event.keyCode) &&
+                !isDrawerOpen && !isSettingsDrawerOpen && !isQualityDialogOpen &&
+                !isRecentChannelsOpen && !isAudioDialogOpen &&
+                !isInfoCardFocused && digits.isEmpty()
+            ) {
+                when (resolvePlayerAction(event)) {
+                    RemoteAction.CHANNEL_UP -> if (onChannelStep?.invoke(-1) == true) return true
+                    RemoteAction.CHANNEL_DOWN -> if (onChannelStep?.invoke(1) == true) return true
+                    RemoteAction.OPEN_DRAWER -> { sidebarController.openDrawer(); return true }
+                    RemoteAction.OPEN_SETTINGS -> { setSettingsDrawerOpen?.invoke(true); return true }
+                    RemoteAction.SHOW_INFO -> { setInfoBannerOpen?.invoke(true); return true }
+                    RemoteAction.EXIT_APP -> { finish(); return true }
+                    RemoteAction.SEEK_BACK -> {
+                        val step = calculateSeekStep(event.repeatCount)
+                        if (onCatchupSeek?.invoke(-step) == true) return true
+                    }
+                    RemoteAction.SEEK_FORWARD -> {
+                        val step = calculateSeekStep(event.repeatCount)
+                        if (onCatchupSeek?.invoke(step) == true) return true
+                    }
+                    else -> Unit // NONE / 未绑定 / RETURN_LIVE 等 → 不消费
                 }
             }
         }

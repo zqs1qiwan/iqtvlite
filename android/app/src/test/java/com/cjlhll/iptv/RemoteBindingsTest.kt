@@ -170,4 +170,25 @@ class RemoteBindingsTest {
         val migrated = RemoteBindings.migrate(RemoteHabits.DEFAULT.copy(upDown = RemoteHabits.UpDown.OPEN_DRAWER))
         assertEquals("呼出频道列表", RemoteBindings.summaryLabels(migrated).first)
     }
+
+    // ── t10：任意键（F1=131）绑定后必须能被中央 router 解析（真机缺口回归） ──
+    @Test
+    fun arbitraryFunctionKeyCanResolveToChannelDown() {
+        val f1 = 131 // KEYCODE_F1 — 真机可注入验证的自定义键
+        // 未绑定时任意键不解析（不会误触发）。
+        assertNull(RemoteBindings.resolveWith(RemoteBindings.DEFAULT, f1, false, UiContext.PLAYER_ONLY))
+        // 给「下一个频道」绑定 F1 后，router 必须解析出 CHANNEL_DOWN（fallback 据此切台）。
+        val bound = RemoteBindings.bind(RemoteBindings.DEFAULT, RemoteAction.CHANNEL_DOWN, f1, false)
+        assertEquals(
+            RemoteAction.CHANNEL_DOWN,
+            RemoteBindings.resolveWith(bound, f1, false, UiContext.PLAYER_ONLY),
+        )
+        // 往返后仍然生效（真机重启/Prefs 读回）。
+        assertEquals(
+            RemoteAction.CHANNEL_DOWN,
+            RemoteBindings.resolveWith(RemoteBindings.parse(RemoteBindings.serialize(bound)), f1, false, UiContext.PLAYER_ONLY),
+        )
+        // 覆盖层打开（MENU_OPEN）时任何键都不穿透（fallback 守卫的语义基础）。
+        assertNull(RemoteBindings.resolveWith(bound, f1, false, UiContext.MENU_OPEN))
+    }
 }

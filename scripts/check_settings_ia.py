@@ -188,6 +188,32 @@ def main() -> int:
     if "RemoteBindings.bindingSummary(" not in drawer_code:
         problems.append("SettingsDrawer.kt: binding rows must show RemoteBindings.bindingSummary (FULLFIX §7)")
 
+    # 10) t10: generic fallback so arbitrary custom keys (F1=131) reach the router.
+    if "isFixedRoutedKey(" not in activity_code:
+        problems.append("PlayerActivity.kt: isFixedRoutedKey predicate missing (t10 fallback)")
+    # The fallback must appear AFTER the fixed when(keyCode) block and call the router.
+    fallback_marker = "通用 fallback"
+    if fallback_marker not in activity:
+        problems.append("PlayerActivity.kt: generic fallback block missing (t10)")
+    # Fallback must resolve actions and dispatch channel/drawer/settings/info/exit/seek.
+    for token in ("!isFixedRoutedKey(event.keyCode)", "digits.isEmpty()",
+                  "RemoteAction.CHANNEL_DOWN -> if (onChannelStep?.invoke(1) == true) return true",
+                  "RemoteAction.CHANNEL_UP -> if (onChannelStep?.invoke(-1) == true) return true"):
+        if token not in activity_code:
+            problems.append("PlayerActivity.kt: t10 fallback missing token " + token)
+    # All overlay guards must still be present in the fallback region.
+    overlay_guard = re.search(
+        r"!isFixedRoutedKey\(event\.keyCode\).*?isDrawerOpen.*?isSettingsDrawerOpen.*?isQualityDialogOpen.*?isRecentChannelsOpen.*?isAudioDialogOpen.*?digits\.isEmpty\(\)",
+        activity_code,
+        re.S,
+    )
+    if not overlay_guard:
+        problems.append("PlayerActivity.kt: t10 fallback guard chain incomplete (overlays/digits)")
+    # A pure JVM regression case for F1=131 must exist.
+    test_file = ROOT / "android/app/src/test/java/com/cjlhll/iptv/RemoteBindingsTest.kt"
+    if test_file.exists() and "arbitraryFunctionKeyCanResolveToChannelDown" not in test_file.read_text(encoding="utf-8"):
+        problems.append("RemoteBindingsTest.kt: t10 F1=131 arbitrary-key case missing")
+
     if problems:
         for p in problems:
             print(f"check_settings_ia: FAIL {p}")
