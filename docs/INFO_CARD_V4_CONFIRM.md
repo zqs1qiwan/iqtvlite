@@ -47,7 +47,17 @@
 - 按数字自动出现（如 `1`→`13`），停止输入约 3 秒后自动确认跳转。
 - 轻量 OSD，不遮挡画面。
 
-## 4. Logo 资源
+## 4. 节目单（EPG）列收紧（用户追加 2026-11-23）
+- 节目单列**整体比现在收窄约 30%**（含时间列、时间与节目间隔、右侧整体宽度）。
+- 超长节目名/时间**在被聚焦时滚动展示**（marquee），未聚焦仍单行 ellipsis；滚动只在聚焦时跑、用有限圈数（复用 PerfPolicy 原则，禁用 Int.MAX_VALUE），避免弱机每帧重绘。
+- 涉及 PlayerDrawer.kt 的节目单列宽/时间列/EPG 行；真机 dump 验证宽度收紧、聚焦滚动可用、不引入 jank。
+
+## 5. 信息卡 3 个实测 bug（用户 2026-11-23 反馈，见 t32）
+1. OK 出卡后直接能左右选最近观看并 OK 跳台（去掉两段式再按一次 OK）。
+2. 徽标不单独占行、合并紧凑到右上角；补全 分辨率/帧数/声道数字(2.0·2.1·5.1)/SDR·HDR10/编码(264·265)；节目行下移一行腾空间；台标下只留 N.台名+分组。
+3. 静默消失 3000→7000ms，BACK 可提前取消。
+
+## 6. Logo 资源
 
 源：`C:\Users\zqs1q\Documents\Projects\iqtv\iqtvlite-logo-assets`（graphite `#151923`、accent `#2F6BFF`、flat 无渐变）
 - 字标：`logo/iqtvlite-logo-graphite.svg`、`logo-transparent.png`、`logo-white-transparent.png`
