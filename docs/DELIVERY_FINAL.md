@@ -1,10 +1,10 @@
 # IQTV Lite 交付说明（2026-11-23 · 根源重构最终版）
 
 > 仓库：https://github.com/zqs1qiwan/iqtvlite ｜ 分支：`integration/tivimini-baseline`
-> 最终包：CI run **#239** / versionCode **10239** / `2.2.0-tivimini-ac222cc7-validation`
-> 主包 sha256 `ba39c7de3d0f4796af1aad742b8c33a772f71688021013dc3a6b0f3da9ac499d`（13,513,541 B ≈12.89MB）
-> 本地：`delivery-apks/iqtvlite-ci-finalreg-validation.apk`（回滚：ci-batch2 / ci-backfix / ci-startupfix）
-> 真机验收：**最终完整回归通过（可交付）**（`docs/FINAL_REGRESSION_VERIFY.md`）+ 金标准 `docs/GOLDEN_SPEC.md` + 回归清单 `docs/REGRESSION_CHECKLIST.md`；`main` 未动、未打 tag
+> 最终包：CI run **#243** / versionCode **10243** / `2.2.0-tivimini-dec2e7a5-validation`
+> 主包 sha256 `85e6f5b513b5154aaf4d94c5526b06f9a9ccd337a70d27057e562ce952166aed`（13,513,541 B ≈12.89MB）
+> 本地：`delivery-apks/iqtvlite-ci-t65-validation.apk`（回滚：ci-t62 / ci-t59 / ci-finalreg）
+> 真机验收：**本目标最终回归通过**（`docs/T65_FINAL_VERIFY.md`，含 t59/t62/t63 全部根治项）；金标准 `docs/GOLDEN_SPEC.md` + 回归清单 `docs/REGRESSION_CHECKLIST.md`；`main` 未动、未打 tag
 
 ## 一、本轮目标：根源修复（非补丁）
 
