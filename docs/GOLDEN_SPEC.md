@@ -110,10 +110,15 @@
 
 ## 5. 台标资源
 
-- **正确行为**：`src/tivimini/res` 各密度 `ic_launcher.png`（mdpi 48/hdpi 72/xhdpi 96/xxhdpi 144/xxxhdpi 192）、`mipmap-xxxhdpi/ic_launcher_foreground.png`、`drawable-nodpi/tv_banner.png` 与 `iqtvlite-logo-assets/` 当前最终版逐字节一致（sha256）；lockup 按 README「+10 right/+35 down」居中；round 与方形同源；graphite `#151923` + accent `#2F6BFF` 扁平无渐变；不改 applicationId。
-- **错误行为**：res 是旧版资源（重心偏）、round 是另一套图、banner 不一致、字标变形。
-- **判定方法**：`check_brand_assets.py`（assets↔res hash）+ 真机 launcher/TV banner/最近任务图标截图目视居中。
-- 来源：`bc19a84`、`iqtvlite-logo-assets/README.md`、`t47 §5`（当前 res 与源 hash 不一致，待修）。
+- **正确行为（用户 2026-11-23 明确的唯一判据）**：app 方块图标必须与
+  `iqtvlite-logo-assets/icon/icon-512.png` **像素级一致（按比例缩放后）**——这才是正确重心。
+  参考属性：512×512 RGBA、alpha bbox (0,0,512,512)、四角透明 (0,0,0,0)、中心色 (21,25,35,255)=#151923。
+  `src/tivimini/res` 各密度 `ic_launcher.png`（48/72/96/144/192）必须由 icon-512 缩放生成；adaptive 的
+  foreground 不得再叠加任何 +10/+35 偏移或旧版 lockup，合成后视觉等价于 icon-512 缩放版；round 与方形同源；
+  tv_banner 与 assets 一致；graphite `#151923` + accent `#2F6BFF` 扁平无渐变；不改 applicationId。
+- **错误行为**：res 是旧版资源（重心偏）、foreground 仍带 +10/+35 偏移、round 是另一套图、banner 不一致、字标变形、"看起来像但非像素级一致"。
+- **判定方法**：①各密度 ic_launcher.png 与 icon-512 缩放版做像素比对（尺寸/四角透明/中心色/重心一致，非目视"差不多"）；②真机桌面图标截图与 icon-512 缩放版比对；③`check_brand_assets.py` 校验来源 hash。
+- 来源：用户 2026-11-23 明确要求（icon-512.png 像素级一致）、`iqtvlite-logo-assets/README.md`、`t47 §5`（当前 res 为旧版、7 文件 hash 不一致，待修）。
 
 ---
 
