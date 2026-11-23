@@ -244,12 +244,16 @@ fun PlayerDrawer(
     // t29（根源重构）：唯一滚动意图真源 —— 存"希望处于可视区的焦点行索引"（=-1 无意图）。
     // 所有开合/切组/换台/焦点变化只更新这个值；唯一校正 effect 决定何时 scrollToItem 并清空它。
     var desiredScrollIndex by remember { mutableIntStateOf(-1) }
+    // t62：滚动意图模式 —— true=打开抽屉首次定位（瞬时 scrollToItem 快速落位当前台）；
+    // false=抽屉内焦点跟随（±8 对称平滑）。与 desiredScrollIndex 一并清空，形成"意图+模式"单一来源。
+    var desiredScrollInstant by remember { mutableStateOf(false) }
     val showContent = visible && contentReady
     LaunchedEffect(visible) {
         if (!visible) {
             contentReady = false
             revealedRows = 0
             desiredScrollIndex = -1 // t29：关闭时清唯一滚动意图，避免跨开合带入陈旧目标
+            desiredScrollInstant = false // t62：关闭时复位定位模式
             composedUrls.clear()
         } else if (PerfPolicy.DRAWER_DEFER_CONTENT_MS > 0L) {
             contentReady = false
@@ -421,18 +425,28 @@ fun PlayerDrawer(
             if (intent < 0) return@collect
             when (PerfPolicy.drawerScrollDecision(intent, channels.size, revealedRows, first, last)) {
                 PerfPolicy.ScrollDecision.WAIT -> Unit // 揭示未覆盖/无布局，等下一次布局事件
-                PerfPolicy.ScrollDecision.CLEAR -> desiredScrollIndex = -1 // 目标已可见，清意图不滚
+                PerfPolicy.ScrollDecision.CLEAR -> {
+                    desiredScrollIndex = -1 // 目标已可见，清意图不滚
+                    desiredScrollInstant = false // t62：模式随意图一并复位
+                }
                 PerfPolicy.ScrollDecision.SCROLL -> {
                     val target = PerfPolicy.drawerScrollTargetIndex(intent, channels.size)
+                    val instant = desiredScrollInstant
                     desiredScrollIndex = -1 // 先清意图（once），再滚，避免重入/重复
-                    // t56：滚动目标方向对称（焦点居中）+ 每帧滚动量双向对称限幅（±MAX_STEP），
-                    // 无论上/下都逐帧平滑，杜绝向下整页翻。
-                    val rowPx = with(prefetchDensity) { PerfPolicy.DRAWER_ROW_HEIGHT_DP.dp.roundToPx() }
-                    val deltaRows = PerfPolicy.drawerScrollDelta(target, first)
-                    if (deltaRows != 0) {
-                        runCatching { channelListState.animateScrollBy(deltaRows * rowPx.toFloat()) }
+                    desiredScrollInstant = false // t62：模式随意图一并消费
+                    // t62：打开抽屉首次定位用瞬时 scrollToItem（用户主动打开、一次性快速落位当前台，
+                    // 不违反换台原地保持——换台不重开抽屉）；抽屉内焦点跟随仍 ±8 对称平滑 animateScrollBy。
+                    if (instant) {
+                        runCatching { channelListState.scrollToItem(target) }
+                        PerfTrace.d { "drawer_scroll_correct target=$target focus=$intent INSTANT open-position" }
+                    } else {
+                        val rowPx = with(prefetchDensity) { PerfPolicy.DRAWER_ROW_HEIGHT_DP.dp.roundToPx() }
+                        val deltaRows = PerfPolicy.drawerScrollDelta(target, first)
+                        if (deltaRows != 0) {
+                            runCatching { channelListState.animateScrollBy(deltaRows * rowPx.toFloat()) }
+                        }
+                        PerfTrace.d { "drawer_scroll_correct target=$target focus=$intent revealed=$revealedRows first=$first last=$last smooth=$deltaRows" }
                     }
-                    PerfTrace.d { "drawer_scroll_correct target=$target focus=$intent revealed=$revealedRows first=$first last=$last smooth=$deltaRows" }
                 }
             }
         }
@@ -551,7 +565,8 @@ fun PlayerDrawer(
                 stableFocusedChannelUrl = targetUrl
                 val targetIndex = channelIndexByUrl[targetUrl]
                 if (targetIndex != null && channels.isNotEmpty()) {
-                    // t29：登记焦点行为唯一滚动意图（scrollToItem 索引由唯一 effect 派生）。
+                    // t62：打开首次定位用瞬时滚动快速落位当前台（intent+mode 单一来源）。
+                    desiredScrollInstant = true
                     desiredScrollIndex = targetIndex
                 }
             }

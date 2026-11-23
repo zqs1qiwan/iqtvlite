@@ -158,6 +158,14 @@ object PerfPolicy {
     ): Int = (targetIndex - firstVisibleIndex).coerceIn(-maxStep, maxStep)
 
     /**
+     * t62：滚动模式纯策略 —— 打开抽屉首次定位（openPositioning=true）允许瞬时落位（大步进，
+     * 一次到位）；抽屉内焦点跟随（false）严格 ±MAX_STEP 对称平滑。换台不重开抽屉 → 走 false 分支，
+     * 不受影响。
+     */
+    fun drawerScrollStep(openPositioning: Boolean, rawDelta: Int): Int =
+        if (openPositioning) rawDelta else drawerScrollDelta(rawDelta, 0)
+
+    /**
      * t26（V4 残留）：revealed 已满时关→重开，焦点行若不在可见区，需要补一次滚动校正。
      *
      * 条件：焦点索引有效（>=0 且 < count）、揭示行数已覆盖焦点行（否则交给 t15 的门控，避免钳制）、

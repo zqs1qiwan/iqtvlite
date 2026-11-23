@@ -274,6 +274,17 @@ def main() -> int:
         problems.append("PerfPolicy.kt: t56 viewport/half scroll rule must be removed (t59)")
     if "PerfPolicy.drawerScrollDelta(target, first)" not in drawer_code:
         problems.append("PlayerDrawer.kt: must use symmetric drawerScrollDelta (t59)")
+    # t62：区分"打开首次定位（瞬时 scrollToItem）"与"抽屉内焦点跟随（±8 平滑）"。
+    if "fun drawerScrollStep(" not in policy:
+        problems.append("PerfPolicy.kt: t62 open-vs-follow scroll step policy missing")
+    if "desiredScrollInstant" not in drawer_code:
+        problems.append("PlayerDrawer.kt: t62 intent-mode flag (desiredScrollInstant) missing")
+    if "if (instant) {" not in drawer_code or "channelListState.scrollToItem(target)" not in drawer_code:
+        problems.append("PlayerDrawer.kt: t62 open-position must use instant scrollToItem")
+    if "desiredScrollInstant = true" not in drawer_code:
+        problems.append("PlayerDrawer.kt: t62 open-init must mark instant positioning")
+    if "desiredScrollInstant = false" not in drawer_code:
+        problems.append("PlayerDrawer.kt: t62 instant mode must reset after consume/close")
     # t29（根源重构）：唯一滚动意图真源，删除旧两套机制，唯一校正 effect。
     if "fun drawerScrollDecision(" not in policy or "enum class ScrollDecision" not in policy:
         problems.append("PerfPolicy.kt: drawerScrollDecision / ScrollDecision (single source) missing (t29)")
@@ -290,11 +301,11 @@ def main() -> int:
     for decision in ("ScrollDecision.WAIT", "ScrollDecision.CLEAR", "ScrollDecision.SCROLL"):
         if decision not in drawer_code:
             problems.append("PlayerDrawer.kt: unified effect missing decision branch " + decision)
-    # 频道列滚动只允许在唯一校正 effect 内（t52 用 animateScrollBy 平滑滚动，scrollToItem 可为 0）。
+    # 频道列滚动只允许在唯一校正 effect 内：t62 后两种（instant scrollToItem + smooth animateScrollBy）各一次。
     channel_scroll_calls = len(re.findall(r"channelListState\.(?:scrollToItem|animateScrollBy)\(", drawer_code))
-    if channel_scroll_calls != 1:
+    if channel_scroll_calls != 2:
         problems.append(
-            "PlayerDrawer.kt: channel-column scroll must appear exactly once (single source), found %d" % channel_scroll_calls
+            "PlayerDrawer.kt: channel-column scroll must appear exactly twice (instant+smooth in single effect), found %d" % channel_scroll_calls
         )
     # 旧的首帧无条件 scrollToItem 不得回归。
     if re.search(r"if \(targetIndex !in visibleIndices\) \{\s*runCatching \{ channelListState\.scrollToItem\(targetScroll\)", drawer_code):
@@ -410,8 +421,10 @@ def main() -> int:
         problems.append("PerfPolicy.kt: edge-aware scroll threshold missing (t52 §④)")
     if "channelListState.animateScrollBy(" not in drawer_code:
         problems.append("PlayerDrawer.kt: smooth animateScrollBy required (t52 §④, no instant page-flip)")
-    if "channelListState.scrollToItem(" in drawer_code:
-        problems.append("PlayerDrawer.kt: instant channelListState.scrollToItem must be gone (t52 §④)")
+    # t62：允许唯一一次瞬时 scrollToItem（仅打开定位 instant 分支）；焦点跟随仍 animateScrollBy ±8。
+    scroll_to_count = drawer_code.count("channelListState.scrollToItem(")
+    if scroll_to_count != 1:
+        problems.append(f"PlayerDrawer.kt: exactly one instant scrollToItem (open-position) expected, found {scroll_to_count} (t62)")
     # t52 §⑤（criterion upgraded）：logo 像素级匹配 icon-512 LANCZOS —— 由 check_brand_assets.py 专项校验，
     # 这里只确认脚本存在（避免与专项门禁重复实现比对逻辑）。
 

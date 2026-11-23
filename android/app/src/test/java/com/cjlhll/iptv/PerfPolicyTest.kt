@@ -421,4 +421,17 @@ class PerfPolicyTest {
         assertEquals(8, PerfPolicy.drawerScrollDelta(147, 10))   // 下滚钳到 +8（非整页翻）
         assertEquals(0, PerfPolicy.drawerScrollDelta(60, 60))
     }
+
+    // ── t62：打开首次定位瞬时落位 vs 抽屉内焦点跟随 ±8 对称 ──────────────────
+    @Test
+    fun t62OpenPositionInstantVsFollowClamped() {
+        // 打开定位：大 delta 一次到位（瞬时 scrollToItem），不受 ±8 限制 → 快速贴到当前台。
+        assertEquals(12, PerfPolicy.drawerScrollStep(openPositioning = true, rawDelta = 12))
+        assertEquals(100, PerfPolicy.drawerScrollStep(openPositioning = true, rawDelta = 100))
+        // 抽屉内焦点跟随：严格 ±8 对称平滑。
+        assertEquals(8, PerfPolicy.drawerScrollStep(openPositioning = false, rawDelta = 12))
+        assertEquals(-8, PerfPolicy.drawerScrollStep(openPositioning = false, rawDelta = -100))
+        assertEquals(8, PerfPolicy.drawerScrollStep(openPositioning = false, rawDelta = 100))
+        assertEquals(0, PerfPolicy.drawerScrollStep(openPositioning = false, rawDelta = 0))
+    }
 }
