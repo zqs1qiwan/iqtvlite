@@ -268,13 +268,19 @@ def main() -> int:
     # t59 ①：上滚基准回退 focus-2（用户确认正确）+ 对称限幅 ±EDGE*4(±8)。
     if "fun drawerScrollDelta(" not in policy or "DRAWER_SCROLL_MAX_STEP = DRAWER_SCROLL_EDGE_ROWS * 4" not in policy:
         problems.append("PerfPolicy.kt: t59 symmetric ±8 scroll delta helper missing")
-    # t72（TiviMate 基准）：焦点居中 target=focus-visibleRows/2，替换旧 focus-2。
-    if "return (focusIndex - half).coerceIn(0, hi)" not in policy:
-        problems.append("PerfPolicy.kt: t72 scroll target must be focus-centered (focus - half)")
-    if "val half = DRAWER_SCREEN_ROWS / 2" not in policy:
-        problems.append("PerfPolicy.kt: t72 centered focus must use DRAWER_SCREEN_ROWS/2")
-    if "channelCount < DRAWER_SCREEN_ROWS) return 0" not in policy:
-        problems.append("PerfPolicy.kt: t72 small-count safe return missing")
+    # t78：焦点行中心与高亮框几何中心对齐 —— half=(visibleRows-1)/2（旧 visibleRows/2 偏行）。
+    if "fun drawerCenteredHalf(" not in policy or "((visibleRows - 1) / 2)" not in policy:
+        problems.append("PerfPolicy.kt: t78 centered-half (visibleRows-1)/2 missing")
+    if "fun drawerVisibleRowsFromPx(" not in policy:
+        problems.append("PerfPolicy.kt: t78 dynamic visible-rows-from-px missing")
+    if "fun drawerHighlightTopPx(" not in policy or "drawerHighlightTopPx(centerVisibleRows" not in drawer_code:
+        problems.append("t78: highlight box top must align to half*rowH (not geometric center)")
+    if "val half = drawerCenteredHalf(visibleRows)" not in policy:
+        problems.append("PerfPolicy.kt: t78 scroll target must use centered half")
+    if "channelCount < visibleRows) return 0" not in policy:
+        problems.append("PerfPolicy.kt: t78 small-count safe return missing")
+    if "PerfPolicy.drawerScrollTargetIndex(focus, channels.size, vr)" not in drawer_code:
+        problems.append("PlayerDrawer.kt: t78 worker must pass actual visibleRows to target")
     if "DRAWER_PROGRAM_AREA_ALPHA" not in policy:
         problems.append("PerfPolicy.kt: t72 program-area transparent alpha token missing")
     # t75: fixed center focus highlight overlay + drawer auto-close.

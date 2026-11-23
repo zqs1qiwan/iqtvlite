@@ -147,14 +147,38 @@ object PerfPolicy {
     const val DRAWER_SCROLL_EDGE_ROWS = 2
 
     /**
-     * t72（TiviMate 设计基准）：焦点**始终位于可视区正中间** —— target = focus - visibleRows/2。
-     * 显示行数取 [DRAWER_SCREEN_ROWS]=12 → half=6，焦点居中约第 7 行。上下滚时焦点不动、
-     * 列表反向滚动使焦点回到中间。边缘钳到 [0, count-visibleRows]；小 count(<visibleRows) 安全返回 0。
+     * t78：中心对齐半偏移 —— 高亮框在可视区几何中心（y=V*rowH/2）；焦点行落在第 p 行时其中心
+     * y=(p+0.5)*rowH。令两者相等 → p=(V-1)/2。即 target = focus - (visibleRows-1)/2，
+     * 焦点行屏幕中心才与高亮框几何中心精确重合（差 0 行）。
      */
-    fun drawerScrollTargetIndex(focusIndex: Int, channelCount: Int): Int {
-        if (channelCount <= 0 || channelCount < DRAWER_SCREEN_ROWS) return 0
-        val half = DRAWER_SCREEN_ROWS / 2
-        val hi = channelCount - DRAWER_SCREEN_ROWS
+    fun drawerCenteredHalf(visibleRows: Int): Int = ((visibleRows - 1) / 2).coerceAtLeast(0)
+
+    /**
+     * t78：由实际可视像素高度与行高算可视行数（不写死 12；真机可能 ~10 行 → 旧 half=6 偏 1-2 行）。
+     */
+    fun drawerVisibleRowsFromPx(viewportHeightPx: Int, rowHeightPx: Int): Int =
+        if (rowHeightPx <= 0) DRAWER_SCREEN_ROWS else (viewportHeightPx / rowHeightPx).coerceIn(1, 60)
+
+    /**
+     * t78：高亮框顶边相对可视区顶部的偏移像素 = half*rowH。焦点行滚动后 top 也=half*rowH，
+     * 两框（均 rowH 高）中心精确重合 → 高亮框所指行 == 焦点行（差 0 行）。
+     */
+    fun drawerHighlightTopPx(visibleRows: Int, rowHeightPx: Int): Int =
+        drawerCenteredHalf(visibleRows) * rowHeightPx
+
+    /**
+     * t72/t78（TiviMate 基准）：焦点**始终位于可视区正中间且中心与高亮框重合** ——
+     * target = focus - (visibleRows-1)/2。上下滚焦点不动、列表反向滚使焦点回中间；长按到两端焦点居中。
+     * 边缘钳到 [0, count-visibleRows]；小 count(<visibleRows) 安全返回 0。
+     */
+    fun drawerScrollTargetIndex(
+        focusIndex: Int,
+        channelCount: Int,
+        visibleRows: Int = DRAWER_SCREEN_ROWS,
+    ): Int {
+        if (channelCount <= 0 || channelCount < visibleRows) return 0
+        val half = drawerCenteredHalf(visibleRows)
+        val hi = maxOf(0, channelCount - visibleRows)
         return (focusIndex - half).coerceIn(0, hi)
     }
 

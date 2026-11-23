@@ -371,6 +371,18 @@ fun PlayerDrawer(
         initialFirstVisibleItemIndex = 0
     )
 
+    // t78：可视行数单一真源（由 layoutInfo 派生），高亮框位置与滚动目标共用，确保差 0 行。
+    var centerVisibleRows by remember { mutableIntStateOf(PerfPolicy.DRAWER_SCREEN_ROWS) }
+    val centerVisibleRowsState = rememberUpdatedState(centerVisibleRows)
+    LaunchedEffect(visible, showContent) {
+        if (!visible || !showContent) return@LaunchedEffect
+        snapshotFlow {
+            val li = channelListState.layoutInfo
+            val n = li.visibleItemsInfo.size
+            if (n > 0) n else PerfPolicy.drawerVisibleRowsFromPx(li.viewportSize.height, with(prefetchDensity) { PerfPolicy.DRAWER_ROW_HEIGHT_DP.dp.roundToPx() })
+        }.collect { centerVisibleRows = it }
+    }
+
     // t39（关键改动）：**不再把 147 行逐帧全部揭示**。
     // t37 的 50th=40ms 来自“补满 147 行要 72 帧、每帧都重组列表”这 72 个重帧；
     // 现在只维护一个**工作窗口**（首屏 3 行 → 第 2 帧扩到 选中行+lookahead+一屏），
@@ -430,11 +442,14 @@ fun PlayerDrawer(
             if (intent == null || !visible) return@collect
             val focus = intent.focusIndex
             if (focus < 0 || focus >= channels.size) return@collect
+            // t78：用可视行数单一真源算居中偏移（高亮框中心与焦点行中心数学对齐，差 0 行）。
+            val rowPx = with(prefetchDensity) { PerfPolicy.DRAWER_ROW_HEIGHT_DP.dp.roundToPx() }
             // 打开定位：一次性瞬时落位；长按：瞬时到目标窗口（快速到两端）；单点：±8 平滑逐帧推进。
             if (intent.instant || intent.longPress) {
-                val target = PerfPolicy.drawerScrollTargetIndex(focus, channels.size)
+                val vr = centerVisibleRowsState.value
+                val target = PerfPolicy.drawerScrollTargetIndex(focus, channels.size, vr)
                 runCatching { channelListState.scrollToItem(target) }
-                PerfTrace.d { "drawer_scroll_correct target=$target focus=$focus ${if (intent.instant) "INSTANT open-position" else "LONGPRESS jump"}" }
+                PerfTrace.d { "drawer_scroll_correct target=$target focus=$focus vr=$vr ${if (intent.instant) "INSTANT open-position" else "LONGPRESS jump"}" }
                 return@collect
             }
             // 单点焦点跟随：循环直到目标行真正可见；每轮基于当前实际位置重算，位移单调累积。
@@ -447,14 +462,14 @@ fun PlayerDrawer(
                     PerfPolicy.ScrollDecision.CLEAR -> break // 目标已可见（含边缘阈值），停止
                     PerfPolicy.ScrollDecision.WAIT -> kotlinx.coroutines.delay(16) // 揭示未覆盖，等下一帧
                     PerfPolicy.ScrollDecision.SCROLL -> {
-                        val target = PerfPolicy.drawerScrollTargetIndex(focus, channels.size)
-                        val rowPx = with(prefetchDensity) { PerfPolicy.DRAWER_ROW_HEIGHT_DP.dp.roundToPx() }
+                        val vr = centerVisibleRowsState.value
+                        val target = PerfPolicy.drawerScrollTargetIndex(focus, channels.size, vr)
                         // 从当前实际 first 重算单调步长；await 完成后再判，不会因新意图被 cancel。
                         val delta = PerfPolicy.drawerMonotonicStep(target, first)
                         if (delta == 0) break
                         val consumed = runCatching { channelListState.animateScrollBy(delta * rowPx.toFloat()) }.isSuccess
                         if (!consumed) break
-                        PerfTrace.d { "drawer_scroll_correct target=$target focus=$focus first=$first last=$last smooth=$delta" }
+                        PerfTrace.d { "drawer_scroll_correct target=$target focus=$focus first=$first last=$last vr=$vr smooth=$delta" }
                     }
                 }
             }
@@ -1082,11 +1097,15 @@ fun PlayerDrawer(
                         // 永不随列表滚动改变（对齐 TiviMate：按 UP/DOWN 焦点框绝对静止，只有列表在动）。
                         Box(modifier = Modifier.fillMaxSize()) {
                             if (PerfPolicy.DRAWER_CENTER_HIGHLIGHT && showContent) {
+                                val rowPxHere = with(prefetchDensity) { PerfPolicy.DRAWER_ROW_HEIGHT_DP.dp.roundToPx() }
+                                val highlightTop = with(prefetchDensity) {
+                                    PerfPolicy.drawerHighlightTopPx(centerVisibleRows, rowPxHere).toFloat().toDp()
+                                }
                                 Box(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .height(PerfPolicy.DRAWER_ROW_HEIGHT_DP.dp)
-                                        .align(Alignment.Center)
+                                        .offset(y = highlightTop) // t78：顶边对齐焦点行 top=half*rowH，中心精确重合
                                         .graphicsLayer()
                                         .background(BrandFocus.FocusBgColor)
                                         .testTag("drawer_center_focus_highlight")
