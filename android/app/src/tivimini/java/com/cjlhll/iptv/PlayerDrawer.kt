@@ -432,27 +432,16 @@ fun PlayerDrawer(
         }
     }
 
-    // t69 ④（根源解耦）：滚动执行 effect 的 key 只含 visible/channels.size —— 焦点意图高频更新
-    // （onRowFocusedScroll / revealedRows 分帧）不再取消本 effect。意图经 scrollIntentFlow 投递，
-    // worker 每轮从**最新 layoutInfo.firstVisible** 重算 delta（单调推进），animateScrollBy 完成后再判，
-    // 目标未进可视区就继续滚 → 连续/长按逐帧累积位移，不再"每次被 cancel 净位移≈0"。
-    LaunchedEffect(visible, channels.size) {
-        if (!visible) return@LaunchedEffect
-        scrollIntentFlow.collect { intent ->
-            if (intent == null || !visible) return@collect
-            val focus = intent.focusIndex
-            if (focus < 0 || focus >= channels.size) return@collect
-            // t78：用可视行数单一真源算居中偏移（高亮框中心与焦点行中心数学对齐，差 0 行）。
-            val rowPx = with(prefetchDensity) { PerfPolicy.DRAWER_ROW_HEIGHT_DP.dp.roundToPx() }
-            // 打开定位：一次性瞬时落位；长按：瞬时到目标窗口（快速到两端）；单点：±8 平滑逐帧推进。
-            if (intent.instant || intent.longPress) {
-                val vr = centerVisibleRowsState.value
-                val target = PerfPolicy.drawerScrollTargetIndex(focus, channels.size, vr)
-                runCatching { channelListState.scrollToItem(target) }
-                PerfTrace.d { "drawer_scroll_correct target=$target focus=$focus vr=$vr ${if (intent.instant) "INSTANT open-position" else "LONGPRESS jump"}" }
-                return@collect
-            }
-            // 单点焦点跟随：循环直到目标行真正可见；每轮基于当前实际位置重算，位移单调累积。
+    // t84：单一滚动执行路径 —— 意图 worker 与稳态监测共用，避免两套滚动打架。
+    // scrollInProgress 保证同一时刻只有一个收敛循环在跑（防抖/不重复 post）。
+    var scrollInProgress by remember { mutableStateOf(false) }
+    val rowPxGlobal = with(prefetchDensity) { PerfPolicy.DRAWER_ROW_HEIGHT_DP.dp.roundToPx() }
+
+    suspend fun convergeFocusToCenter(focus: Int) {
+        if (!visible || focus < 0 || focus >= channels.size) return
+        if (scrollInProgress) return
+        scrollInProgress = true
+        try {
             var guard = 0
             while (guard++ < 24 && visible) {
                 val info = channelListState.layoutInfo
@@ -460,19 +449,60 @@ fun PlayerDrawer(
                 val last = info.visibleItemsInfo.lastOrNull()?.index ?: -1
                 val vr = centerVisibleRowsState.value
                 when (PerfPolicy.drawerScrollDecision(focus, channels.size, revealedRows, first, last, vr)) {
-                    PerfPolicy.ScrollDecision.CLEAR -> break // 目标已可见（含边缘阈值），停止
+                    PerfPolicy.ScrollDecision.CLEAR -> break // 焦点已居中（first==target），停，不抖动
                     PerfPolicy.ScrollDecision.WAIT -> kotlinx.coroutines.delay(16) // 揭示未覆盖，等下一帧
                     PerfPolicy.ScrollDecision.SCROLL -> {
-                        val vr = centerVisibleRowsState.value
                         val target = PerfPolicy.drawerScrollTargetIndex(focus, channels.size, vr)
-                        // 从当前实际 first 重算单调步长；await 完成后再判，不会因新意图被 cancel。
-                        val delta = PerfPolicy.drawerMonotonicStep(target, first)
+                        val delta = PerfPolicy.drawerMonotonicStep(target, first) // 从当前实际 first 单调推进
                         if (delta == 0) break
-                        val consumed = runCatching { channelListState.animateScrollBy(delta * rowPx.toFloat()) }.isSuccess
+                        val consumed = runCatching {
+                            channelListState.animateScrollBy(delta * rowPxGlobal.toFloat())
+                        }.isSuccess
                         if (!consumed) break
                         PerfTrace.d { "drawer_scroll_correct target=$target focus=$focus first=$first last=$last vr=$vr smooth=$delta" }
                     }
                 }
+            }
+        } finally {
+            scrollInProgress = false
+        }
+    }
+
+    // t69 ④（根源解耦）：滚动执行 effect 的 key 只含 visible/channels.size —— 焦点意图高频更新
+    // （onRowFocusedScroll / revealedRows 分帧）不再取消本 effect。意图经 scrollIntentFlow 投递。
+    LaunchedEffect(visible, channels.size) {
+        if (!visible) return@LaunchedEffect
+        scrollIntentFlow.collect { intent ->
+            if (intent == null || !visible) return@collect
+            val focus = intent.focusIndex
+            if (focus < 0 || focus >= channels.size) return@collect
+            // 打开定位：一次性瞬时落位；长按：瞬时到目标窗口（快速到两端）；单点：共享单调收敛。
+            if (intent.instant || intent.longPress) {
+                val vr = centerVisibleRowsState.value
+                val target = PerfPolicy.drawerScrollTargetIndex(focus, channels.size, vr)
+                runCatching { channelListState.scrollToItem(target) }
+                PerfTrace.d { "drawer_scroll_correct target=$target focus=$focus vr=$vr ${if (intent.instant) "INSTANT open-position" else "LONGPRESS jump"}" }
+                return@collect
+            }
+            convergeFocusToCenter(focus)
+        }
+    }
+
+    // t84（根源修·稳态闭环）：持续监测当前焦点与首可见行 —— 末次 intent 漏发（焦点前进但未触发校正）
+    // 时，first != target → 主动补一次收敛，直到 first==target（焦点行在高亮框中心，差 0 行）。
+    // 与意图 worker 共用 convergeFocusToCenter + scrollInProgress 守卫，居中后 needsSteadyCorrection=false
+    // 不再触发（防抖）；动画进行中 scrollInProgress=true 不重复 post。
+    LaunchedEffect(visible, channels.size) {
+        if (!visible) return@LaunchedEffect
+        snapshotFlow {
+            val first = channelListState.layoutInfo.visibleItemsInfo.firstOrNull()?.index ?: -1
+            Triple(focusTargetIndex, first, centerVisibleRowsState.value)
+        }.collect { (focus, first, vr) ->
+            if (!visible || focus < 0) return@collect
+            if (scrollInProgress) return@collect // 动画进行中不重复 post
+            if (PerfPolicy.needsSteadyCorrection(focus, first, channels.size, vr)) {
+                PerfTrace.d { "drawer_steady_correct focus=$focus first=$first vr=$vr -> reconverge" }
+                convergeFocusToCenter(focus)
             }
         }
     }

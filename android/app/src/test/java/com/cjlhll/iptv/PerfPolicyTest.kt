@@ -387,6 +387,57 @@ class PerfPolicyTest {
             PerfPolicy.drawerScrollDecision(focus, count, count, first, first + v - 1, v))
     }
 
+    // ── t84：末次 intent 漏发 → 稳态监测补校正，focus-first==HALF 恒成立 ──────
+    @Test
+    fun t84SteadyMonitorRepairsMissedLastIntent() {
+        val count = 147
+        val v = 12
+        val half = PerfPolicy.drawerCenteredHalf(v) // 5
+        // t83 铁证：DOWN 后最终 focus=22，但最后一条 scroll_correct 的 focus=21（漏末次）
+        // → 列表停在 first=21-half=16，focus-first=6≠half=5 → 稳态需补校正。
+        val finalFocus = 22
+        val staleFirst = 16
+        assertTrue("偏离中心 → 稳态监测需补校正",
+            PerfPolicy.needsSteadyCorrection(finalFocus, staleFirst, count, v))
+        assertEquals("漏末次导致差1行", half + 1, finalFocus - staleFirst)
+
+        // 用共享单调步补一次收敛到 first==target（与 t69 worker 同路径），差 0 行。
+        var first = staleFirst
+        var steps = 0
+        while (PerfPolicy.needsSteadyCorrection(finalFocus, first, count, v) && steps < 24) {
+            val target = PerfPolicy.drawerScrollTargetIndex(finalFocus, count, v)
+            first += PerfPolicy.drawerMonotonicStep(target, first)
+            steps++
+        }
+        val target = PerfPolicy.drawerScrollTargetIndex(finalFocus, count, v) // 17
+        assertEquals(target, first)
+        assertEquals("补校正后 focus-first==HALF（差0行）", half, finalFocus - first)
+        assertFalse("居中后稳态不再触发（不抖动）",
+            PerfPolicy.needsSteadyCorrection(finalFocus, first, count, v))
+    }
+
+    @Test
+    fun t84SteadyConvergesBothDirections() {
+        val count = 147
+        val v = 12
+        val half = PerfPolicy.drawerCenteredHalf(v)
+        // UP 场景：最终 focus=7，漏末次列表停 first=7-half-1=1（差1行，焦点偏下）。
+        for ((focus, staleFirst) in listOf(22 to 16, 7 to 1, 13 to 7)) {
+            var first = staleFirst
+            var steps = 0
+            while (PerfPolicy.needsSteadyCorrection(focus, first, count, v) && steps < 24) {
+                val target = PerfPolicy.drawerScrollTargetIndex(focus, count, v)
+                first += PerfPolicy.drawerMonotonicStep(target, first)
+                steps++
+            }
+            assertEquals("focus=$focus 收敛后 focus-first==HALF", half, focus - first)
+        }
+        // 边界：焦点越界/无布局不误触发。
+        assertFalse(PerfPolicy.needsSteadyCorrection(-1, 5, count, v))
+        assertFalse(PerfPolicy.needsSteadyCorrection(999, 5, count, v))
+        assertTrue(PerfPolicy.needsSteadyCorrection(50, -1, count, v)) // 无 firstVisible → 需校正
+    }
+
     @Test
     fun t29DecisionWaitAndClearEdgeCases() {
         // 揭示未覆盖焦点行 → WAIT（等分帧揭示，不滚不清）。

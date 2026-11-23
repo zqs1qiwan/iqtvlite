@@ -136,6 +136,21 @@ object PerfPolicy {
     const val DRAWER_CENTER_HIGHLIGHT = true
 
     /**
+     * t84：稳态闭环判定 —— 末次 intent 漏发时，焦点已前进而列表未跟上；只要焦点行未落在
+     * 中心高亮框位置（first != target）就需要补校正。与 t81 CLEAR 同口径，供 snapshotFlow 稳态监测用。
+     */
+    fun needsSteadyCorrection(
+        focusIndex: Int,
+        firstVisibleIndex: Int,
+        channelCount: Int,
+        visibleRows: Int = DRAWER_SCREEN_ROWS,
+    ): Boolean {
+        if (focusIndex < 0 || focusIndex >= channelCount) return false
+        if (firstVisibleIndex < 0) return true
+        return firstVisibleIndex != drawerScrollTargetIndex(focusIndex, channelCount, visibleRows)
+    }
+
+    /**
      * t81：抽屉无操作自动收回时长。临时从 7000 放宽到 15000ms，便于真机 t82 在滚动收敛后
      * 取稳定终态 dump（15s 窗口）；产品最终值后续可调回 7s。
      */

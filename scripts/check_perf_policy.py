@@ -332,6 +332,15 @@ def main() -> int:
         problems.append("PlayerDrawer.kt: t81 worker must pass visibleRows to decision")
     if "DRAWER_AUTO_CLOSE_MS = 15_000L" not in policy:
         problems.append("PerfPolicy.kt: t81 auto-close temporarily 15s for t82 device verification")
+    # t84：稳态闭环监测（末次 intent 漏发补校正）—— needsSteadyCorrection + snapshotFlow monitor + 共用收敛路径。
+    if "fun needsSteadyCorrection(" not in policy:
+        problems.append("PerfPolicy.kt: t84 needsSteadyCorrection pure policy missing")
+    if "suspend fun convergeFocusToCenter(" not in drawer_code:
+        problems.append("PlayerDrawer.kt: t84 shared converge path missing")
+    if "snapshotFlow {" not in drawer_code or "drawer_steady_correct" not in drawer_code:
+        problems.append("PlayerDrawer.kt: t84 steady-state snapshotFlow monitor missing")
+    if "scrollInProgress" not in drawer_code:
+        problems.append("PlayerDrawer.kt: t84 scroll-in-progress guard (no double scroll) missing")
     if "var desiredScrollIndex by remember { mutableIntStateOf(-1) }" not in drawer_code:
         problems.append("PlayerDrawer.kt: single source desiredScrollIndex missing (t29)")
     # 旧两套机制必须彻底删除（禁止补丁式叠加）。
