@@ -99,28 +99,12 @@ object PerfPolicy {
         channelCount > 0 && index in 0 until channelCount
 
     /**
-     * t15（滚动校正）：目标行是否已被分帧揭示到足以执行 scrollToItem。
-     *
-     * 根因：打开首帧 revealedRows=3 时就 scrollToItem(126)，被 LazyColumn 钳到 0；
-     * 之后分帧补到 147 行却没再校正滚动 → 焦点 idx126、可见 first=1。
-     * 这里给出门控条件：只有当揭示行数覆盖 targetScroll 那一行（+1，0 基索引需 count>=index+1）
-     * 时，scrollToItem 才不会被钳到 0，才应执行一次校正。
-     */
-    fun drawerScrollCorrected(revealedRows: Int, targetScrollIndex: Int): Boolean =
-        targetScrollIndex >= 0 && revealedRows >= targetScrollIndex + 1
-
-    /**
      * t15 / V4 §4：把焦点行索引换算成 `scrollToItem` 的目标（留 2 行前置上下文）。
      *
      * V4 §4：上限用 `channelCount - 2`（而非 n-1），使越界 focus=999、count=147 → 145
      * （与 PerfPolicyTest.t15ScrollTargetUsesSafeFirstVisibleClamp 一致，修复 CI #216）。
      * 语义：末尾目标仍留 2 行上下文，符合"留 2 行前置"注释；空/1 组 → 0。
      */
-    /**
-     * t49 §③：开窗目标只抬高不回落（防止换台重入时 revealTarget 收缩导致可见行闪烁）。
-     */
-    fun drawerRevealTarget(current: Int, openTarget: Int): Int = maxOf(current, openTarget)
-
     /**
      * t49 §③：抽屉"打开锚点"语义 —— 换台（playingUrl 变化）不改变已冻结的 openAnchor。
      * 打开瞬间 anchor = lastFocusedUrl ?: playingUrl；之后 playingUrl 变化应被忽略。
@@ -136,43 +120,49 @@ object PerfPolicy {
     const val DRAWER_CENTER_HIGHLIGHT = true
 
     /**
-     * t84：稳态闭环判定 —— 末次 intent 漏发时，焦点已前进而列表未跟上；只要焦点行未落在
-     * 中心高亮框位置（first != target）就需要补校正。与 t81 CLEAR 同口径，供 snapshotFlow 稳态监测用。
-     */
-    fun needsSteadyCorrection(
-        focusIndex: Int,
-        firstVisibleIndex: Int,
-        channelCount: Int,
-        visibleRows: Int = DRAWER_SCREEN_ROWS,
-    ): Boolean {
-        if (focusIndex < 0 || focusIndex >= channelCount) return false
-        if (firstVisibleIndex < 0) return true
-        // t87：边缘焦点物理上无法居中（target 钳到 [0, count-V]），不强求、不反复校正抖动。
-        if (isEdgeFocus(focusIndex, channelCount, visibleRows)) return false
-        return firstVisibleIndex != drawerScrollTargetIndex(focusIndex, channelCount, visibleRows)
-    }
-
-    /** t87：焦点位于可视区边缘（前 half 行 / 后 half 行）时无法居中，属正常。 */
-    fun isEdgeFocus(focusIndex: Int, channelCount: Int, visibleRows: Int = DRAWER_SCREEN_ROWS): Boolean {
-        if (channelCount < visibleRows) return true
-        val half = drawerCenteredHalf(visibleRows)
-        return focusIndex < half || focusIndex >= channelCount - half
-    }
-
-    /**
      * t81：抽屉无操作自动收回时长。临时从 7000 放宽到 15000ms，便于真机 t82 在滚动收敛后
      * 取稳定终态 dump（15s 窗口）；产品最终值后续可调回 7s。
      */
-    const val DRAWER_AUTO_CLOSE_MS = 15_000L
+    const val DRAWER_AUTO_CLOSE_MS = 7_000L // t91：架构重构后恢复产品值 7s
+
+    /**
+     * t91（架构重构·首帧直接定位）：焦点行应处于的首可见索引 —— 抽屉首帧与焦点变化都用同一公式。
+     * 非边缘：first = focus - (V-1)/2（焦点行落在中心高亮框）；边缘钳 [0, count-V]；
+     * 小分组(count<=V)/空组/越界 → 0（列表不可滚，全部可见）。
+     */
+    fun firstVisibleForFocus(focusIndex: Int, channelCount: Int, viewportRows: Int): Int {
+        if (channelCount <= 0 || viewportRows <= 0 || focusIndex < 0 || focusIndex >= channelCount) return 0
+        if (channelCount <= viewportRows) return 0
+        val half = drawerCenteredHalf(viewportRows)
+        val hi = channelCount - viewportRows
+        return (focusIndex - half).coerceIn(0, hi)
+    }
+
+    /**
+     * t91：首帧一次揭示的可视窗口行数（不再逐帧 +2）。覆盖 [0, first+viewportRows] 且 ≥viewport。
+     */
+    fun initialRevealRows(focusIndex: Int, channelCount: Int, viewportRows: Int): Int {
+        if (channelCount <= 0 || viewportRows <= 0) return 0
+        val first = firstVisibleForFocus(focusIndex, channelCount, viewportRows)
+        return minOf(channelCount, maxOf(viewportRows, first + viewportRows))
+    }
+
+    /**
+     * t91：中心高亮框顶边偏移 —— 非小分组：half*rowH（焦点行滚动后 top 也=half*rowH，差0）；
+     * 小分组(count<=V)：跟随焦点行实际 y = focusIndex*rowH（唯一例外，captain 裁定）。
+     */
+    fun highlightTopFor(focusIndex: Int, channelCount: Int, viewportRows: Int, rowHeightPx: Int): Int =
+        if (channelCount <= viewportRows) {
+            (focusIndex.coerceIn(0, maxOf(0, channelCount - 1))) * rowHeightPx
+        } else {
+            drawerCenteredHalf(viewportRows) * rowHeightPx
+        }
 
     /**
      * t75：抽屉自动收回判定 —— 抽屉打开且距最后一次交互 ≥阈值才收；有交互/未打开不收。
      */
     fun shouldAutoCloseDrawer(drawerOpen: Boolean, lastInteractionAt: Long, now: Long): Boolean =
         drawerOpen && (now - lastInteractionAt) >= DRAWER_AUTO_CLOSE_MS
-    /** t52 §④：焦点的"接近可视边缘"提前滚动阈值（行数）；t59 提前声明供对称限幅使用。 */
-    const val DRAWER_SCROLL_EDGE_ROWS = 2
-
     /**
      * t78：中心对齐半偏移 —— 高亮框在可视区几何中心（y=V*rowH/2）；焦点行落在第 p 行时其中心
      * y=(p+0.5)*rowH。令两者相等 → p=(V-1)/2。即 target = focus - (visibleRows-1)/2，
@@ -194,62 +184,6 @@ object PerfPolicy {
         drawerCenteredHalf(visibleRows) * rowHeightPx
 
     /**
-     * t72/t78（TiviMate 基准）：焦点**始终位于可视区正中间且中心与高亮框重合** ——
-     * target = focus - (visibleRows-1)/2。上下滚焦点不动、列表反向滚使焦点回中间；长按到两端焦点居中。
-     * 边缘钳到 [0, count-visibleRows]；小 count(<visibleRows) 安全返回 0。
-     */
-    fun drawerScrollTargetIndex(
-        focusIndex: Int,
-        channelCount: Int,
-        visibleRows: Int = DRAWER_SCREEN_ROWS,
-    ): Int {
-        if (channelCount <= 0 || channelCount < visibleRows) return 0
-        val half = drawerCenteredHalf(visibleRows)
-        val hi = maxOf(0, channelCount - visibleRows)
-        return (focusIndex - half).coerceIn(0, hi)
-    }
-
-    /**
-     * t59 ①：方向对称的每帧滚动量（正负同限幅 ±EDGE*4 = ±8 行），上滚/下滚逐帧一致，
-     * 杜绝旧实现"上滚 -8、下滚可到 channels.size"的整页翻。
-     */
-    const val DRAWER_SCROLL_MAX_STEP = DRAWER_SCROLL_EDGE_ROWS * 4
-
-    fun drawerScrollDelta(
-        targetIndex: Int,
-        firstVisibleIndex: Int,
-        maxStep: Int = DRAWER_SCROLL_MAX_STEP,
-    ): Int = (targetIndex - firstVisibleIndex).coerceIn(-maxStep, maxStep)
-
-    /**
-     * t62：滚动模式纯策略 —— 打开抽屉首次定位（openPositioning=true）允许瞬时落位（大步进，
-     * 一次到位）；抽屉内焦点跟随（false）严格 ±MAX_STEP 对称平滑。换台不重开抽屉 → 走 false 分支，
-     * 不受影响。
-     */
-    fun drawerScrollStep(openPositioning: Boolean, rawDelta: Int): Int =
-        if (openPositioning) rawDelta else drawerScrollDelta(rawDelta, 0)
-
-    /**
-     * t65：instant 定位是否置位 —— 抽屉关→开的上升沿（opened=true）每次都置位；
-     * 换台（drawer 仍开，opened=false）不置位，走 smooth 原地保持。
-     */
-    fun shouldArmInstantLocate(drawerOpened: Boolean): Boolean = drawerOpened
-
-    /**
-     * t69 ④：长按/连续滚动判定 —— repeatCount 达到阈值即视为长按，走瞬时 scrollToItem
-     * （长按本就要快速到两端，天然顺滑到底/顶，不受 ±8 平滑动画被取消的问题影响）；
-     * 单点按（repeat=0）走 ±8 逐行平滑。
-     */
-    const val DRAWER_LONG_PRESS_REPEAT = 3
-
-    fun isLongPressScroll(repeatCount: Int): Boolean = repeatCount >= DRAWER_LONG_PRESS_REPEAT
-
-    /** t69 ④：焦点事件间隔 ≤阈值 视为长按连续滚（Compose focus 无 repeatCount，用节奏判定）。 */
-    const val DRAWER_FOCUS_CADENCE_MS = 180L
-
-    fun isRapidFocus(gapMs: Long): Boolean = gapMs in 0..DRAWER_FOCUS_CADENCE_MS
-
-    /**
      * t69 ⑤：开抽屉定位锚点 —— 用户从播放器按 LEFT 进入时，**当前播放台**为第一优先；
      * browse 记忆仅作 fallback（播放台 URL 不在当前列表时）。切组内恢复走独立的 openAnchor 路径，
      * 不再用残留 browse 焦点覆盖播放台。
@@ -258,69 +192,6 @@ object PerfPolicy {
         if (!playingUrl.isNullOrBlank() && playingUrl in knownUrls) return playingUrl
         if (!browseAnchor.isNullOrBlank() && browseAnchor in knownUrls) return browseAnchor
         return null
-    }
-
-    /**
-     * t69 ④：单调推进步长 —— 每次从"当前实际首可见行"重算到目标的 delta，双向对称限幅；
-     * 只要目标还没进可视区就继续推进（ repeatedly applied → 位移单调累积到目标，不被取消丢失）。
-     */
-    fun drawerMonotonicStep(
-        targetIndex: Int,
-        currentFirstIndex: Int,
-        maxStep: Int = DRAWER_SCROLL_MAX_STEP,
-    ): Int = (targetIndex - currentFirstIndex).coerceIn(-maxStep, maxStep)
-
-    /**
-     * t26（V4 残留）：revealed 已满时关→重开，焦点行若不在可见区，需要补一次滚动校正。
-     *
-     * 条件：焦点索引有效（>=0 且 < count）、揭示行数已覆盖焦点行（否则交给 t15 的门控，避免钳制）、
-     * 且焦点索引不在 [firstVisible, lastVisible] 可视窗口内。
-     * - 焦点可见 → false（不触发，防抖/防重滚）。
-     * - revealed 未满（焦点行还没组合出来）→ false（交给 t15 pending 门控，等揭示覆盖后再校正）。
-     */
-    fun drawerFocusNeedsRevealCorrection(
-        focusIndex: Int,
-        channelCount: Int,
-        revealedRows: Int,
-        firstVisibleIndex: Int,
-        lastVisibleIndex: Int,
-    ): Boolean {
-        if (focusIndex < 0 || focusIndex >= channelCount) return false
-        if (!drawerScrollCorrected(revealedRows, drawerScrollTargetIndex(focusIndex, channelCount))) return false
-        if (firstVisibleIndex < 0 || lastVisibleIndex < firstVisibleIndex) return false
-        return focusIndex < firstVisibleIndex || focusIndex > lastVisibleIndex
-    }
-
-    /**
-     * t29/t81（单一真源）：统一滚动校正决策。
-     *
-     * 意图 [desiredFocusIndex] 是"希望处于可视区的焦点行索引"（=-1 无意图），并非首可见行本身；
-     * 真正落点由 [drawerScrollTargetIndex] 派生（t78：target=focus-half，焦点行落在高亮框中心）。
-     * 返回唯一动作：
-     * - SCROLL：揭示已覆盖 + 焦点尚未真正居中（first != target）→ 继续单调收敛到 target；
-     * - CLEAR：焦点已居中（first == target，即焦点行中心与高亮框中心重合）或意图无效 → 停；
-     * - WAIT：意图有效但揭示尚未覆盖 target → 等分帧揭示后再判。
-     *
-     * t81 根治：旧 CLEAR 用"焦点在可视区[first,last]内"太宽——焦点在边缘（如 first=12/last=22、focus=21）
-     * 虽可见却不在中心高亮框（中心≈17）→ 提前 break，高亮指向别的台。收紧为 first==target 才停。
-     */
-    enum class ScrollDecision { SCROLL, CLEAR, WAIT }
-
-    fun drawerScrollDecision(
-        desiredFocusIndex: Int,
-        channelCount: Int,
-        revealedRows: Int,
-        firstVisibleIndex: Int,
-        lastVisibleIndex: Int,
-        visibleRows: Int = DRAWER_SCREEN_ROWS,
-    ): ScrollDecision {
-        if (desiredFocusIndex < 0 || desiredFocusIndex >= channelCount) return ScrollDecision.CLEAR
-        val target = drawerScrollTargetIndex(desiredFocusIndex, channelCount, visibleRows)
-        if (!drawerScrollCorrected(revealedRows, target)) return ScrollDecision.WAIT
-        if (firstVisibleIndex < 0 || lastVisibleIndex < firstVisibleIndex) return ScrollDecision.WAIT
-        // t81：只有焦点行真正落在中心高亮框位置（first==target）才 CLEAR；
-        // 焦点在可视区但偏离中心（first!=target，含边缘）→ 继续 SCROLL 收敛，差 0 行。
-        return if (firstVisibleIndex == target) ScrollDecision.CLEAR else ScrollDecision.SCROLL
     }
 
     // ── t32 Bug4：节目单列收窄 ~30% + 聚焦跑马灯（有限圈数） ────────────────

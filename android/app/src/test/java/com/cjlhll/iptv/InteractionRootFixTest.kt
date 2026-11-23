@@ -8,26 +8,10 @@ import org.junit.Test
 /** t52 第二批根治的纯逻辑用例（滚动均匀 / 7s / 设置入口 / 卡片高度）。 */
 class InteractionRootFixTest {
 
-    // ── §④ 滚动均匀 ─────────────────────────────────────────────────────────
+    // ── §④ 架构重构后由 firstVisibleForFocus 首帧定位（PerfPolicyTest.t91 覆盖） ──
     @Test
-    fun scrollLookaheadWithinOneScreenAndEdgeAware() {
+    fun drawerLookaheadWithinOneScreen() {
         assertEquals(8, PerfPolicy.DRAWER_LOOKAHEAD_ROWS) // 8×64=512 < 一屏 672
-        assertEquals(2, PerfPolicy.DRAWER_SCROLL_EDGE_ROWS)
-        // 焦点在可视区中段（离两端 >2）→ CLEAR 不滚。
-        assertEquals(
-            PerfPolicy.ScrollDecision.CLEAR,
-            PerfPolicy.drawerScrollDecision(105, 147, 147, 100, 111),
-        )
-        // 焦点贴下边缘（111，距 last 0）→ SCROLL 提前平滑滚。
-        assertEquals(
-            PerfPolicy.ScrollDecision.SCROLL,
-            PerfPolicy.drawerScrollDecision(111, 147, 147, 100, 111),
-        )
-        // 贴上边缘（101）→ SCROLL。
-        assertEquals(
-            PerfPolicy.ScrollDecision.SCROLL,
-            PerfPolicy.drawerScrollDecision(101, 147, 147, 100, 111),
-        )
     }
 
     // ── §⑥ 卡片高度 ─────────────────────────────────────────────────────────

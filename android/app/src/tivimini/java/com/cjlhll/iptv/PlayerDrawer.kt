@@ -11,7 +11,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
-import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -116,9 +115,6 @@ private fun zoneForProgram(program: EpgProgram, fallback: ZoneId): ZoneId {
     return if (seconds != null) java.time.ZoneOffset.ofTotalSeconds(seconds) else fallback
 }
 
-/** t69 ④：一条滚动意图消息（执行与意图更新解耦，key 只在 visible 翻转时重建）。 */
-private data class ScrollIntent(val focusIndex: Int, val instant: Boolean, val longPress: Boolean)
-
 @OptIn(FlowPreview::class)
 @Composable
 fun PlayerDrawer(
@@ -195,7 +191,6 @@ fun PlayerDrawer(
     var autoProgramScrollKey by remember { mutableStateOf<String?>(null) }
     var isFocusRestoring by remember { mutableStateOf(false) }
     var groupChangedFlag by remember { mutableStateOf(false) }
-    var hasInitializedDrawerFocus by remember { mutableStateOf(false) }
 
     val epgChannelUiCache = remember(epgData) {
         object : LinkedHashMap<String, EpgChannelUiData>(32, 0.75f, true) {
@@ -241,28 +236,11 @@ fun PlayerDrawer(
     // 避免"120ms 后一次性大块组合"造成的 300+ms 巨帧（t28 实测 5 个 332–368ms）。
     var contentReady by remember { mutableStateOf(PerfPolicy.DRAWER_DEFER_CONTENT_MS <= 0L) }
     var revealedRows by remember { mutableIntStateOf(0) }
-    // t46：**唯一增长入口** —— 任何触发（打开 / 滚动 / 焦点）只抬高目标值，
-    // 由下面的“泵”每帧 +2 行推进；不再一次性赋值（t45 的 301–393ms 巨帧就是一次性 +16/+28 造成的）。
-    var revealTarget by remember { mutableIntStateOf(0) }
-    // t29（根源重构）：唯一滚动意图真源 —— 存"希望处于可视区的焦点行索引"（=-1 无意图）。
-    // 所有开合/切组/换台/焦点变化只更新这个值；唯一校正 effect 决定何时 scrollToItem 并清空它。
-    var desiredScrollIndex by remember { mutableIntStateOf(-1) }
-    // t62：滚动意图模式 —— true=打开抽屉首次定位（瞬时 scrollToItem 快速落位当前台）；
-    // false=抽屉内焦点跟随（±8 对称平滑）。与 desiredScrollIndex 一并清空，形成"意图+模式"单一来源。
-    var desiredScrollInstant by remember { mutableStateOf(false) }
-    // t69 ④：滚动意图流（执行与意图更新解耦）—— 校正 effect key 只含 visible，不因意图高频更新被 cancel。
-    // 每个意图（含 repeatCount 决定 instant/smooth）作为一条消息投递；worker 逐条消费，滚动期间新意图只更新目标。
-    val scrollIntentFlow = remember { kotlinx.coroutines.flow.MutableStateFlow<ScrollIntent?>(null) }
-    // t69 ④：焦点事件节奏 —— 连续快速焦点（<180ms 间隔）视为长按/连续滚，走瞬时 jump。
-    var lastFocusEventAt by remember { mutableStateOf(0L) }
     val showContent = visible && contentReady
     LaunchedEffect(visible) {
         if (!visible) {
             contentReady = false
             revealedRows = 0
-            desiredScrollIndex = -1 // t29：关闭时清唯一滚动意图，避免跨开合带入陈旧目标
-            desiredScrollInstant = false // t62：关闭时复位定位模式
-            scrollIntentFlow.value = null // t69：取消在途滚动意图
             composedUrls.clear()
         } else if (PerfPolicy.DRAWER_DEFER_CONTENT_MS > 0L) {
             contentReady = false
@@ -271,7 +249,6 @@ fun PlayerDrawer(
             contentReady = true
         } else {
             contentReady = true
-            revealedRows = 0
         }
     }
     LaunchedEffect(visible) {
@@ -301,7 +278,7 @@ fun PlayerDrawer(
             val ms = android.os.SystemClock.elapsedRealtime() - started
             PerfTrace.d {
                 "drawer_open ms=$ms total=${channels.size} composed=${composedUrls.size} " +
-                    "revealed=$revealedRows first=${PerfPolicy.DRAWER_FIRST_FRAME_ROWS} groups=${groups.size} group=$selectedGroup"
+                    "revealed=$revealedRows groups=${groups.size} group=$selectedGroup"
             }
         }
     }
@@ -353,223 +330,56 @@ fun PlayerDrawer(
     val groupListState = rememberLazyListState()
 
     // t49 §③：把「打开时的恢复焦点」与「播放台」都冻结在开抽屉这一刻（openAnchor）。
-    // 旧实现 initialScrollIndex 以 selectedChannelUrl 为 key，换台改变它→开窗 effect 重入→
-    // revealTarget 重置/滚动回退→闪回首页。现在 openAnchor 只在 visible 翻转时重算，
-    // 换台（selectedChannelUrl 变化）不再改变 initialScrollIndex，抽屉 UI 原地保持。
+    // t91：openAnchor 现在是首帧初值的 anchor 输入（不再是事后定位意图）。
     val openAnchor = remember(visible) {
         if (visible) (initialFocusUrl ?: selectedChannelUrl) else null
     }
 
-    // 只用冻结的 openAnchor 计算初始索引；selectedChannelUrl 不参与 key（语义分离）。
-    val initialScrollIndex = remember(channelIndexByUrl, openAnchor) {
-        PerfPolicy.drawerInitialIndex(openAnchor, null, channelIndexByUrl)
+    // t91 ①：首帧直接定位 —— 从播放台 anchor 同步算 focusIndex → 首帧 firstVisible。
+    // 用 key(visible) 让每次关→开重建 LazyListState（重算初值），打开期间换台不改初值（UI 原地保持）。
+    val openSessionFocusUrl = remember(visible) {
+        if (visible) {
+            PerfPolicy.drawerOpenPositionAnchor(
+                playingUrl = selectedChannelUrl,
+                browseAnchor = openAnchor,
+                knownUrls = channelIndexByUrl.keys,
+            ) ?: channels.firstOrNull()?.url
+        } else null
     }
 
-    val channelListState = rememberLazyListState(
-        // V4 §1：初值固定 0，避免冷启时 initialScrollIndex=深行被 LazyColumn 钳到 0 造成
-        // 「先闪到开头又跳回」的两次跳变。恢复位置完全交给 t29 的唯一滚动意图 + 校正 effect。
-        initialFirstVisibleItemIndex = 0
-    )
-
-    // t78：可视行数单一真源（由 layoutInfo 派生），高亮框位置与滚动目标共用，确保差 0 行。
-    var centerVisibleRows by remember { mutableIntStateOf(PerfPolicy.DRAWER_SCREEN_ROWS) }
-    val centerVisibleRowsState = rememberUpdatedState(centerVisibleRows)
-    LaunchedEffect(visible, showContent) {
-        if (!visible || !showContent) return@LaunchedEffect
-        snapshotFlow {
-            val li = channelListState.layoutInfo
-            val n = li.visibleItemsInfo.size
-            if (n > 0) n else PerfPolicy.drawerVisibleRowsFromPx(li.viewportSize.height, with(prefetchDensity) { PerfPolicy.DRAWER_ROW_HEIGHT_DP.dp.roundToPx() })
-        }.collect { centerVisibleRows = it }
+    // t91 ①：首帧初值 —— 用 openSessionFocusUrl 的索引经 firstVisibleForFocus 算出。
+    val openSessionFocusIndex = openSessionFocusUrl?.let { channelIndexByUrl[it] } ?: 0
+    val drawerViewportRows = PerfPolicy.DRAWER_SCREEN_ROWS
+    // key(visible)：每次关→开重建 state 重算首帧初值；打开期间焦点变化走唯一 scrollToItem effect。
+    val channelListState = key(visible) {
+        rememberLazyListState(
+            initialFirstVisibleItemIndex = PerfPolicy.firstVisibleForFocus(openSessionFocusIndex, channels.size, drawerViewportRows),
+            initialFirstVisibleItemScrollOffset = 0,
+        )
     }
 
-    // t39（关键改动）：**不再把 147 行逐帧全部揭示**。
-    // t37 的 50th=40ms 来自“补满 147 行要 72 帧、每帧都重组列表”这 72 个重帧；
-    // 现在只维护一个**工作窗口**（首屏 3 行 → 第 2 帧扩到 选中行+lookahead+一屏），
-    // 之后**随滚动/焦点按需增长**（见 scroll-follow 效果与 onRowFocusedScroll）。
-    // 这样打开只需 2 个"轻"帧，50th 回到 ≤16ms 才有戏；列表行为与"全量揭示"完全一致（LazyColumn 本就只组合可见项）。
-    LaunchedEffect(visible, channels.size, initialScrollIndex) {
-        if (!visible || !PerfPolicy.DRAWER_INCREMENTAL_ROWS) return@LaunchedEffect
-        // t46：打开只**设定目标**（有界开窗），实际推进交给分帧泵（每帧 +2 行）。
-        // t48：首屏目标 28 → 18（减少分帧数 13→9），仍按 step=2 分帧推进。
-        // S1：按实际行数计算首帧与目标窗口。旧写法
-        // `(initialScrollIndex + OPEN_WINDOW).coerceIn(FIRST_FRAME_ROWS, channels.size)` 在
-        // channels.size < FIRST_FRAME_ROWS（0/1/2 行的小分组）时 lo>hi 会抛
-        // IllegalArgumentException，导致打开抽屉直接崩溃。pure helper 保证 lo<=hi：
-        // 0 行 → first=0、openTarget=0；1/2 行 → 目标钳在行数内，不崩也不越界。
-        val openTarget = PerfPolicy.drawerSafeOpenTarget(initialScrollIndex, channels.size)
-        revealedRows = PerfPolicy.drawerFirstRows(channels.size)
-        // t49 §③：开窗目标只抬高不回落（与分帧泵"唯一增长入口"一致），即使 effect 被重触发
-        // 也不收缩窗口，避免换台时可见行收缩/重排的闪烁。
-        revealTarget = maxOf(revealTarget, openTarget)
-        PerfTrace.d {
-            "drawer_compose target=$openTarget first=${PerfPolicy.DRAWER_FIRST_FRAME_ROWS} " +
-                "step=${PerfPolicy.DRAWER_ROWS_PER_FRAME} rows=${channels.size}"
-        }
-    }
-
-    // t46：**分帧泵** —— 每帧只 +2 行，直到追上 revealTarget；新目标到来时继续推进。
-    // 这样“打开 28 行”和“滚动再 +16 行”都不会一次性组合，巨帧消失。
-    LaunchedEffect(visible, channels.size) {
-        if (!visible || !PerfPolicy.DRAWER_INCREMENTAL_ROWS) return@LaunchedEffect
-        val started = android.os.SystemClock.elapsedRealtime()
-        var frames = 0
-        snapshotFlow { revealTarget }.collect { target ->
-            while (revealedRows < target) {
-                val before = revealedRows
-                androidx.compose.runtime.withFrameNanos { }
-                revealedRows = (before + PerfPolicy.DRAWER_ROWS_PER_FRAME).coerceAtMost(target)
-                frames++
-                if (frames == 1 || revealedRows >= target) {
-                    PerfTrace.d {
-                        "drawer_compose frames=$frames rows=${channels.size} target=$target " +
-                            "ms=${android.os.SystemClock.elapsedRealtime() - started} " +
-                            "lastFrameRows=${revealedRows - before} first=${PerfPolicy.DRAWER_FIRST_FRAME_ROWS} " +
-                            "step=${PerfPolicy.DRAWER_ROWS_PER_FRAME}"
-                    }
-                }
-            }
-        }
-    }
-
-    // t84：单一滚动执行路径 —— 意图 worker 与稳态监测共用，避免两套滚动打架。
-    // scrollInProgress 保证同一时刻只有一个收敛循环在跑（防抖/不重复 post）。
-    var scrollInProgress by remember { mutableStateOf(false) }
-    val rowPxGlobal = with(prefetchDensity) { PerfPolicy.DRAWER_ROW_HEIGHT_DP.dp.roundToPx() }
-
-    // t87：单一实时焦点真源 —— 每轮从 focusedChannelUrl 状态（mutableState，读取即当前值）现算，
-    // 绝不沿用 intent 入参快照（双快照竞态：焦点滚动中前进时旧快照会算出反向 delta）。
-    fun liveFocusIndex(): Int {
-        val url = focusedChannelUrl ?: return -1
-        return channelIndexByUrl[url] ?: -1
-    }
-
-    suspend fun convergeFocusToCenter() {
-        if (!visible) return
-        if (scrollInProgress) return
-        scrollInProgress = true
-        try {
-            var guard = 0
-            while (guard++ < 24 && visible) {
-                // t87：每轮重读实时焦点（焦点在滚动中前进时，下一轮自动朝新焦点收敛，绝不反向）。
-                val focus = liveFocusIndex()
-                if (focus < 0 || focus >= channels.size) break
-                val info = channelListState.layoutInfo
-                val first = info.visibleItemsInfo.firstOrNull()?.index ?: -1
-                val last = info.visibleItemsInfo.lastOrNull()?.index ?: -1
-                val vr = centerVisibleRowsState.value
-                when (PerfPolicy.drawerScrollDecision(focus, channels.size, revealedRows, first, last, vr)) {
-                    PerfPolicy.ScrollDecision.CLEAR -> break // 焦点已居中（first==target，实时focus），停，不抖动
-                    PerfPolicy.ScrollDecision.WAIT -> kotlinx.coroutines.delay(16) // 揭示未覆盖，等下一帧
-                    PerfPolicy.ScrollDecision.SCROLL -> {
-                        val target = PerfPolicy.drawerScrollTargetIndex(focus, channels.size, vr)
-                        val delta = PerfPolicy.drawerMonotonicStep(target, first) // 从当前实际 first 单调推进
-                        if (delta == 0) break
-                        val consumed = runCatching {
-                            channelListState.animateScrollBy(delta * rowPxGlobal.toFloat())
-                        }.isSuccess
-                        if (!consumed) break
-                        PerfTrace.d { "drawer_scroll_correct target=$target focus=$focus first=$first last=$last vr=$vr smooth=$delta" }
-                    }
-                }
-            }
-        } finally {
-            scrollInProgress = false
-        }
-    }
-
-    // t69 ④（根源解耦）：滚动执行 effect 的 key 只含 visible/channels.size —— 焦点意图高频更新
-    // （onRowFocusedScroll / revealedRows 分帧）不再取消本 effect。意图经 scrollIntentFlow 投递。
-    LaunchedEffect(visible, channels.size) {
+    // t91 ②：首帧一次揭示可视窗口（删逐帧 +2 分帧泵）。
+    LaunchedEffect(visible, openSessionFocusIndex, channels.size) {
         if (!visible) return@LaunchedEffect
-        scrollIntentFlow.collect { intent ->
-            if (intent == null || !visible) return@collect
-            // t87：长按时用实时焦点（焦点前进则 target 跟着前进，不反向）；单点走共享实时收敛。
-            val liveFocus = liveFocusIndex()
-            if (liveFocus < 0 || liveFocus >= channels.size) return@collect
-            if (intent.instant || intent.longPress) {
-                val vr = centerVisibleRowsState.value
-                val target = PerfPolicy.drawerScrollTargetIndex(liveFocus, channels.size, vr)
-                runCatching { channelListState.scrollToItem(target) }
-                PerfTrace.d { "drawer_scroll_correct target=$target focus=$liveFocus vr=$vr ${if (intent.instant) "INSTANT open-position" else "LONGPRESS jump"}" }
-                return@collect
-            }
-            convergeFocusToCenter()
-        }
+        revealedRows = PerfPolicy.initialRevealRows(openSessionFocusIndex, channels.size, drawerViewportRows)
+        PerfTrace.d { "drawer_reveal first rows=$revealedRows focus=$openSessionFocusIndex total=${channels.size}" }
     }
 
-    // t84（根源修·稳态闭环）：持续监测当前焦点与首可见行 —— 末次 intent 漏发（焦点前进但未触发校正）
-    // 时，first != target → 主动补一次收敛，直到 first==target（焦点行在高亮框中心，差 0 行）。
-    // 与意图 worker 共用 convergeFocusToCenter + scrollInProgress 守卫，居中后 needsSteadyCorrection=false
-    // 不再触发（防抖）；动画进行中 scrollInProgress=true 不重复 post。
-    LaunchedEffect(visible, channels.size) {
-        if (!visible) return@LaunchedEffect
-        snapshotFlow {
-            val first = channelListState.layoutInfo.visibleItemsInfo.firstOrNull()?.index ?: -1
-            Triple(focusTargetIndex, first, centerVisibleRowsState.value)
-        }.collect { (_snapshotFocus, _first, _vr) ->
-            if (!visible) return@collect
-            if (scrollInProgress) return@collect // 动画进行中不重复 post
-            // t87：判定时也用实时焦点（不信 snapshot 快照，避免快照过期误判）。
-            val focus = liveFocusIndex()
-            if (focus < 0) return@collect
-            val first = channelListState.layoutInfo.visibleItemsInfo.firstOrNull()?.index ?: -1
-            val vr = centerVisibleRowsState.value
-            if (PerfPolicy.needsSteadyCorrection(focus, first, channels.size, vr)) {
-                PerfTrace.d { "drawer_steady_correct focus=$focus first=$first vr=$vr -> reconverge" }
-                convergeFocusToCenter()
-            }
-        }
+    // t91 ③：焦点变化的唯一滚动调用点 —— 瞬时 scrollToItem 到 firstVisibleForFocus（无 animate/worker/稳态）。
+    // 首帧时 first 已由 LazyListState 初值设为同一公式结果 → 这是幂等 no-op；只在焦点后续变化时真正瞬时重定位。
+    LaunchedEffect(visible, focusTargetIndex, channels.size) {
+        if (!visible || focusTargetIndex < 0 || focusTargetIndex >= channels.size) return@LaunchedEffect
+        val target = PerfPolicy.firstVisibleForFocus(focusTargetIndex, channels.size, drawerViewportRows)
+        channelListState.scrollToItem(target)
+        PerfTrace.d { "drawer_focus_locate focus=$focusTargetIndex first=$target total=${channels.size}" }
     }
 
-    // t29/t59：意图写入统一入口（供 open / 换台 / 焦点跟随复用）；写入 scrollIntentFlow 供上面 worker 消费。
-    fun postScrollIntent(focus: Int, instant: Boolean, longPress: Boolean) {
-        scrollIntentFlow.value = ScrollIntent(focus, instant, longPress)
-        desiredScrollIndex = focus // 保留 t29 单一真源镜像（供门禁/诊断）
-        desiredScrollInstant = instant
-    }
-
-    // t39：滚动/布局驱动按需增长 —— 只要“最后一个可见项”接近已揭示末尾，就再揭示一个窗口，
-    // 保证向下滚动永远有下一屏（用户感知与全量揭示一致，但不再有 72 个重帧）。
-    LaunchedEffect(visible, channels.size) {
-        if (!visible || !PerfPolicy.DRAWER_INCREMENTAL_ROWS) return@LaunchedEffect
-        snapshotFlow { channelListState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0 }
-            .collect { lastVisible ->
-                if (lastVisible >= revealTarget - PerfPolicy.DRAWER_ROWS_PER_FRAME) {
-                    val next = (lastVisible + PerfPolicy.DRAWER_LOOKAHEAD_ROWS).coerceIn(0, channels.size)
-                    if (next > revealTarget) {
-                        revealTarget = next
-                        PerfTrace.d { "drawer_reveal_grow target=$revealTarget lastVisible=$lastVisible" }
-                    }
-                }
-            }
-    }
-
-    // t39/t29/t69：焦点行被聚焦时 —— 只投递"希望该行可见"意图 + 抬高揭示目标，
-    // 真正滚动由上面解耦的常驻 worker 完成。连续快速焦点（长按）走瞬时 jump，单点走 ±8 平滑。
+    // t91 ②：焦点越界时一次性把 revealedRows 抬到覆盖新焦点（不逐帧泵）。
     val onRowFocusedScroll: (Int) -> Unit = { idx ->
-        if (PerfPolicy.DRAWER_INCREMENTAL_ROWS) {
-            val need = (idx + PerfPolicy.DRAWER_LOOKAHEAD_ROWS).coerceIn(0, channels.size)
-            if (need > revealTarget) revealTarget = need
-            val now = android.os.SystemClock.elapsedRealtime()
-            val rapid = PerfPolicy.isRapidFocus(now - lastFocusEventAt)
-            lastFocusEventAt = now
-            postScrollIntent(idx, instant = false, longPress = rapid)
-        }
+        val need = PerfPolicy.initialRevealRows(idx, channels.size, drawerViewportRows)
+        if (need > revealedRows) revealedRows = need
     }
 
-    // t29：旧的「打开后确认 scrollToItem」effect 已移除——首帧 revealed=3 时会被钳到 0。
-    // 现在所有打开/切组/换台/焦点定位统一写 desiredScrollIndex，走上方唯一校正 effect。
-
-    // t39/t29：兜底 —— focusedChannelUrl 由别处改到窗口外时，登记唯一滚动意图（不直接滚）。
-    LaunchedEffect(visible, focusedChannelUrl) {
-        if (!visible || !PerfPolicy.DRAWER_INCREMENTAL_ROWS) return@LaunchedEffect
-        val url = focusedChannelUrl ?: return@LaunchedEffect
-        val idx = channelIndexByUrl[url] ?: return@LaunchedEffect
-        val need = (idx + PerfPolicy.DRAWER_LOOKAHEAD_ROWS).coerceIn(0, channels.size)
-        if (need > revealTarget) revealTarget = need
-        postScrollIntent(idx, instant = false, longPress = false)
-    }
 
     val programListState = rememberLazyListState()
     val dateListState = rememberLazyListState()
@@ -624,9 +434,6 @@ fun PlayerDrawer(
     LaunchedEffect(visible) {
         if (!visible) {
             delay(400)
-            // t65：每次关抽屉都把首次聚焦标志复位 → 下次关→开的上升沿重新走"打开定位"
-            // （瞬时落位当前台/按组焦点）。换台不重开抽屉 → 不复位、不重定位 → smooth 原地保持。
-            hasInitializedDrawerFocus = false
             isFocusRestoring = false
             showGroups = false
             showDates = false
@@ -638,24 +445,12 @@ fun PlayerDrawer(
             return@LaunchedEffect
         }
 
-        // t65/t69：每次关→开都重定位当前台，瞬时落位。
-        if (!hasInitializedDrawerFocus) {
-            hasInitializedDrawerFocus = true
-            // t69 ⑤：播放台优先（用户按 LEFT 从播放器进入=定位当前台）；browse 记忆仅 fallback。
-            val targetUrl = PerfPolicy.drawerOpenPositionAnchor(
-                playingUrl = selectedChannelUrl,
-                browseAnchor = openAnchor,
-                knownUrls = channelIndexByUrl.keys,
-            ) ?: channels.firstOrNull()?.url
-            if (targetUrl != null) {
-                focusedChannelUrl = targetUrl
-                stableFocusedChannelUrl = targetUrl
-                val targetIndex = channelIndexByUrl[targetUrl]
-                if (targetIndex != null && channels.isNotEmpty()) {
-                    // t62/t65/t69：每次打开都用瞬时滚动快速落位当前台（intent+mode 单一来源）。
-                    postScrollIntent(targetIndex, instant = true, longPress = false)
-                }
-            }
+        // t91：每次关→开把焦点设为当前播放台 anchor（首帧 LazyListState 已用同一 anchor 定位，
+        // 焦点 effect 的 scrollToItem 是幂等 no-op）。不再有 intent/mode/瞬时滚动补丁链。
+        val targetUrl = openSessionFocusUrl
+        if (targetUrl != null) {
+            focusedChannelUrl = targetUrl
+            stableFocusedChannelUrl = targetUrl
         }
 
         if (channels.isEmpty() || activeColumn != DrawerColumn.Channels) return@LaunchedEffect
@@ -691,11 +486,9 @@ fun PlayerDrawer(
         // FULLFIX §2：切组不再硬编码回 0（走唯一滚动意图校正）；仅无记忆时才从第一台开始。
         groupChangedFlag = true
         val remembered = initialFocusUrl?.takeIf { channelIndexByUrl.containsKey(it) }
-        focusedChannelUrl = remembered
+        // t91：切组直接设焦点（无记忆→该组第一台），焦点 effect 瞬时定位；不再有滚动意图。
+        focusedChannelUrl = remembered ?: channels.firstOrNull()?.url
         if (channels.isEmpty()) return@LaunchedEffect
-        val idx = remembered?.let { channelIndexByUrl[it] } ?: 0
-        // t29/t69：登记焦点行为唯一滚动意图（切组无记忆→idx=0 第一台）。
-        postScrollIntent(idx, instant = false, longPress = false)
     }
 
     LaunchedEffect(openAnchor, visible) {
@@ -747,20 +540,8 @@ fun PlayerDrawer(
         }
 
         withFrameNanos { }
-
-        // t29/t69：只投递滚动意图，滚动由解耦 worker 完成（不在多处 scrollToItem）。
-        if (channelListState.layoutInfo.visibleItemsInfo.none { it.index == focusTargetIndex }) {
-            postScrollIntent(focusTargetIndex, instant = false, longPress = false)
-        }
-
-        repeat(3) {
-            withFrameNanos { }
-            if (runCatching { selectedChannelRequester.requestFocus() }.isSuccess) {
-                pendingFocusToChannels = false
-                return@LaunchedEffect
-            }
-        }
-
+        // t91：焦点 effect 已瞬时定位；这里只负责请求 Compose 焦点，不再投递滚动意图。
+        runCatching { selectedChannelRequester.requestFocus() }
         pendingFocusToChannels = false
     }
 
@@ -1005,7 +786,7 @@ fun PlayerDrawer(
                         // 默认焦点搜索在“下一行还没被揭示”时会跳到右侧节目单，导致 t45 观测到的
                         // “快按后 DOWN×15 可见行仍 1–12”。这里显式改 focusedChannelUrl：
                         // → focusTargetIndex/focusTargetUrl 变化 → 该行挂上 requester → 现有 effect 聚焦；
-                        // → onRowFocusedScroll 抬高 revealTarget 并按帧补行，然后滚动跟随。
+                        // t91：焦点一落行就瞬时滚动跟随（统一 focus effect），不再有分帧补行/意图。
                         val down = it.key == Key.DirectionDown
                         // S1：`coerceIn(0, channelCount - 1)` 在 channelCount=0 时 lo>hi 会抛
                         // IllegalArgumentException；外层分支虽已用 channelCount>0 守卫，
@@ -1036,9 +817,8 @@ fun PlayerDrawer(
                         pendingFocusToChannels = true
                         val firstUrl = channels.firstOrNull()?.url
                         if (firstUrl != null) {
-                            focusedChannelUrl = firstUrl
+                            focusedChannelUrl = firstUrl // 焦点 effect 瞬时定位到该组第一台（t91）
                             onFocusedChannelChanged(firstUrl)
-                            postScrollIntent(0, instant = false, longPress = false) // 进入该组第一台
                         }
                         true
                     } else if (it.key == Key.DirectionRight && activeColumn == DrawerColumn.Channels) {
@@ -1144,14 +924,15 @@ fun PlayerDrawer(
                         Box(modifier = Modifier.fillMaxSize()) {
                             if (PerfPolicy.DRAWER_CENTER_HIGHLIGHT && showContent) {
                                 val rowPxHere = with(prefetchDensity) { PerfPolicy.DRAWER_ROW_HEIGHT_DP.dp.roundToPx() }
+                                // t91：高亮与首帧初值同源；小分组(count<=V)跟随焦点行实际 y（唯一例外）。
                                 val highlightTop = with(prefetchDensity) {
-                                    PerfPolicy.drawerHighlightTopPx(centerVisibleRows, rowPxHere).toFloat().toDp()
+                                    PerfPolicy.highlightTopFor(focusTargetIndex, channels.size, drawerViewportRows, rowPxHere).toFloat().toDp()
                                 }
                                 Box(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .height(PerfPolicy.DRAWER_ROW_HEIGHT_DP.dp)
-                                        .offset(y = highlightTop) // t78：顶边对齐焦点行 top=half*rowH，中心精确重合
+                                        .offset(y = highlightTop) // t91：中心对齐 / 小分组跟随实际行
                                         .graphicsLayer()
                                         .background(BrandFocus.FocusBgColor)
                                         .testTag("drawer_center_focus_highlight")

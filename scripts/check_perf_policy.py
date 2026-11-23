@@ -116,15 +116,10 @@ def main() -> int:
             problems.append(f"PerfTrace.kt: missing {token}")
     if "drawer_open ms=" not in drawer_code:
         problems.append("PlayerDrawer.kt: missing the 'drawer_open ms=' perf line")
-    # t29: per-frame incremental row reveal (no 120ms "empty then burst")
-    for token in ("PerfPolicy.DRAWER_INCREMENTAL_ROWS", "revealedRows",
-                  "channels.subList(0, revealedRows", "PerfPolicy.DRAWER_ROW_HEIGHT_DP", "drawer_close ms=",
-                  "PerfPolicy.DRAWER_LOOKAHEAD_ROWS"):
+    # t91: single-shot reveal (no per-frame pump) — panel still uses revealedRows/subList/rowHeight.
+    for token in ("revealedRows", "channels.subList(0, revealedRows", "PerfPolicy.DRAWER_ROW_HEIGHT_DP", "drawer_close ms="):
         if token not in drawer_code:
-            problems.append("PlayerDrawer.kt: missing incremental reveal token " + token)
-    if "onRowFocusedScroll" not in drawer_code:
-        problems.append("PlayerDrawer.kt: focus-driven scroll follow missing (t39)")
-    # t52 §④：LOOKAHEAD 收进一屏内（16→8，8×64=512<672dp）——t56 旧断言 16 已过时。
+            problems.append("PlayerDrawer.kt: missing reveal token " + token)
     if "const val DRAWER_SCREEN_ROWS = 12" not in policy:
         problems.append("PerfPolicy.kt: DRAWER_SCREEN_ROWS=12 required (t52)")
     # FULLFIX §1: all rows (focused AND non-focused) now compose the subtitle; `focused` only
@@ -156,20 +151,6 @@ def main() -> int:
         problems.append("PlayerDrawer.kt: subtitle text must go through TextSanitize.programTitle (t60)")
     if "sub_narrow" not in drawer_code:
         problems.append("PlayerDrawer.kt: sub_narrow probe missing (t60)")
-    if "openTarget" not in drawer_code:
-        problems.append("PlayerDrawer.kt: bounded open window (openTarget) missing (t42)")
-    # S1: small-group drawer crash guard. The old `coerceIn(FIRST_FRAME_ROWS, channels.size)`
-    # and `coerceIn(0, channelCount - 1)` throw IllegalArgumentException when lo>hi (0–2 rows / empty
-    # groups). The safe open-target/first-rows/first-visible helpers in PerfPolicy must be used,
-    # and the raw lo>hi patterns must be gone.
-    if "PerfPolicy.drawerSafeOpenTarget(" not in drawer_code:
-        problems.append("PlayerDrawer.kt: S1 open target must go through PerfPolicy.drawerSafeOpenTarget")
-    if "PerfPolicy.drawerFirstRows(" not in drawer_code:
-        problems.append("PlayerDrawer.kt: S1 first rows must go through PerfPolicy.drawerFirstRows")
-    if "PerfPolicy.drawerSafeFirstVisibleIndex(" not in drawer_code:
-        problems.append("PlayerDrawer.kt: S1 first-visible clamp must go through PerfPolicy.drawerSafeFirstVisibleIndex")
-    if re.search(r"coerceIn\(PerfPolicy\.DRAWER_FIRST_FRAME_ROWS,\s*channels\.size\)", drawer_code):
-        problems.append("PlayerDrawer.kt: forbidden lo>hi coerceIn(FIRST_FRAME_ROWS, channels.size) is back (S1)")
     if re.search(r"coerceIn\(0,\s*channelCount\s*-\s*1\)", drawer_code):
         problems.append("PlayerDrawer.kt: forbidden coerceIn(0, channelCount-1) is back (S1)")
     for helper in ("fun drawerSafeOpenTarget(", "fun drawerFirstRows(", "fun drawerSafeFirstVisibleIndex("):
@@ -192,30 +173,15 @@ def main() -> int:
                 problems.append("DrawerChannelItem missing rich-row token " + required + " (FULLFIX §1)")
     if ".height(3.dp)" not in drawer_code:
         problems.append("PlayerDrawer.kt: ThinProgressBar must be 3dp (FULLFIX §1)")
-    # t46: single frame-paced reveal pump (target + 2 rows/frame), no one-shot bulk growth
-    for token in ("revealTarget", "snapshotFlow { revealTarget }", "drawer_row_subtitle",
-                  "row_focus idx=", "via=key"):
+    # row focus log + subtitle tag still required (t91 keeps rich rows / log).
+    for token in ("drawer_row_subtitle", "row_focus idx=", "via=key"):
         if token not in drawer_code:
-            problems.append("PlayerDrawer.kt: missing t46 token " + token)
-    if "revealedRows = next" in drawer_code:
-        problems.append("PlayerDrawer.kt: one-shot reveal growth is back (t46 requires frame-paced pump)")
-    if "drawer_reveal_grow" not in drawer_code:
-        problems.append("PlayerDrawer.kt: scroll-driven reveal grow missing (t39)")
-    if "drawer_compose frames=" not in drawer_code:
-        problems.append("PlayerDrawer.kt: missing drawer_compose probe")
-    if "const val DRAWER_ROWS_PER_FRAME = 2" not in policy:
-        problems.append("PerfPolicy.kt: DRAWER_ROWS_PER_FRAME must be 1 (t56)")
-    if "const val DRAWER_FIRST_FRAME_ROWS = 3" not in policy:
-        problems.append("PerfPolicy.kt: DRAWER_FIRST_FRAME_ROWS must be 2 (t56)")
+            problems.append("PlayerDrawer.kt: missing row token " + token)
     if "const val DRAWER_ROW_HEIGHT_DP = 64" not in policy:
         problems.append("PerfPolicy.kt: DRAWER_ROW_HEIGHT_DP must be 64 (FULLFIX §1)")
     # t49 §③：恢复焦点冻结为 openAnchor（visible 翻转时快照），换台 selectedChannelUrl 不再参与 key。
-    if "remember(channelIndexByUrl, openAnchor)" not in drawer_code:
-        problems.append("PlayerDrawer.kt: initialScrollIndex must key only on frozen openAnchor (t49)")
     if "val openAnchor = remember(visible)" not in drawer_code:
         problems.append("PlayerDrawer.kt: openAnchor must freeze at drawer open via remember(visible) (t49)")
-    if "PerfPolicy.drawerInitialIndex(" not in drawer_code:
-        problems.append("PlayerDrawer.kt: initial index must go through PerfPolicy.drawerInitialIndex (FULLFIX §2)")
     if "initialFocusUrl: String? = null" not in drawer_code:
         problems.append("PlayerDrawer.kt: missing initialFocusUrl parameter (FULLFIX §2)")
     if "fun drawerInitialIndex(" not in policy:
@@ -262,25 +228,6 @@ def main() -> int:
     if "FULLFIX B2②" not in ACTIVITY.read_text(encoding="utf-8"):
         problems.append("PlayerActivity.kt: B2② info-card independence note missing")
 
-    for token in ("drawerScrollCorrected(", "PerfPolicy.drawerScrollTargetIndex("):
-        if token not in drawer_code and token not in policy:
-            problems.append("scroll pure helper missing: " + token)
-    # t59 ①：上滚基准回退 focus-2（用户确认正确）+ 对称限幅 ±EDGE*4(±8)。
-    if "fun drawerScrollDelta(" not in policy or "DRAWER_SCROLL_MAX_STEP = DRAWER_SCROLL_EDGE_ROWS * 4" not in policy:
-        problems.append("PerfPolicy.kt: t59 symmetric ±8 scroll delta helper missing")
-    # t78：焦点行中心与高亮框几何中心对齐 —— half=(visibleRows-1)/2（旧 visibleRows/2 偏行）。
-    if "fun drawerCenteredHalf(" not in policy or "((visibleRows - 1) / 2)" not in policy:
-        problems.append("PerfPolicy.kt: t78 centered-half (visibleRows-1)/2 missing")
-    if "fun drawerVisibleRowsFromPx(" not in policy:
-        problems.append("PerfPolicy.kt: t78 dynamic visible-rows-from-px missing")
-    if "fun drawerHighlightTopPx(" not in policy or "drawerHighlightTopPx(centerVisibleRows" not in drawer_code:
-        problems.append("t78: highlight box top must align to half*rowH (not geometric center)")
-    if "val half = drawerCenteredHalf(visibleRows)" not in policy:
-        problems.append("PerfPolicy.kt: t78 scroll target must use centered half")
-    if "channelCount < visibleRows) return 0" not in policy:
-        problems.append("PerfPolicy.kt: t78 small-count safe return missing")
-    if "PerfPolicy.drawerScrollTargetIndex(focus, channels.size, vr)" not in drawer_code:
-        problems.append("PlayerDrawer.kt: t78 worker must pass actual visibleRows to target")
     if "DRAWER_PROGRAM_AREA_ALPHA" not in policy:
         problems.append("PerfPolicy.kt: t72 program-area transparent alpha token missing")
     # t75: fixed center focus highlight overlay + drawer auto-close.
@@ -295,95 +242,35 @@ def main() -> int:
     if "shouldAutoCloseDrawer(" not in activity_code:
         problems.append("PlayerActivity.kt: t75 drawer auto-close timer not wired")
     # t69 ④：滚动执行解耦后用 drawerMonotonicStep 从当前实际位置重算（原 drawerScrollDelta 调用已替换）。
-    if "PerfPolicy.drawerMonotonicStep(target, first)" not in drawer_code:
-        problems.append("PlayerDrawer.kt: t69 must use symmetric drawerMonotonicStep (from current position)")
-    # t62/t69：区分"打开定位/长按（瞬时 scrollToItem）"与"抽屉内焦点跟随（±8 平滑）"。
-    if "fun drawerScrollStep(" not in policy:
-        problems.append("PerfPolicy.kt: t62 open-vs-follow scroll step policy missing")
-    if "desiredScrollInstant" not in drawer_code:
-        problems.append("PlayerDrawer.kt: t62 intent-mode flag (desiredScrollInstant) missing")
-    if "intent.instant || intent.longPress" not in drawer_code or "channelListState.scrollToItem(target)" not in drawer_code:
-        problems.append("PlayerDrawer.kt: t69 open/longpress must use instant scrollToItem")
-    if "instant = true" not in drawer_code:
-        problems.append("PlayerDrawer.kt: t62/t69 open-init must mark instant positioning via postScrollIntent")
-    if "desiredScrollInstant = false" not in drawer_code:
-        problems.append("PlayerDrawer.kt: t62 instant mode must reset after consume/close")
-    # t65：每次关→开都置 instant —— close 分支复位 hasInitializedDrawerFocus，下次开重走定位。
-    if "fun shouldArmInstantLocate(" not in policy:
-        problems.append("PerfPolicy.kt: t65 shouldArmInstantLocate pure policy missing")
-    if "hasInitializedDrawerFocus = false" not in drawer_code:
-        problems.append("PlayerDrawer.kt: t65 must reset hasInitializedDrawerFocus on close (every-open instant)")
-    # t69 ④⑤: playing-channel-first anchor + long-press/monotonic helpers.
     if "fun drawerOpenPositionAnchor(" not in policy:
         problems.append("PerfPolicy.kt: t69 playing-channel-first anchor policy missing")
     if "PerfPolicy.drawerOpenPositionAnchor(" not in drawer_code:
         problems.append("PlayerDrawer.kt: t69 open positioning must use drawerOpenPositionAnchor")
-    if "fun drawerMonotonicStep(" not in policy or "fun isRapidFocus(" not in policy:
-        problems.append("PerfPolicy.kt: t69 monotonic step / rapid-focus helpers missing")
-    # t29（根源重构）：唯一滚动意图真源，删除旧两套机制，唯一校正 effect。
-    if "fun drawerScrollDecision(" not in policy or "enum class ScrollDecision" not in policy:
-        problems.append("PerfPolicy.kt: drawerScrollDecision / ScrollDecision (single source) missing (t29)")
-    # t81：CLEAR 收紧为 first==target（焦点真正居中），不再"焦点在可视区就停"。
-    if "if (firstVisibleIndex == target) ScrollDecision.CLEAR else ScrollDecision.SCROLL" not in policy:
-        problems.append("PerfPolicy.kt: t81 CLEAR must require first==target (focus centered)")
-    if "val target = drawerScrollTargetIndex(desiredFocusIndex, channelCount, visibleRows)" not in policy:
-        problems.append("PerfPolicy.kt: t81 decision must use visibleRows-aligned target")
-    if "drawerScrollDecision(focus, channels.size, revealedRows, first, last, vr)" not in drawer_code:
-        problems.append("PlayerDrawer.kt: t81 worker must pass visibleRows to decision")
-    if "DRAWER_AUTO_CLOSE_MS = 15_000L" not in policy:
-        problems.append("PerfPolicy.kt: t81 auto-close temporarily 15s for t82 device verification")
-    # t84：稳态闭环监测（末次 intent 漏发补校正）—— needsSteadyCorrection + snapshotFlow monitor + 共用收敛路径。
-    if "fun needsSteadyCorrection(" not in policy:
-        problems.append("PerfPolicy.kt: t84 needsSteadyCorrection pure policy missing")
-    if "suspend fun convergeFocusToCenter(" not in drawer_code:
-        problems.append("PlayerDrawer.kt: t84 shared converge path missing")
-    if "snapshotFlow {" not in drawer_code or "drawer_steady_correct" not in drawer_code:
-        problems.append("PlayerDrawer.kt: t84 steady-state snapshotFlow monitor missing")
-    if "scrollInProgress" not in drawer_code:
-        problems.append("PlayerDrawer.kt: t84 scroll-in-progress guard (no double scroll) missing")
-    if "var desiredScrollIndex by remember { mutableIntStateOf(-1) }" not in drawer_code:
-        problems.append("PlayerDrawer.kt: single source desiredScrollIndex missing (t29)")
-    # 旧两套机制必须彻底删除（禁止补丁式叠加）。
-    for dead in ("pendingScrollIndex", "revealCorrectedKey", "drawerFocusNeedsRevealCorrection"):
-        if dead in drawer_code:
-            problems.append("PlayerDrawer.kt: legacy scroll mechanism still present: " + dead + " (t29)")
-    # t69 ④：校正 effect 的 key 不再含 desiredScrollIndex/revealedRows（否则高频重入 cancel 动画→零位移）。
-    if "LaunchedEffect(visible, channels.size)" not in drawer_code:
-        problems.append("PlayerDrawer.kt: t69 scroll worker must be keyed only on visible/channels.size")
-    if re.search(r"LaunchedEffect\(visible, desiredScrollIndex, revealedRows, channels\.size\)", drawer_code):
-        problems.append("PlayerDrawer.kt: t69 old high-frequency correction effect key still present")
-    if "scrollIntentFlow.collect" not in drawer_code:
-        problems.append("PlayerDrawer.kt: t69 decoupled scroll intent flow missing")
-    if "drawerMonotonicStep(target, first)" not in drawer_code:
-        problems.append("PlayerDrawer.kt: t69 monotonic re-compute-from-current-position missing")
-    if "PerfPolicy.isRapidFocus(" not in drawer_code:
-        problems.append("PlayerDrawer.kt: t69 long-press cadence detection missing")
-    # t87：收敛函数无 focus 快照入参、每轮重读实时焦点、边缘钳不抖。
-    if re.search(r"suspend fun convergeFocusToCenter\s*\(\s*focus\s*:", drawer_code):
-        problems.append("PlayerDrawer.kt: t87 convergeFocusToCenter must NOT take a focus snapshot param")
-    if "suspend fun convergeFocusToCenter()" not in drawer_code:
-        problems.append("PlayerDrawer.kt: t87 paramless convergeFocusToCenter missing")
-    if "fun liveFocusIndex()" not in drawer_code or "val focus = liveFocusIndex()" not in drawer_code:
-        problems.append("PlayerDrawer.kt: t87 live focus re-read each loop iteration missing")
-    if "fun isEdgeFocus(" not in policy:
-        problems.append("PerfPolicy.kt: t87 edge-focus clamp policy missing")
-    if "PerfPolicy.drawerScrollDecision(" not in drawer_code:
-        problems.append("PlayerDrawer.kt: must use drawerScrollDecision (t29)")
-    for decision in ("ScrollDecision.WAIT", "ScrollDecision.CLEAR", "ScrollDecision.SCROLL"):
-        if decision not in drawer_code:
-            problems.append("PlayerDrawer.kt: unified effect missing decision branch " + decision)
-    # 频道列滚动只允许在唯一校正 effect 内：t62 后两种（instant scrollToItem + smooth animateScrollBy）各一次。
-    channel_scroll_calls = len(re.findall(r"channelListState\.(?:scrollToItem|animateScrollBy)\(", drawer_code))
-    if channel_scroll_calls != 2:
-        problems.append(
-            "PlayerDrawer.kt: channel-column scroll must appear exactly twice (instant+smooth in single effect), found %d" % channel_scroll_calls
-        )
-    # 旧的首帧无条件 scrollToItem 不得回归。
-    if re.search(r"if \(targetIndex !in visibleIndices\) \{\s*runCatching \{ channelListState\.scrollToItem\(targetScroll\)", drawer_code):
-        problems.append("PlayerDrawer.kt: old first-frame unconditional scrollToItem is back (t29 regression)")
-    # V4 §1: list initial index fixed to 0 (no first-frame clamp flicker); logicalFocused drives highlight.
-    if "initialFirstVisibleItemIndex = 0" not in drawer_code:
-        problems.append("PlayerDrawer.kt: channelListState initial index must be 0 (V4 §1)")
+    # t91 架构重构：首帧直接定位 + 唯一瞬时 scrollToItem effect，无滚动 worker/补丁链。
+    t91_banned = ("animateScrollBy", "scrollIntentFlow", "convergeFocusToCenter", "scrollInProgress",
+                  "drawerScrollDecision", "drawerMonotonicStep", "needsSteadyCorrection",
+                  "desiredScrollIndex", "desiredScrollInstant", "hasInitializedDrawerFocus",
+                  "revealTarget", "liveFocusIndex", "isRapidFocus", "drawerScrollTargetIndex",
+                  "postScrollIntent", "ScrollIntent")
+    for sym in t91_banned:
+        if sym in drawer_code:
+            problems.append("PlayerDrawer.kt: t91 patch-chain symbol must be removed: " + sym)
+    t91_policy_banned = ("drawerScrollDecision", "drawerMonotonicStep", "needsSteadyCorrection",
+                         "isEdgeFocus", "drawerScrollTargetIndex", "drawerScrollDelta", "drawerScrollStep",
+                         "shouldArmInstantLocate", "isRapidFocus", "isLongPressScroll", "ScrollDecision",
+                         "drawerScrollCorrected", "drawerRevealTarget")
+    for sym in t91_policy_banned:
+        if re.search(r'\b(fun|const val|enum class|val)\s+' + re.escape(sym) + r'\b', policy):
+            problems.append("PerfPolicy.kt: t91 patch-chain declaration must be removed: " + sym)
+    if "firstVisibleForFocus(" not in drawer_code or "initialFirstVisibleItemIndex = PerfPolicy.firstVisibleForFocus" not in drawer_code:
+        problems.append("PlayerDrawer.kt: t91 first-frame must use firstVisibleForFocus as initial index")
+    if "fun firstVisibleForFocus(" not in policy or "fun initialRevealRows(" not in policy:
+        problems.append("PerfPolicy.kt: t91 firstVisibleForFocus/initialRevealRows pure helpers missing")
+    scroll_to_count = drawer_code.count("channelListState.scrollToItem(")
+    if scroll_to_count != 1:
+        problems.append("t91: exactly one channelListState.scrollToItem (focus effect) expected, found %d" % scroll_to_count)
+    if "DRAWER_AUTO_CLOSE_MS = 7_000L" not in policy:
+        problems.append("PerfPolicy.kt: t91 auto-close must be 7s product value")
     if "val showFocused = focused || logicalFocused" not in drawer_code:
         problems.append("PlayerDrawer.kt: logicalFocused highlight missing (V4 §1)")
     # t32 Bug4: EPG column narrowed ~30% + focus-only bounded marquee.
@@ -414,15 +301,8 @@ def main() -> int:
     if "BrandFocus.BlueColor" not in drawer_code or "playingNameColor(selected)" not in drawer_code:
         problems.append("PlayerDrawer.kt: selected channel name must stay blue (t41)")
     # t49 §③: zap must not re-enter open init (openAnchor frozen, no selectedChannelUrl key, revealTarget only raises).
-    if "fun drawerOpenAnchor(" not in policy or "fun drawerRevealTarget(" not in policy:
-        problems.append("PerfPolicy.kt: t49 openAnchor/revealTarget helpers missing")
     if "val openAnchor = remember(visible)" not in drawer_code:
         problems.append("PlayerDrawer.kt: openAnchor must freeze at open via remember(visible) (t49)")
-    if "revealTarget = maxOf(revealTarget, openTarget)" not in drawer_code:
-        problems.append("PlayerDrawer.kt: open window must only raise revealTarget (t49)")
-    # initialScrollIndex 不得再以 selectedChannelUrl 为 key（换台重入根因）。
-    if re.search(r"remember\([^)]*selectedChannelUrl[^)]*\)\s*\{\s*PerfPolicy\.drawerInitialIndex", drawer_code):
-        problems.append("PlayerDrawer.kt: initialScrollIndex must not key on selectedChannelUrl (t49)")
     if "LaunchedEffect(openAnchor, visible)" not in drawer_code:
         problems.append("PlayerDrawer.kt: focus-init effect must key on openAnchor not selectedChannelUrl (t49)")
     # t72：节目单区域无分割线（无 divider=1.dp、无 width(1.dp)+onSurface.copy(0.18) 竖线）+ 透明背景。
@@ -492,20 +372,9 @@ def main() -> int:
     if "JingcaiTsDataSource(" not in (SRC / "StreamPlayback.kt").read_text(encoding="utf-8"):
         problems.append("StreamPlayback/PlayerActivity: real DataSource byte counting must be installed")
 
-    # t52 §④: smooth uniform scroll (LOOKAHEAD within one screen, edge-aware decision, animateScrollBy).
+    # t91: LOOKAHEAD constant retained (only used by prefetch window sizing now).
     if "const val DRAWER_LOOKAHEAD_ROWS = 8" not in policy:
-        problems.append("PerfPolicy.kt: DRAWER_LOOKAHEAD_ROWS must be 8 (t52 §④ within one screen)")
-    if "DRAWER_SCROLL_EDGE_ROWS = 2" not in policy:
-        problems.append("PerfPolicy.kt: edge-aware scroll threshold missing (t52 §④)")
-    if "channelListState.animateScrollBy(" not in drawer_code:
-        problems.append("PlayerDrawer.kt: smooth animateScrollBy required (t52 §④, no instant page-flip)")
-    # t62：允许唯一一次瞬时 scrollToItem（仅打开定位 instant 分支）；焦点跟随仍 animateScrollBy ±8。
-    scroll_to_count = drawer_code.count("channelListState.scrollToItem(")
-    if scroll_to_count != 1:
-        problems.append(f"PlayerDrawer.kt: exactly one instant scrollToItem (open-position) expected, found {scroll_to_count} (t62)")
-    # t52 §⑤（criterion upgraded）：logo 像素级匹配 icon-512 LANCZOS —— 由 check_brand_assets.py 专项校验，
-    # 这里只确认脚本存在（避免与专项门禁重复实现比对逻辑）。
-
+        problems.append("PerfPolicy.kt: DRAWER_LOOKAHEAD_ROWS must be 8 (t52)")
     if problems:
         for p in problems:
             print(f"check_perf_policy: FAIL {p}")

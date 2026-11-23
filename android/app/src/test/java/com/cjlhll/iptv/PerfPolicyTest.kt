@@ -239,228 +239,6 @@ class PerfPolicyTest {
         assertEquals("大组越界 → 末尾", 146, PerfPolicy.drawerSafeFirstVisibleIndex(999, 147))
     }
 
-    // ── t15：分帧揭示后校正滚动（冷启首开 / P8b 换台深行） ──────────────────
-    @Test
-    fun t15ScrollCorrectionIsGatedByRevealedRows() {
-        // t78：焦点行中心与高亮框中心对齐，half=(V-1)/2=(12-1)/2=5；焦点 idx126 → 121。
-        val target = PerfPolicy.drawerScrollTargetIndex(126, 147)
-        assertEquals(121, target)
-        assertFalse("首帧 3 行不足以校正深行", PerfPolicy.drawerScrollCorrected(3, target))
-        assertFalse("补到 100 行仍不够", PerfPolicy.drawerScrollCorrected(100, target))
-        assertTrue("补到 122 行覆盖 target=121", PerfPolicy.drawerScrollCorrected(122, target))
-        assertTrue("补满 147 行可校正", PerfPolicy.drawerScrollCorrected(147, target))
-
-        // 浅行：target=0，首帧 revealed=3 已覆盖（>=1）。
-        val shallow = PerfPolicy.drawerScrollTargetIndex(0, 147)
-        assertEquals(0, shallow)
-        assertTrue(PerfPolicy.drawerScrollCorrected(3, shallow))
-
-        // 边界：负数 target 不校正；target=1 需 revealed>=2。
-        assertFalse(PerfPolicy.drawerScrollCorrected(147, -1))
-        assertFalse(PerfPolicy.drawerScrollCorrected(1, 1))
-        assertTrue(PerfPolicy.drawerScrollCorrected(2, 1))
-    }
-
-    @Test
-    fun t15ScrollTargetUsesSafeFirstVisibleClamp() {
-        // t78 焦点中心对齐高亮框：target=focus-(V-1)/2=focus-5，钳到 [0, count-visibleRows=135]；小 count 安全返回 0。
-        assertEquals(0, PerfPolicy.drawerScrollTargetIndex(0, 147))
-        assertEquals(0, PerfPolicy.drawerScrollTargetIndex(1, 147))
-        assertEquals(35, PerfPolicy.drawerScrollTargetIndex(40, 147))
-        assertEquals(0, PerfPolicy.drawerScrollTargetIndex(5, 0))
-        assertEquals(135, PerfPolicy.drawerScrollTargetIndex(999, 147))
-        assertEquals(0, PerfPolicy.drawerScrollTargetIndex(5, 1))
-        assertEquals(0, PerfPolicy.drawerScrollTargetIndex(999, 2))
-    }
-
-    // ── t26：revealed 已满但焦点不可见 → 补一次滚动校正 ─────────────────────
-    @Test
-    fun t26RevealFullFocusInvisibleTriggersCorrection() {
-        // 真机残留：revealed=141（已满）、焦点 idx114、可见 first=58 last=67 → 需校正。
-        assertTrue(
-            "焦点 idx114 不在可见区 58..67 → 触发",
-            PerfPolicy.drawerFocusNeedsRevealCorrection(114, 141, 141, 58, 67),
-        )
-        assertTrue(
-            "P8b：焦点 126 不在可见区 58..67 → 触发",
-            PerfPolicy.drawerFocusNeedsRevealCorrection(126, 141, 141, 58, 67),
-        )
-    }
-
-    @Test
-    fun t26FocusVisibleDoesNotTriggerCorrection() {
-        // 焦点在可见区内 → 不触发（防抖/防重滚）。
-        assertFalse(
-            "焦点 104 在可见区 100..111 → 不触发",
-            PerfPolicy.drawerFocusNeedsRevealCorrection(104, 141, 141, 100, 111),
-        )
-        assertFalse(
-            "焦点在边界 first → 不触发",
-            PerfPolicy.drawerFocusNeedsRevealCorrection(58, 141, 141, 58, 67),
-        )
-        assertFalse(
-            "焦点在边界 last → 不触发",
-            PerfPolicy.drawerFocusNeedsRevealCorrection(67, 141, 141, 58, 67),
-        )
-    }
-
-    @Test
-    fun t26RevealNotEnoughOrInvalidFocusDoesNotTrigger() {
-        // revealed 未满（焦点行还没组合出来）→ 交给 t15 pending 门控，不在这里触发。
-        assertFalse(
-            "revealed=60 未覆盖焦点 114 → 不触发",
-            PerfPolicy.drawerFocusNeedsRevealCorrection(114, 141, 60, 58, 67),
-        )
-        // 无效焦点索引不触发。
-        assertFalse(PerfPolicy.drawerFocusNeedsRevealCorrection(-1, 141, 141, 58, 67))
-        assertFalse(PerfPolicy.drawerFocusNeedsRevealCorrection(141, 141, 141, 58, 67))
-        // 无布局（first<0）不触发。
-        assertFalse(PerfPolicy.drawerFocusNeedsRevealCorrection(114, 141, 141, -1, -1))
-    }
-
-    // ── t29：单一真源 drawerScrollDecision（SCROLL / CLEAR / WAIT） ──────────
-    @Test
-    fun t29SingleSourceDecisionScrollWhenFocusInvisible() {
-        // 焦点 114 不在可视区 58..67、revealed 已满 → SCROLL（深行 zap / P8b 关开）。
-        assertEquals(
-            PerfPolicy.ScrollDecision.SCROLL,
-            PerfPolicy.drawerScrollDecision(114, 141, 141, 58, 67),
-        )
-        assertEquals(
-            PerfPolicy.ScrollDecision.SCROLL,
-            PerfPolicy.drawerScrollDecision(126, 141, 141, 58, 67),
-        )
-    }
-
-    @Test
-    fun t81FocusCenteredClearsEdgeKeepsScrolling() {
-        // t81 根治：CLEAR 只在焦点真正居中（first==target）时触发，不再"焦点可见就停"。
-        // focus=105 → target=105-5=100，first=100 → 居中 → CLEAR。
-        assertEquals(
-            PerfPolicy.ScrollDecision.CLEAR,
-            PerfPolicy.drawerScrollDecision(105, 141, 141, 100, 111),
-        )
-        // 焦点在可视区边缘（focus=104→target=99，first=100≠99）→ 未居中 → 继续 SCROLL 收敛。
-        assertEquals(
-            "焦点可见但偏离中心 → 继续 SCROLL",
-            PerfPolicy.ScrollDecision.SCROLL,
-            PerfPolicy.drawerScrollDecision(104, 141, 141, 100, 111),
-        )
-        // t80 真机复现：first=12/last=22、focus=20 → target=15，first≠target → SCROLL（不再提前 break）。
-        assertEquals(
-            "边缘差2行 → 继续 SCROLL",
-            PerfPolicy.ScrollDecision.SCROLL,
-            PerfPolicy.drawerScrollDecision(20, 147, 147, 12, 22),
-        )
-        // 边界 first → 焦点贴顶未居中（focus=58→target=53, first=58）→ SCROLL。
-        assertEquals(
-            "边界 first → SCROLL",
-            PerfPolicy.ScrollDecision.SCROLL,
-            PerfPolicy.drawerScrollDecision(58, 141, 141, 58, 67),
-        )
-        assertEquals(
-            "边界 last → SCROLL（未居中）",
-            PerfPolicy.ScrollDecision.SCROLL,
-            PerfPolicy.drawerScrollDecision(67, 141, 141, 58, 67),
-        )
-    }
-
-    @Test
-    fun t81ScrollConvergesToCenteredTarget() {
-        // DOWN×10 后 first=12 落后 target=15 → 单调 +8... 逐步逼近直到 first==target 才 CLEAR。
-        val count = 147
-        val v = 12
-        val focus = 20
-        val target = PerfPolicy.drawerScrollTargetIndex(focus, count, v) // 15
-        assertEquals(15, target)
-        var first = 12
-        var steps = 0
-        while (PerfPolicy.drawerScrollDecision(focus, count, count, first, first + v - 1, v) != PerfPolicy.ScrollDecision.CLEAR && steps < 24) {
-            when (PerfPolicy.drawerScrollDecision(focus, count, count, first, first + v - 1, v)) {
-                PerfPolicy.ScrollDecision.SCROLL -> first += PerfPolicy.drawerMonotonicStep(target, first)
-                else -> Unit
-            }
-            steps++
-        }
-        assertEquals("收敛到 first==target", target, first)
-        assertEquals("居中后 CLEAR 停止，不抖动", PerfPolicy.ScrollDecision.CLEAR,
-            PerfPolicy.drawerScrollDecision(focus, count, count, first, first + v - 1, v))
-    }
-
-    // ── t84：末次 intent 漏发 → 稳态监测补校正，focus-first==HALF 恒成立 ──────
-    @Test
-    fun t84SteadyMonitorRepairsMissedLastIntent() {
-        val count = 147
-        val v = 12
-        val half = PerfPolicy.drawerCenteredHalf(v) // 5
-        // t83 铁证：DOWN 后最终 focus=22，但最后一条 scroll_correct 的 focus=21（漏末次）
-        // → 列表停在 first=21-half=16，focus-first=6≠half=5 → 稳态需补校正。
-        val finalFocus = 22
-        val staleFirst = 16
-        assertTrue("偏离中心 → 稳态监测需补校正",
-            PerfPolicy.needsSteadyCorrection(finalFocus, staleFirst, count, v))
-        assertEquals("漏末次导致差1行", half + 1, finalFocus - staleFirst)
-
-        // 用共享单调步补一次收敛到 first==target（与 t69 worker 同路径），差 0 行。
-        var first = staleFirst
-        var steps = 0
-        while (PerfPolicy.needsSteadyCorrection(finalFocus, first, count, v) && steps < 24) {
-            val target = PerfPolicy.drawerScrollTargetIndex(finalFocus, count, v)
-            first += PerfPolicy.drawerMonotonicStep(target, first)
-            steps++
-        }
-        val target = PerfPolicy.drawerScrollTargetIndex(finalFocus, count, v) // 17
-        assertEquals(target, first)
-        assertEquals("补校正后 focus-first==HALF（差0行）", half, finalFocus - first)
-        assertFalse("居中后稳态不再触发（不抖动）",
-            PerfPolicy.needsSteadyCorrection(finalFocus, first, count, v))
-    }
-
-    @Test
-    fun t84SteadyConvergesBothDirections() {
-        val count = 147
-        val v = 12
-        val half = PerfPolicy.drawerCenteredHalf(v)
-        // UP 场景：最终 focus=7，漏末次列表停 first=7-half-1=1（差1行，焦点偏下）。
-        for ((focus, staleFirst) in listOf(22 to 16, 7 to 1, 13 to 7)) {
-            var first = staleFirst
-            var steps = 0
-            while (PerfPolicy.needsSteadyCorrection(focus, first, count, v) && steps < 24) {
-                val target = PerfPolicy.drawerScrollTargetIndex(focus, count, v)
-                first += PerfPolicy.drawerMonotonicStep(target, first)
-                steps++
-            }
-            assertEquals("focus=$focus 收敛后 focus-first==HALF", half, focus - first)
-        }
-        // 边界：焦点越界/无布局不误触发。
-        assertFalse(PerfPolicy.needsSteadyCorrection(-1, 5, count, v))
-        assertFalse(PerfPolicy.needsSteadyCorrection(999, 5, count, v))
-        assertTrue(PerfPolicy.needsSteadyCorrection(50, -1, count, v)) // 无 firstVisible → 需校正
-    }
-
-    @Test
-    fun t29DecisionWaitAndClearEdgeCases() {
-        // 揭示未覆盖焦点行 → WAIT（等分帧揭示，不滚不清）。
-        assertEquals(
-            PerfPolicy.ScrollDecision.WAIT,
-            PerfPolicy.drawerScrollDecision(114, 141, 60, 58, 67),
-        )
-        // 无布局 → WAIT。
-        assertEquals(
-            PerfPolicy.ScrollDecision.WAIT,
-            PerfPolicy.drawerScrollDecision(114, 141, 141, -1, -1),
-        )
-        // 无意图(-1) / 越界焦点 → CLEAR（清意图）。
-        assertEquals(
-            PerfPolicy.ScrollDecision.CLEAR,
-            PerfPolicy.drawerScrollDecision(-1, 141, 141, 58, 67),
-        )
-        assertEquals(
-            PerfPolicy.ScrollDecision.CLEAR,
-            PerfPolicy.drawerScrollDecision(141, 141, 141, 58, 67),
-        )
-    }
-
     // ── t49 §③：换台不重入打开初始化（openAnchor 冻结 + 开窗只抬高） ────────
     @Test
     fun t49OpenAnchorFrozenAgainstZap() {
@@ -472,46 +250,8 @@ class PerfPolicyTest {
         assertEquals("", PerfPolicy.drawerOpenAnchor(null, null, null))
     }
 
-    @Test
-    fun t49RevealTargetOnlyRaisesNeverFalls() {
-        assertEquals(147, PerfPolicy.drawerRevealTarget(147, 28))
-        assertEquals(28, PerfPolicy.drawerRevealTarget(0, 28))
-        assertEquals(100, PerfPolicy.drawerRevealTarget(60, 100))
-    }
 
-    // ── t78：焦点行中心与高亮框几何中心数学对齐（差 0 行）+ 双向对称限幅 ±8 ────
-    @Test
-    fun t78ScrollTargetCenteredOnHighlight() {
-        // 高亮框中心 y=V*rowH/2；焦点行 p 中心 y=(p+0.5)*rowH → 对齐需 p=(V-1)/2。
-        assertEquals(5, PerfPolicy.drawerCenteredHalf(12))  // (12-1)/2=5
-        assertEquals(4, PerfPolicy.drawerCenteredHalf(10))  // 真机 ~10 行 → 4（旧 half=6 差 2 行）
-        assertEquals(3, PerfPolicy.drawerCenteredHalf(8))
-        assertEquals(0, PerfPolicy.drawerCenteredHalf(1))
-        // 焦点行屏幕中心 == 高亮框中心：first=target=focus-half，焦点在 first+half=(V-1)/2 行。
-        val v = 10
-        val half = PerfPolicy.drawerCenteredHalf(v)
-        val focus = 30
-        val target = PerfPolicy.drawerScrollTargetIndex(focus, 147, v)
-        assertEquals(focus - half, target)
-        val rowH = 64
-        // 高亮框顶边 = half*rowH（drawerHighlightTopPx）；焦点行滚动后 top 也 = half*rowH。
-        // 两框均 rowH 高 → 中心都 = (half+0.5)*rowH，精确重合（差 0 行，与可视行数奇偶无关）。
-        val highlightTopPx = PerfPolicy.drawerHighlightTopPx(v, rowH)
-        val focusRowTopPx = half * rowH
-        assertEquals(highlightTopPx, focusRowTopPx)
-        val focusCenterY = focusRowTopPx + rowH / 2.0
-        val highlightCenterY = highlightTopPx + rowH / 2.0
-        assertEquals("焦点行中心与高亮框中心精确重合", highlightCenterY, focusCenterY, 0.5)
-
-        // 边界：默认 V=12 → target=focus-5，钳到 [0, count-12=135]。
-        assertEquals(121, PerfPolicy.drawerScrollTargetIndex(126, 147))
-        assertEquals(35, PerfPolicy.drawerScrollTargetIndex(40, 147))
-        assertEquals(135, PerfPolicy.drawerScrollTargetIndex(999, 147))
-        assertEquals(0, PerfPolicy.drawerScrollTargetIndex(-5, 147))
-        assertEquals(0, PerfPolicy.drawerScrollTargetIndex(5, 0))   // 空组安全
-        assertEquals(0, PerfPolicy.drawerScrollTargetIndex(5, 11))  // count<visibleRows 安全
-    }
-
+    // ── t91：架构重构 —— firstVisibleForFocus 首帧直接定位（无滚动 worker） ────
     @Test
     fun t78VisibleRowsFromPxAndStepSymmetry() {
         // 动态可视行数：视口 640px/64px=10 行（不写死 12）。
@@ -519,84 +259,60 @@ class PerfPolicyTest {
         assertEquals(12, PerfPolicy.drawerVisibleRowsFromPx(768, 64))
         assertEquals(1, PerfPolicy.drawerVisibleRowsFromPx(32, 64)) // 钳下限
         assertEquals(12, PerfPolicy.drawerVisibleRowsFromPx(640, 0)) // 行高 0 回退默认
-        // 焦点 ±1 → target ±1（列表反向滚，焦点仍在高亮中心），长按多步对称单调。
-        val t0 = PerfPolicy.drawerScrollTargetIndex(60, 147)
-        assertEquals(t0 + 1, PerfPolicy.drawerScrollTargetIndex(61, 147))
-        assertEquals(t0 - 1, PerfPolicy.drawerScrollTargetIndex(59, 147))
-        assertEquals(t0 + 10, PerfPolicy.drawerScrollTargetIndex(70, 147))
     }
 
-    // ── t75：焦点静态覆盖层 + 抽屉无操作自动收回 ─────────────────────────────
+    @Test
+    fun t91FirstVisibleForFocusCentersAndClamps() {
+        val v = 11
+        // 居中：focus=30 → first=30-half=30-5=25。
+        assertEquals(25, PerfPolicy.firstVisibleForFocus(30, 147, v))
+        // 顶边：focus=2 → first=0；底边：focus=145 → first=147-11=136。
+        assertEquals(0, PerfPolicy.firstVisibleForFocus(2, 147, v))
+        assertEquals(136, PerfPolicy.firstVisibleForFocus(145, 147, v))
+        // 非边缘：first + half == focus（焦点行恰在高亮框）。
+        assertEquals(30, PerfPolicy.firstVisibleForFocus(30, 147, v) + PerfPolicy.drawerCenteredHalf(v))
+        // 小分组(count<=V)：返回 0（列表不可滚，全部可见）。
+        assertEquals(0, PerfPolicy.firstVisibleForFocus(2, 5, v))
+        assertEquals(0, PerfPolicy.firstVisibleForFocus(0, 11, v))
+        // 空组 / 越界焦点 / 非法 viewport → 0。
+        assertEquals(0, PerfPolicy.firstVisibleForFocus(2, 0, v))
+        assertEquals(0, PerfPolicy.firstVisibleForFocus(-1, 147, v))
+        assertEquals(0, PerfPolicy.firstVisibleForFocus(999, 147, v))
+        assertEquals(0, PerfPolicy.firstVisibleForFocus(30, 147, 0))
+        // 每步 ±1：焦点 ±1 → first ±1（非边缘区），瞬时到位无波动。
+        val f0 = PerfPolicy.firstVisibleForFocus(60, 147, v)
+        assertEquals(f0 + 1, PerfPolicy.firstVisibleForFocus(61, 147, v))
+        assertEquals(f0 - 1, PerfPolicy.firstVisibleForFocus(59, 147, v))
+    }
+
+    @Test
+    fun t91InitialRevealAndHighlightSameSource() {
+        val v = 11
+        // 首帧一次揭示可视窗口（覆盖 [0, first+viewport]），不逐帧 +2。
+        val first = PerfPolicy.firstVisibleForFocus(30, 147, v) // 25
+        assertEquals(minOf(147, maxOf(v, first + v)), PerfPolicy.initialRevealRows(30, 147, v))
+        assertEquals(5, PerfPolicy.initialRevealRows(2, 5, v)) // 小分组=count
+        assertEquals(0, PerfPolicy.initialRevealRows(2, 0, v))
+        // 高亮同源：中心框 top = half*rowH；小分组跟随焦点行实际 y（唯一例外）。
+        val rowH = 64
+        assertEquals(PerfPolicy.drawerCenteredHalf(v) * rowH, PerfPolicy.drawerHighlightTopPx(v, rowH))
+        assertEquals(5 * rowH, PerfPolicy.highlightTopFor(30, 147, v, rowH)) // 非小分组：half*rowH
+        assertEquals(2 * rowH, PerfPolicy.highlightTopFor(2, 5, v, rowH))    // 小分组：focus*rowH
+    }
+
+    // ── t75：焦点静态覆盖层 + 抽屉无操作自动收回（产品值 7s） ─────────────────
     @Test
     fun t75CenterHighlightAndAutoClose() {
         assertTrue("焦点高亮用固定中心覆盖层", PerfPolicy.DRAWER_CENTER_HIGHLIGHT)
-        // t81：验收期临时 15s（产品值后续定回 7s）。
-        assertEquals(15_000L, PerfPolicy.DRAWER_AUTO_CLOSE_MS)
+        assertEquals("t91：产品值恢复 7s", 7_000L, PerfPolicy.DRAWER_AUTO_CLOSE_MS)
         val now = 50_000L
-        // 静止 ≥15s → 收回；抽屉未开不收；有交互（刚刷新时间戳）不收。
-        assertTrue(PerfPolicy.shouldAutoCloseDrawer(true, now - 15_000, now))
-        assertTrue(PerfPolicy.shouldAutoCloseDrawer(true, now - 20_000, now))
+        assertTrue(PerfPolicy.shouldAutoCloseDrawer(true, now - 7_000, now))
         assertFalse(PerfPolicy.shouldAutoCloseDrawer(true, now - 3_000, now))
         assertFalse(PerfPolicy.shouldAutoCloseDrawer(false, now - 30_000, now))
     }
 
-    @Test
-    fun t59ScrollDeltaSymmetricAround8() {
-        // 上滚 -8、下滚 +8 对称；超出都钳到 ±8（不再向下整页翻）。
-        assertEquals(8, PerfPolicy.DRAWER_SCROLL_MAX_STEP)
-        assertEquals(-8, PerfPolicy.drawerScrollDelta(52, 60))
-        assertEquals(8, PerfPolicy.drawerScrollDelta(68, 60))
-        assertTrue(
-            "上下同距离 delta 绝对值一致",
-            kotlin.math.abs(PerfPolicy.drawerScrollDelta(52, 60)) ==
-                kotlin.math.abs(PerfPolicy.drawerScrollDelta(68, 60)),
-        )
-        assertEquals(-8, PerfPolicy.drawerScrollDelta(0, 100))   // 上滚钳到 -8
-        assertEquals(8, PerfPolicy.drawerScrollDelta(147, 10))   // 下滚钳到 +8（非整页翻）
-        assertEquals(0, PerfPolicy.drawerScrollDelta(60, 60))
-    }
 
-    // ── t62：打开首次定位瞬时落位 vs 抽屉内焦点跟随 ±8 对称 ──────────────────
-    @Test
-    fun t62OpenPositionInstantVsFollowClamped() {
-        // 打开定位：大 delta 一次到位（瞬时 scrollToItem），不受 ±8 限制 → 快速贴到当前台。
-        assertEquals(12, PerfPolicy.drawerScrollStep(openPositioning = true, rawDelta = 12))
-        assertEquals(100, PerfPolicy.drawerScrollStep(openPositioning = true, rawDelta = 100))
-        // 抽屉内焦点跟随：严格 ±8 对称平滑。
-        assertEquals(8, PerfPolicy.drawerScrollStep(openPositioning = false, rawDelta = 12))
-        assertEquals(-8, PerfPolicy.drawerScrollStep(openPositioning = false, rawDelta = -100))
-        assertEquals(8, PerfPolicy.drawerScrollStep(openPositioning = false, rawDelta = 100))
-        assertEquals(0, PerfPolicy.drawerScrollStep(openPositioning = false, rawDelta = 0))
-    }
 
-    // ── t65：每次开抽屉都置 instant；换台不置；抽屉内滚动仍 ±8 ───────────────
-    @Test
-    fun t65EveryOpenArmsInstantZapDoesNot() {
-        // 每次关→开（drawerOpened=true）都置位 instant → 秒定位当前台。
-        assertTrue(PerfPolicy.shouldArmInstantLocate(drawerOpened = true))
-        assertTrue(PerfPolicy.shouldArmInstantLocate(drawerOpened = true)) // 二次开照样置位
-        // 换台时抽屉仍开（opened=false）→ 不置位 → smooth 原地保持。
-        assertFalse(PerfPolicy.shouldArmInstantLocate(drawerOpened = false))
-        // 不置位时抽屉内滚动仍严格 ±8 对称。
-        assertEquals(8, PerfPolicy.drawerScrollStep(openPositioning = false, rawDelta = 100))
-        assertEquals(-8, PerfPolicy.drawerScrollStep(openPositioning = false, rawDelta = -100))
-    }
-
-    // ── t69 ④/⑤：长按滚动解耦 + 播放台优先锚点 ──────────────────────────────
-    @Test
-    fun t69LongPressCadenceAndMonotonicScroll() {
-        // 长按节奏判定：单键慢按 gap>阈值 → smooth；连续快速 gap≤阈值 → longPress 瞬时 jump。
-        assertFalse(PerfPolicy.isRapidFocus(500))
-        assertTrue(PerfPolicy.isRapidFocus(30))
-        assertTrue(PerfPolicy.isRapidFocus(0))
-        assertFalse(PerfPolicy.isRapidFocus(-1)) // 无效 gap
-        assertTrue(PerfPolicy.isLongPressScroll(PerfPolicy.DRAWER_LONG_PRESS_REPEAT))
-        // 单调推进：从"当前实际 first"重算，repeat 应用后位移单调累积到目标（±8 对称）。
-        assertEquals(8, PerfPolicy.drawerMonotonicStep(targetIndex = 60, currentFirstIndex = 10))
-        assertEquals(-8, PerfPolicy.drawerMonotonicStep(targetIndex = 20, currentFirstIndex = 60)) // 上滚对称
-        assertEquals(4, PerfPolicy.drawerMonotonicStep(targetIndex = 14, currentFirstIndex = 10))
-        assertEquals(0, PerfPolicy.drawerMonotonicStep(targetIndex = 10, currentFirstIndex = 10))
-    }
 
     @Test
     fun t69OpenAnchorPlayingChannelFirst() {
@@ -608,52 +324,5 @@ class PerfPolicyTest {
         assertEquals("browse63", PerfPolicy.drawerOpenPositionAnchor("gone", "browse63", known))
         // 两者都无效 → null（调用方取第一台）。
         assertNull(PerfPolicy.drawerOpenPositionAnchor("gone", "gone", known))
-    }
-
-    // ── t87：双快照竞态根治 —— 收敛每轮读实时焦点，焦点前进不反向 ────────────
-    @Test
-    fun t87LiveFocusNoReverseWhenFocusAdvances() {
-        val count = 147
-        val v = 12
-        val half = PerfPolicy.drawerCenteredHalf(v) // 5
-        // 竞态场景：收敛循环开始 first=16、焦点快照=21（target=16，已居中）。
-        // 但滚动中焦点前进到 23 —— 若仍用旧快照 21 会算 smooth=-1 反向滚（t86 日志）。
-        // 根治：每轮重读实时焦点 23 → target=18 → first=16 需 +2（正向），绝不反向。
-        val staleFocus = 21
-        val liveFocus = 23
-        val staleTarget = PerfPolicy.drawerScrollTargetIndex(staleFocus, count, v) // 16
-        val liveTarget = PerfPolicy.drawerScrollTargetIndex(liveFocus, count, v)   // 18
-        val first = 16
-        assertEquals(16, staleTarget) // 旧快照会判定 delta=0/停（错）
-        assertEquals(18, liveTarget)
-        val staleDelta = PerfPolicy.drawerMonotonicStep(staleTarget, first)
-        val liveDelta = PerfPolicy.drawerMonotonicStep(liveTarget, first)
-        assertEquals(0, staleDelta)
-        assertEquals(2, liveDelta) // 实时焦点 → 正向收敛，不反向
-        assertTrue("实时焦点 delta 方向正确（非 -1 反向）", liveDelta > 0)
-    }
-
-    @Test
-    fun t87LiveFocusConvergesBothDirectionsAndEdgeNoJitter() {
-        val count = 147
-        val v = 12
-        val half = PerfPolicy.drawerCenteredHalf(v)
-        // 模拟每轮重读实时焦点的收敛（DOWN/UP/呼出三场景都差 0）。
-        for (finalFocus in listOf(13, 22, 7, 60)) {
-            var first = finalFocus - half - 1 // 漏末次：落后 1 行
-            var steps = 0
-            while (PerfPolicy.needsSteadyCorrection(finalFocus, first, count, v) && steps < 24) {
-                val liveTarget = PerfPolicy.drawerScrollTargetIndex(finalFocus, count, v)
-                first += PerfPolicy.drawerMonotonicStep(liveTarget, first)
-                steps++
-            }
-            assertEquals("focus=$finalFocus 收敛后 focus-first==HALF", half, finalFocus - first)
-        }
-        // 边缘焦点无法居中 → needsSteadyCorrection=false（不反复校正抖动）。
-        assertTrue(PerfPolicy.isEdgeFocus(2, count, v))
-        assertTrue(PerfPolicy.isEdgeFocus(count - 2, count, v))
-        assertFalse(PerfPolicy.needsSteadyCorrection(2, 0, count, v))
-        assertFalse(PerfPolicy.needsSteadyCorrection(count - 2, count - v, count, v))
-        assertFalse(PerfPolicy.isEdgeFocus(60, count, v))
     }
 }

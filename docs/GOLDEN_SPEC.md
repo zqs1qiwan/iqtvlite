@@ -18,6 +18,9 @@
 | RIGHT 语义 | 旧=打开设置 vs V4§3=全部频道进列表 | **默认 RIGHT 在播放器 PLAYER_ONLY=打开设置；仅"分组列内/全部频道列表未进入"时进频道列表；用户可任意重绑，绑定优先** | §1.3 / §5 |
 | 菜单高度 | V3 300dp vs V4 "只有 logo 行" | **目标 ≈96dp logo 行 + 少量 padding（≤140dp）；最近 4 logo 内联不单独占大行** | §4 |
 | 帧率来源 | 固定 25fps vs 真实推断 | **优先 Format.frameRate → 帧窗口推断 → fallback 25；组播源无帧率时按"未知即隐藏"或 fallback 显示，属已知限制** | §6/§7 |
+| 抽屉定位机制（t90） | 旧=animateScrollBy 平滑滚+worker 收敛 vs 用户/TiviMate=呼出即在位 | **首帧直接定位、零滚动过程；焦点移动瞬时 scrollToItem；严禁滚动 worker/animate/converge/稳态监测**（见 `DRAWER_ARCHITECTURE_REDESIGN.md`） | §3 |
+| 小分组高亮（captain 裁定） | 隐藏 vs 跟随焦点行 | **count<可视行数时高亮跟随焦点行实际 y，不隐藏**（唯一例外） | §3 |
+| 抽屉自动关时长 | t81 临时 15s vs 产品 7s | **恢复产品值 7s** | §3 |
 
 ---
 
@@ -81,11 +84,13 @@
 - **正确行为**：
   - 换台时若抽屉已打开：**UI 原地保持**——不闪回首页、不重新打开、不重置滚动、不重算开窗；正在播放台变化只更新"选中台蓝字"，不动浏览焦点；
   - 打开抽屉直接定位当前/焦点台、无首帧钳制闪烁、打开即有焦点高亮（不需按键）；
-  - **TiviMate 焦点居中（t72，以本节为准，消解旧"焦点贴上方 2 行"描述）**：呼出换台时当前台为焦点且位于**可视区正中间**（target = focus - DRAWER_SCREEN_ROWS/2，DRAWER_SCREEN_ROWS=12 → 居中约第 7 行）；上下滚动时**焦点始终居中、只是列表在动**（焦点移 1 行 → 列表反向滚 1 行使焦点回中间），丝滑无整页翻；长按连续滚焦点一直居中、一路顺滑到两端；边缘（开头/末尾）target 钳到 `[0, count-visibleRows]`，到顶/底无法居中属正常、不越界不崩；小 count 安全返回 0；
+  - **TiviMate 焦点居中（以「定位机制」条为准）**：呼出换台时当前台为焦点且位于可视区正中间；边缘（开头/末尾）焦点无法居中属正常，不越界不崩；小 count 安全返回 0。居中的实现为下面的「首帧直接定位 + 瞬时 scrollToItem」，非滚动动画。
   - **节目单区域透明区分、无分割线（t72，以本节为准）**：节目单区用**更透明的静态背景**（graphicsLayer alpha 缓存，不逐帧重绘）与选台区视觉区分；**不得有任何 1dp 竖线/Spacer 分割线/边框**；节目文字保持不透明；
-  - **焦点绝对静止居中（t75，据 TIVIMATE_DESIGN_PRD 真机铁证，以本节为准）**：焦点高亮为**固定在可视区中心的静态覆盖层**（`drawer_center_focus_highlight`），bounds 不随列表滚动改变；按 UP/DOWN 后焦点框中心 y≈屏幕中心且**保持不变**，只有列表在其下滚动；高亮覆盖层不随行组合移动，行自身不画焦点底色（避免双重/移动高亮）；
+  - **焦点绝对静止居中（以「定位机制」条为准）**：焦点高亮为**固定在可视区中心的静态覆盖层**（`drawer_center_focus_highlight`），bounds 不随焦点移动改变；列表首帧即在位、焦点变化时瞬时 scrollToItem 重定位，高亮框与焦点行共用 `firstVisibleForFocus`/`highlightTopFor` 同一公式（差 0 行）；行自身不画焦点底色（避免双重高亮）；
   - **选台抽屉无操作自动收回（t75，以本节为准）**：抽屉打开后静止（无焦点变化/方向键/列切换）7s 自动 `closeDrawer`；任何焦点/列变化重置计时（单一时间戳真源）；浏览中不误关；
-  - 滚动均匀平滑（`animateScrollBy`），不整页翻（长按走瞬时落位目标窗口，单点 ±8 对称逐帧）；
+  - **定位机制（t90 架构重构，以本节为准，消解旧"animateScrollBy 平滑滚动/滚动收敛"表述）**：抽屉**首帧直接定位**——`rememberLazyListState(initialFirstVisibleItemIndex = firstVisibleForFocus(focus,count,viewportRows))`，呼出即在位、**零滚动动画过程**；焦点移动时**唯一** `LaunchedEffect(focusIndex){ scrollToItem(firstVisibleForFocus(...)) }` 瞬时到位；**严禁** animateScrollBy / scrollIntentFlow / convergeFocusToCenter / 稳态监测 / monotonicStep 等补丁机制（详见 `DRAWER_ARCHITECTURE_REDESIGN.md`）；"丝滑"= 即时响应不卡顿，不是慢动画；不整页翻（瞬时到位天然满足）；
+  - **小分组高亮例外（captain 2026-11-23 裁定）**：当分组频道数 < 可视行数、焦点无法几何居中时，**中心高亮覆盖层跟随焦点行的实际 y，不隐藏**（隐藏会让用户不知道聚焦哪个台）；用纯函数 `highlightTopFor(focus,count,V,rowH)` 实现，是全设计唯一例外；
+  - **自动关恢复产品值 7s**（t81 的 15s 是临时验收值，t90 重构后恢复）；
   - 按组记忆焦点（会话内），切组从该组第一台开始、聚焦即展示；
   - 分组列 UP/DOWN 焦点变化 → 右侧频道列**立即**显示该组频道（不需 OK）；→ 键从分组列进入频道列并**收起分组列**、频道列满宽；
   - 「全部频道」按 → 能进频道列表（V4 已修，见来源）；选台不需要翻页；
