@@ -285,6 +285,11 @@ def main() -> int:
         problems.append("PlayerDrawer.kt: t62 open-init must mark instant positioning")
     if "desiredScrollInstant = false" not in drawer_code:
         problems.append("PlayerDrawer.kt: t62 instant mode must reset after consume/close")
+    # t65：每次关→开都置 instant —— close 分支复位 hasInitializedDrawerFocus，下次开重走定位。
+    if "fun shouldArmInstantLocate(" not in policy:
+        problems.append("PerfPolicy.kt: t65 shouldArmInstantLocate pure policy missing")
+    if "hasInitializedDrawerFocus = false" not in drawer_code:
+        problems.append("PlayerDrawer.kt: t65 must reset hasInitializedDrawerFocus on close (every-open instant)")
     # t29（根源重构）：唯一滚动意图真源，删除旧两套机制，唯一校正 effect。
     if "fun drawerScrollDecision(" not in policy or "enum class ScrollDecision" not in policy:
         problems.append("PerfPolicy.kt: drawerScrollDecision / ScrollDecision (single source) missing (t29)")

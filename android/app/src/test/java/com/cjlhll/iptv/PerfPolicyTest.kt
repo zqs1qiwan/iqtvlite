@@ -434,4 +434,17 @@ class PerfPolicyTest {
         assertEquals(8, PerfPolicy.drawerScrollStep(openPositioning = false, rawDelta = 100))
         assertEquals(0, PerfPolicy.drawerScrollStep(openPositioning = false, rawDelta = 0))
     }
+
+    // ── t65：每次开抽屉都置 instant；换台不置；抽屉内滚动仍 ±8 ───────────────
+    @Test
+    fun t65EveryOpenArmsInstantZapDoesNot() {
+        // 每次关→开（drawerOpened=true）都置位 instant → 秒定位当前台。
+        assertTrue(PerfPolicy.shouldArmInstantLocate(drawerOpened = true))
+        assertTrue(PerfPolicy.shouldArmInstantLocate(drawerOpened = true)) // 二次开照样置位
+        // 换台时抽屉仍开（opened=false）→ 不置位 → smooth 原地保持。
+        assertFalse(PerfPolicy.shouldArmInstantLocate(drawerOpened = false))
+        // 不置位时抽屉内滚动仍严格 ±8 对称。
+        assertEquals(8, PerfPolicy.drawerScrollStep(openPositioning = false, rawDelta = 100))
+        assertEquals(-8, PerfPolicy.drawerScrollStep(openPositioning = false, rawDelta = -100))
+    }
 }

@@ -545,6 +545,9 @@ fun PlayerDrawer(
     LaunchedEffect(visible) {
         if (!visible) {
             delay(400)
+            // t65：每次关抽屉都把首次聚焦标志复位 → 下次关→开的上升沿重新走"打开定位"
+            // （瞬时落位当前台/按组焦点）。换台不重开抽屉 → 不复位、不重定位 → smooth 原地保持。
+            hasInitializedDrawerFocus = false
             isFocusRestoring = false
             showGroups = false
             showDates = false
@@ -556,6 +559,7 @@ fun PlayerDrawer(
             return@LaunchedEffect
         }
 
+        // t65：每次关→开（标志已在 close 复位）都重定位当前台，瞬时落位。
         if (!hasInitializedDrawerFocus) {
             hasInitializedDrawerFocus = true
             val targetUrl = openAnchor?.takeIf { channelIndexByUrl.containsKey(it) }
@@ -565,7 +569,7 @@ fun PlayerDrawer(
                 stableFocusedChannelUrl = targetUrl
                 val targetIndex = channelIndexByUrl[targetUrl]
                 if (targetIndex != null && channels.isNotEmpty()) {
-                    // t62：打开首次定位用瞬时滚动快速落位当前台（intent+mode 单一来源）。
+                    // t62/t65：每次打开都用瞬时滚动快速落位当前台（intent+mode 单一来源）。
                     desiredScrollInstant = true
                     desiredScrollIndex = targetIndex
                 }

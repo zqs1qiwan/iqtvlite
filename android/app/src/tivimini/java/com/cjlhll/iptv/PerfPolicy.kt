@@ -166,6 +166,12 @@ object PerfPolicy {
         if (openPositioning) rawDelta else drawerScrollDelta(rawDelta, 0)
 
     /**
+     * t65：instant 定位是否置位 —— 抽屉关→开的上升沿（opened=true）每次都置位；
+     * 换台（drawer 仍开，opened=false）不置位，走 smooth 原地保持。
+     */
+    fun shouldArmInstantLocate(drawerOpened: Boolean): Boolean = drawerOpened
+
+    /**
      * t26（V4 残留）：revealed 已满时关→重开，焦点行若不在可见区，需要补一次滚动校正。
      *
      * 条件：焦点索引有效（>=0 且 < count）、揭示行数已覆盖焦点行（否则交给 t15 的门控，避免钳制）、
