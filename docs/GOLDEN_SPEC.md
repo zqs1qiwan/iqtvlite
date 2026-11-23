@@ -116,7 +116,11 @@
   `src/tivimini/res` 各密度 `ic_launcher.png`（48/72/96/144/192）必须由 icon-512 缩放生成；adaptive 的
   foreground 不得再叠加任何 +10/+35 偏移或旧版 lockup，合成后视觉等价于 icon-512 缩放版；round 与方形同源；
   tv_banner 与 assets 一致；graphite `#151923` + accent `#2F6BFF` 扁平无渐变；不改 applicationId。
-- **错误行为**：res 是旧版资源（重心偏）、foreground 仍带 +10/+35 偏移、round 是另一套图、banner 不一致、字标变形、"看起来像但非像素级一致"。
+  **开屏（t55）**：`drawable-nodpi/splash_mark.png` 必须来自正式字标
+  `iqtvlite-logo-assets/logo/logo-white-transparent.png`（白色宽幅字标，深色 Obsidian 底居中不拉伸），
+  **不得是旧方块占位图**（旧图 512×512、bbox≈286×286 正方形）；SplashActivity 用 postDelayed
+  给出 ~800ms 非阻塞可见时长（不 sleep），冷启仍能进 PlayerActivity 无 VerifyError。
+- **错误行为**：res 是旧版资源（重心偏）、foreground 仍带 +10/+35 偏移、round 是另一套图、banner 不一致、字标变形、"看起来像但非像素级一致"；开屏仍显示旧方块占位图、或开屏时长为 0（字标看不到）、或用阻塞 sleep 拖慢冷启。
 - **判定方法**：①各密度 ic_launcher.png 与 icon-512 缩放版做像素比对（尺寸/四角透明/中心色/重心一致，非目视"差不多"）；②真机桌面图标截图与 icon-512 缩放版比对；③`check_brand_assets.py` 校验来源 hash。
 - 来源：用户 2026-11-23 明确要求（icon-512.png 像素级一致）、`iqtvlite-logo-assets/README.md`、`t47 §5`（当前 res 为旧版、7 文件 hash 不一致，待修）。
 

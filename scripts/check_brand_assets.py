@@ -58,6 +58,33 @@ def main():
             if c[3] > 8:
                 problems.append(f"{d}/{name} corner not transparent: {c}")
 
+    # t55：splash_mark 必须来自正式白色字标（宽幅、非旧方块占位），且与生成物像素一致。
+    wordmark_src = ROOT.parent / "iqtvlite-logo-assets/logo/logo-white-transparent.png"
+    splash = RES / "drawable-nodpi/splash_mark.png"
+    if wordmark_src.exists() and splash.exists():
+        sp = Image.open(splash).convert("RGBA")
+        bbox = sp.getchannel("A").point(lambda v: 255 if v > 8 else 0).getbbox()
+        if bbox is None:
+            problems.append("splash_mark.png is fully transparent (t55)")
+        else:
+            bw, bh = bbox[2] - bbox[0], bbox[3] - bbox[1]
+            aspect = bw / max(1, bh)
+            if aspect <= 2.0:
+                problems.append(
+                    f"splash_mark.png content aspect {aspect:.2f} <=2 -> old square placeholder, not wordmark (t55)"
+                )
+            # 与"从 logo-white-transparent 生成"的参考图逐像素比对（同生成算法）
+            wm = Image.open(wordmark_src).convert("RGBA")
+            wb = wm.getchannel("A").point(lambda v: 255 if v > 8 else 0).getbbox()
+            content = wm.crop(wb)
+            tw = 720
+            th = round(content.height * tw / content.width)
+            scaled = content.resize((tw, th), Image.LANCZOS)
+            splash_ref = Image.new("RGBA", (1024, 576), (0, 0, 0, 0))
+            splash_ref.paste(scaled, ((1024 - tw) // 2, (576 - th) // 2), scaled)
+            if sp.size != splash_ref.size or ImageChopsMaxDiff(sp, splash_ref) > 6:
+                problems.append("splash_mark.png differs from wordmark-generated reference (t55)")
+
     # adaptive foreground must equal icon-512 (centered, no +10/+35), scaled to 512
     fg = RES / "mipmap-xxxhdpi/ic_launcher_foreground.png"
     if fg.exists():

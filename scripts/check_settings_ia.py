@@ -287,6 +287,15 @@ def main() -> int:
     if "KeyBinding(RemoteAction.EXIT_APP, longPressKeycodes = setOf(KEY_BACK))" in rb:
         problems.append("RemoteBindings.kt: EXIT_APP must not bind BACK long-press by default (t49)")
 
+    # 17) t55: splash uses formal wordmark + non-blocking short duration.
+    splash_kt = SRC / "SplashActivity.kt"
+    if splash_kt.exists():
+        sk = splash_kt.read_text(encoding="utf-8")
+        if "SPLASH_VISIBLE_MS" not in sk or "postDelayed" not in sk:
+            problems.append("SplashActivity.kt: brief non-blocking splash duration missing (t55)")
+        if "Thread.sleep" in sk:
+            problems.append("SplashActivity.kt: blocking sleep forbidden for splash (t55)")
+
     if problems:
         for p in problems:
             print(f"check_settings_ia: FAIL {p}")
