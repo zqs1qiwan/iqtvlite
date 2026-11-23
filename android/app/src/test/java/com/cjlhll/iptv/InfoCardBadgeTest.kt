@@ -27,12 +27,14 @@ class InfoCardBadgeTest {
         assertEquals("1920x1080 → FHD", "FHD", InfoCardPolicy.resolutionTier(1920, 1080)?.label)
     }
 
-    // ── 帧率 ───────────────────────────────────────────────────────────────
+    // ── 帧率（t38：无真实帧率兜底 25fps） ──────────────────────────────────
     @Test
-    fun frameRateLabelRoundsAndHidesInvalid() {
-        assertNull(InfoCardPolicy.frameRateLabel(0f))
-        assertNull(InfoCardPolicy.frameRateLabel(-1f))
-        assertNull(InfoCardPolicy.frameRateLabel(Float.NaN))
+    fun frameRateLabelFallsBackTo25WhenInvalid() {
+        assertEquals("25fps", InfoCardPolicy.frameRateLabel(0f))
+        assertEquals("25fps", InfoCardPolicy.frameRateLabel(-1f))
+        assertEquals("25fps", InfoCardPolicy.frameRateLabel(Float.NaN))
+        assertEquals(25f, InfoCardPolicy.FALLBACK_FRAME_RATE)
+        // 有真实值仍用真实值（29.97→30、59.94→60、23.976→24）。
         assertEquals("25fps", InfoCardPolicy.frameRateLabel(25f))
         assertEquals("30fps", InfoCardPolicy.frameRateLabel(29.97f))
         assertEquals("60fps", InfoCardPolicy.frameRateLabel(59.94f))
@@ -67,8 +69,9 @@ class InfoCardBadgeTest {
         assertEquals("V4：三项无码率", listOf("FHD", "60fps", "2ch"), full.map { it.label })
         assertEquals(listOf("resolution", "fps", "channels"), full.map { it.key })
         assertFalse("码率项不进候选", full.any { it.key == "bitrate" })
-        assertTrue("全未知 → 空（不占位）", InfoCardPolicy.badgeCandidates(0, 0, 0f, 0, 0).isEmpty())
-        assertEquals(listOf("FHD"), InfoCardPolicy.badgeCandidates(1920, 1080, 0f, 0, 0).map { it.label })
+        // t38：帧数兜底 25fps 始终显示（组播源无 frameRate），不再"全未知隐藏"。
+        assertEquals(listOf("25fps"), InfoCardPolicy.badgeCandidates(0, 0, 0f, 0, 0).map { it.label })
+        assertEquals(listOf("FHD", "25fps"), InfoCardPolicy.badgeCandidates(1920, 1080, 0f, 0, 0).map { it.label })
     }
 
     @Test
@@ -188,8 +191,8 @@ class InfoCardBadgeTest {
             mime = "video/avc", codecs = "avc1",
         )
         assertEquals(listOf("FHD", "50fps", "2.0", "HDR10", "264"), badges)
-        // 未知项隐藏、动态范围默认 SDR 仍在。
+        // t38：帧数兜底 25fps 仍显示；其它未知项隐藏、动态范围默认 SDR 仍在。
         val minimal = InfoCardPolicy.compactBadges(0, 0, -1f, 0, -1, false, null, null)
-        assertEquals(listOf("SDR"), minimal)
+        assertEquals(listOf("25fps", "SDR"), minimal)
     }
 }

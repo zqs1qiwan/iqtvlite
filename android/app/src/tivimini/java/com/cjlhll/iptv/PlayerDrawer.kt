@@ -1420,12 +1420,12 @@ private fun DrawerChannelItem(
                             .testTag("drawer_row_subtitle")
                     )
                 }
-                // FULLFIX §1：进度恢复 3dp ThinProgressBar（复用现存 helper，focused 时强调更高）。
+                // FULLFIX §1：进度恢复 3dp ThinProgressBar；t38：只有当前选中台(播放台)用蓝色进度。
                 val progress = nowProgram?.progress
                 if (progress != null) {
                     ThinProgressBar(
                         progress = progress,
-                        focused = focused,
+                        selected = selected,
                         modifier = Modifier.padding(top = 4.dp).fillMaxWidth()
                     )
                 }
@@ -1437,12 +1437,17 @@ private fun DrawerChannelItem(
 @Composable
 private fun ThinProgressBar(
     progress: Float,
-    focused: Boolean,
+    // t38：当前选中台（播放台）才用蓝色进度；其它台灰色。与焦点无关。
+    selected: Boolean,
     modifier: Modifier = Modifier
 ) {
     val clamped = progress.coerceIn(0f, 1f)
-    val track = MaterialTheme.colorScheme.onSurface.copy(alpha = if (focused) 0.16f else 0.12f)
-    val fill = MaterialTheme.colorScheme.primary.copy(alpha = if (focused) 0.95f else 0.80f)
+    val track = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
+    val fill = if (selected) {
+        MaterialTheme.colorScheme.primary // 只有当前播放台蓝色
+    } else {
+        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f) // 其它台默认灰
+    }
     Box(
         modifier = modifier
             .height(3.dp)
@@ -1569,7 +1574,8 @@ private fun DrawerProgramItem(
                 onClick()
                 focusRequester?.requestFocus()
             }
-            .padding(horizontal = 12.dp, vertical = 10.dp),
+            // t38：EPG 左右留白收紧（12→4dp），同宽显示更多字；列宽不变、不换行、聚焦滚动仍有界。
+            .padding(horizontal = 4.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         // t32 Bug4：时间列同比收窄；超长时间也用聚焦跑马灯（有限圈数）。
@@ -1582,7 +1588,7 @@ private fun DrawerProgramItem(
             iterations = PerfPolicy.epgMarqueeIterations(focused, drawerVisible),
             modifier = Modifier.width(PerfPolicy.DRAWER_PROGRAM_TIME_COLUMN_DP.dp)
         )
-        Spacer(modifier = Modifier.width(6.dp))
+        Spacer(modifier = Modifier.width(4.dp)) // t38：时间/标题间隔 6→4dp，多显示字
         FocusMarqueeText(
             text = title,
             style = MaterialTheme.typography.bodyMedium,

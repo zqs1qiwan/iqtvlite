@@ -162,10 +162,16 @@ object InfoCardPolicy {
         }
     }
 
-    /** 帧率：<=0 / NaN → null；否则取整 + "fps"（29.97→30、59.94→60）。 */
+    /** t38：直播兜底帧率（中国 PAL 主流 25fps）；组播源 Format 无 frameRate 时用它。 */
+    const val FALLBACK_FRAME_RATE = 25f
+
+    /**
+     * 帧率标签：>0 取整 + "fps"（29.97→30、59.94→60）；<=0/NaN → 兜底 [FALLBACK_FRAME_RATE]="25fps"。
+     * t38：徽标必须显示帧数，组播源无真实帧率时用 25fps 兜底（不再隐藏）。
+     */
     fun frameRateLabel(frameRate: Float): String? {
-        if (frameRate.isNaN() || frameRate <= 0f) return null
-        return "${Math.round(frameRate)}fps"
+        val value = if (frameRate.isNaN() || frameRate <= 0f) FALLBACK_FRAME_RATE else frameRate
+        return "${Math.round(value)}fps"
     }
 
     /**

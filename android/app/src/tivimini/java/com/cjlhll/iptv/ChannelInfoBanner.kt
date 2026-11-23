@@ -261,10 +261,11 @@ fun ChannelInfoBanner(
                         Text(
                             text = programText,
                             style = MaterialTheme.typography.titleLarge,
+                            // t38：信息卡"正在播放"信息不再用蓝色（蓝色仅用于选台列表聚焦）。
                             color = if (programTitle.isNullOrBlank()) {
                                 MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f)
                             } else {
-                                MaterialTheme.colorScheme.primary
+                                MaterialTheme.colorScheme.onSurface
                             },
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,

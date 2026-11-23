@@ -310,6 +310,13 @@ def main() -> int:
         problems.append("PlayerDrawer.kt: EPG rows must use bounded focus marquee (t32 Bug4)")
     if "Int.MAX_VALUE" in drawer_code:
         problems.append("PlayerDrawer.kt: Int.MAX_VALUE marquee forbidden (t32 Bug4)")
+    # t38: progress bar blue only for selected/playing channel; EPG cell padding tightened.
+    if "selected: Boolean," not in drawer_code or "selected = selected," not in drawer_code:
+        problems.append("PlayerDrawer.kt: ThinProgressBar must take selected flag (t38)")
+    if not re.search(r"onSurface\.copy\(alpha = 0\.5f\)", drawer_code):
+        problems.append("PlayerDrawer.kt: non-selected progress fill must be gray (t38)")
+    if ".padding(horizontal = 4.dp, vertical = 10.dp)" not in drawer_code:
+        problems.append("PlayerDrawer.kt: EPG cell horizontal padding must be tightened to 4dp (t38)")
     # V4 §2: group focus selects group; RIGHT(Groups) collapses + focuses first channel;
     # selectGroup is idempotent with resetFocus; no `if (!showGroups) return` in selectedGroup effect.
     sidebar = (SRC / "SidebarController.kt").read_text(encoding="utf-8")

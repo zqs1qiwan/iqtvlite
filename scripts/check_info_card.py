@@ -289,6 +289,16 @@ def main() -> int:
     if "setInfoCardFocusedActionController" not in activity:
         problems.append("PlayerActivity.kt: t35 focused action controller registration missing")
 
+    # 12) t38: fps fallback 25, info-card program text not blue.
+    if "FALLBACK_FRAME_RATE = 25f" not in policy:
+        problems.append("InfoCardPolicy.kt: t38 FALLBACK_FRAME_RATE=25f missing")
+    if "if (frameRate.isNaN() || frameRate <= 0f) FALLBACK_FRAME_RATE" not in policy:
+        problems.append("InfoCardPolicy.kt: frameRateLabel must fall back to 25fps (t38)")
+    # 信息卡 programText has-EPG 分支不得用 primary（蓝色仅用于选台聚焦）。
+    program_color_block = re.search(r"text = programText,[\s\S]{0,260}?modifier = Modifier\.testTag\(\"info_card_program\"\)", banner)
+    if program_color_block and "colorScheme.primary" in program_color_block.group(0):
+        problems.append("ChannelInfoBanner.kt: info-card programText must not use primary blue (t38)")
+
     if problems:
         for p in problems:
             print(f"check_info_card: FAIL {p}")
