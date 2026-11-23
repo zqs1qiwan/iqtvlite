@@ -147,7 +147,16 @@ object PerfPolicy {
     ): Boolean {
         if (focusIndex < 0 || focusIndex >= channelCount) return false
         if (firstVisibleIndex < 0) return true
+        // t87：边缘焦点物理上无法居中（target 钳到 [0, count-V]），不强求、不反复校正抖动。
+        if (isEdgeFocus(focusIndex, channelCount, visibleRows)) return false
         return firstVisibleIndex != drawerScrollTargetIndex(focusIndex, channelCount, visibleRows)
+    }
+
+    /** t87：焦点位于可视区边缘（前 half 行 / 后 half 行）时无法居中，属正常。 */
+    fun isEdgeFocus(focusIndex: Int, channelCount: Int, visibleRows: Int = DRAWER_SCREEN_ROWS): Boolean {
+        if (channelCount < visibleRows) return true
+        val half = drawerCenteredHalf(visibleRows)
+        return focusIndex < half || focusIndex >= channelCount - half
     }
 
     /**

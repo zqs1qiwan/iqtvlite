@@ -358,6 +358,15 @@ def main() -> int:
         problems.append("PlayerDrawer.kt: t69 monotonic re-compute-from-current-position missing")
     if "PerfPolicy.isRapidFocus(" not in drawer_code:
         problems.append("PlayerDrawer.kt: t69 long-press cadence detection missing")
+    # t87：收敛函数无 focus 快照入参、每轮重读实时焦点、边缘钳不抖。
+    if re.search(r"suspend fun convergeFocusToCenter\s*\(\s*focus\s*:", drawer_code):
+        problems.append("PlayerDrawer.kt: t87 convergeFocusToCenter must NOT take a focus snapshot param")
+    if "suspend fun convergeFocusToCenter()" not in drawer_code:
+        problems.append("PlayerDrawer.kt: t87 paramless convergeFocusToCenter missing")
+    if "fun liveFocusIndex()" not in drawer_code or "val focus = liveFocusIndex()" not in drawer_code:
+        problems.append("PlayerDrawer.kt: t87 live focus re-read each loop iteration missing")
+    if "fun isEdgeFocus(" not in policy:
+        problems.append("PerfPolicy.kt: t87 edge-focus clamp policy missing")
     if "PerfPolicy.drawerScrollDecision(" not in drawer_code:
         problems.append("PlayerDrawer.kt: must use drawerScrollDecision (t29)")
     for decision in ("ScrollDecision.WAIT", "ScrollDecision.CLEAR", "ScrollDecision.SCROLL"):

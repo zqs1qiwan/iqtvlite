@@ -609,4 +609,51 @@ class PerfPolicyTest {
         // 两者都无效 → null（调用方取第一台）。
         assertNull(PerfPolicy.drawerOpenPositionAnchor("gone", "gone", known))
     }
+
+    // ── t87：双快照竞态根治 —— 收敛每轮读实时焦点，焦点前进不反向 ────────────
+    @Test
+    fun t87LiveFocusNoReverseWhenFocusAdvances() {
+        val count = 147
+        val v = 12
+        val half = PerfPolicy.drawerCenteredHalf(v) // 5
+        // 竞态场景：收敛循环开始 first=16、焦点快照=21（target=16，已居中）。
+        // 但滚动中焦点前进到 23 —— 若仍用旧快照 21 会算 smooth=-1 反向滚（t86 日志）。
+        // 根治：每轮重读实时焦点 23 → target=18 → first=16 需 +2（正向），绝不反向。
+        val staleFocus = 21
+        val liveFocus = 23
+        val staleTarget = PerfPolicy.drawerScrollTargetIndex(staleFocus, count, v) // 16
+        val liveTarget = PerfPolicy.drawerScrollTargetIndex(liveFocus, count, v)   // 18
+        val first = 16
+        assertEquals(16, staleTarget) // 旧快照会判定 delta=0/停（错）
+        assertEquals(18, liveTarget)
+        val staleDelta = PerfPolicy.drawerMonotonicStep(staleTarget, first)
+        val liveDelta = PerfPolicy.drawerMonotonicStep(liveTarget, first)
+        assertEquals(0, staleDelta)
+        assertEquals(2, liveDelta) // 实时焦点 → 正向收敛，不反向
+        assertTrue("实时焦点 delta 方向正确（非 -1 反向）", liveDelta > 0)
+    }
+
+    @Test
+    fun t87LiveFocusConvergesBothDirectionsAndEdgeNoJitter() {
+        val count = 147
+        val v = 12
+        val half = PerfPolicy.drawerCenteredHalf(v)
+        // 模拟每轮重读实时焦点的收敛（DOWN/UP/呼出三场景都差 0）。
+        for (finalFocus in listOf(13, 22, 7, 60)) {
+            var first = finalFocus - half - 1 // 漏末次：落后 1 行
+            var steps = 0
+            while (PerfPolicy.needsSteadyCorrection(finalFocus, first, count, v) && steps < 24) {
+                val liveTarget = PerfPolicy.drawerScrollTargetIndex(finalFocus, count, v)
+                first += PerfPolicy.drawerMonotonicStep(liveTarget, first)
+                steps++
+            }
+            assertEquals("focus=$finalFocus 收敛后 focus-first==HALF", half, finalFocus - first)
+        }
+        // 边缘焦点无法居中 → needsSteadyCorrection=false（不反复校正抖动）。
+        assertTrue(PerfPolicy.isEdgeFocus(2, count, v))
+        assertTrue(PerfPolicy.isEdgeFocus(count - 2, count, v))
+        assertFalse(PerfPolicy.needsSteadyCorrection(2, 0, count, v))
+        assertFalse(PerfPolicy.needsSteadyCorrection(count - 2, count - v, count, v))
+        assertFalse(PerfPolicy.isEdgeFocus(60, count, v))
+    }
 }

@@ -437,19 +437,29 @@ fun PlayerDrawer(
     var scrollInProgress by remember { mutableStateOf(false) }
     val rowPxGlobal = with(prefetchDensity) { PerfPolicy.DRAWER_ROW_HEIGHT_DP.dp.roundToPx() }
 
-    suspend fun convergeFocusToCenter(focus: Int) {
-        if (!visible || focus < 0 || focus >= channels.size) return
+    // t87：单一实时焦点真源 —— 每轮从 focusedChannelUrl 状态（mutableState，读取即当前值）现算，
+    // 绝不沿用 intent 入参快照（双快照竞态：焦点滚动中前进时旧快照会算出反向 delta）。
+    fun liveFocusIndex(): Int {
+        val url = focusedChannelUrl ?: return -1
+        return channelIndexByUrl[url] ?: -1
+    }
+
+    suspend fun convergeFocusToCenter() {
+        if (!visible) return
         if (scrollInProgress) return
         scrollInProgress = true
         try {
             var guard = 0
             while (guard++ < 24 && visible) {
+                // t87：每轮重读实时焦点（焦点在滚动中前进时，下一轮自动朝新焦点收敛，绝不反向）。
+                val focus = liveFocusIndex()
+                if (focus < 0 || focus >= channels.size) break
                 val info = channelListState.layoutInfo
                 val first = info.visibleItemsInfo.firstOrNull()?.index ?: -1
                 val last = info.visibleItemsInfo.lastOrNull()?.index ?: -1
                 val vr = centerVisibleRowsState.value
                 when (PerfPolicy.drawerScrollDecision(focus, channels.size, revealedRows, first, last, vr)) {
-                    PerfPolicy.ScrollDecision.CLEAR -> break // 焦点已居中（first==target），停，不抖动
+                    PerfPolicy.ScrollDecision.CLEAR -> break // 焦点已居中（first==target，实时focus），停，不抖动
                     PerfPolicy.ScrollDecision.WAIT -> kotlinx.coroutines.delay(16) // 揭示未覆盖，等下一帧
                     PerfPolicy.ScrollDecision.SCROLL -> {
                         val target = PerfPolicy.drawerScrollTargetIndex(focus, channels.size, vr)
@@ -474,17 +484,17 @@ fun PlayerDrawer(
         if (!visible) return@LaunchedEffect
         scrollIntentFlow.collect { intent ->
             if (intent == null || !visible) return@collect
-            val focus = intent.focusIndex
-            if (focus < 0 || focus >= channels.size) return@collect
-            // 打开定位：一次性瞬时落位；长按：瞬时到目标窗口（快速到两端）；单点：共享单调收敛。
+            // t87：长按时用实时焦点（焦点前进则 target 跟着前进，不反向）；单点走共享实时收敛。
+            val liveFocus = liveFocusIndex()
+            if (liveFocus < 0 || liveFocus >= channels.size) return@collect
             if (intent.instant || intent.longPress) {
                 val vr = centerVisibleRowsState.value
-                val target = PerfPolicy.drawerScrollTargetIndex(focus, channels.size, vr)
+                val target = PerfPolicy.drawerScrollTargetIndex(liveFocus, channels.size, vr)
                 runCatching { channelListState.scrollToItem(target) }
-                PerfTrace.d { "drawer_scroll_correct target=$target focus=$focus vr=$vr ${if (intent.instant) "INSTANT open-position" else "LONGPRESS jump"}" }
+                PerfTrace.d { "drawer_scroll_correct target=$target focus=$liveFocus vr=$vr ${if (intent.instant) "INSTANT open-position" else "LONGPRESS jump"}" }
                 return@collect
             }
-            convergeFocusToCenter(focus)
+            convergeFocusToCenter()
         }
     }
 
@@ -497,12 +507,17 @@ fun PlayerDrawer(
         snapshotFlow {
             val first = channelListState.layoutInfo.visibleItemsInfo.firstOrNull()?.index ?: -1
             Triple(focusTargetIndex, first, centerVisibleRowsState.value)
-        }.collect { (focus, first, vr) ->
-            if (!visible || focus < 0) return@collect
+        }.collect { (_snapshotFocus, _first, _vr) ->
+            if (!visible) return@collect
             if (scrollInProgress) return@collect // 动画进行中不重复 post
+            // t87：判定时也用实时焦点（不信 snapshot 快照，避免快照过期误判）。
+            val focus = liveFocusIndex()
+            if (focus < 0) return@collect
+            val first = channelListState.layoutInfo.visibleItemsInfo.firstOrNull()?.index ?: -1
+            val vr = centerVisibleRowsState.value
             if (PerfPolicy.needsSteadyCorrection(focus, first, channels.size, vr)) {
                 PerfTrace.d { "drawer_steady_correct focus=$focus first=$first vr=$vr -> reconverge" }
-                convergeFocusToCenter(focus)
+                convergeFocusToCenter()
             }
         }
     }
