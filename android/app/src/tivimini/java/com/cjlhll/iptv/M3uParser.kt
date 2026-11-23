@@ -29,8 +29,8 @@ object M3uParser {
                         logoUrl = text("logo"),
                         tvgId = text("tvgId"),
                         tvgName = text("tvgName"),
-                        catchupMode = text("catchupMode") ?: "append",
-                        catchupSource = text("catchupSource") ?: "?playseek=\${(b)yyyyMMddHHmmss}-\${(e)yyyyMMddHHmmss}",
+                        catchupMode = text("catchupMode"),
+                        catchupSource = text("catchupSource"),
                         responseTimeMs = parseResponseTimeMs(text("responseTime")),
                         id = row.getLong("id"), userAgent = address.userAgent, referrer = address.referrer,
                     ))

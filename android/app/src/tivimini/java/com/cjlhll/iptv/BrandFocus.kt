@@ -15,8 +15,8 @@ object BrandFocus {
     const val BLUE = 0xFF2F6BFF.toInt()
     /** 浅蓝底 #2F6BFF22（保留兼容；焦点底色不再使用它）。 */
     const val BG = 0x222F6BFF.toInt()
-    /** 灰白浅底 #FFFFFF14（t41：真正的焦点底色，原 tivimini 观感）。 */
-    const val FOCUS_BG = 0x14FFFFFF.toInt()
+    /** 灰白磨砂焦点底 #24FFFFFF（清晰易读、克制高级，电视 3 米观距对比度更佳）。 */
+    const val FOCUS_BG = 0x24FFFFFF.toInt()
     /** 可选 3dp 侧蓝条（= BLUE）。 */
     const val BAR = BLUE
 

@@ -72,7 +72,7 @@ class SettingsZeroLossTest {
                 assertTrue("退役项仍应保留映射（便于迁移与门禁）", mapped)
             }
         }
-        assertEquals(1, SettingsIA.RETIRED_TAGS.size)
+        assertEquals(2, SettingsIA.RETIRED_TAGS.size)
     }
 
     @Test

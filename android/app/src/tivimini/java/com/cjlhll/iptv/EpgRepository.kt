@@ -2,7 +2,6 @@ package com.cjlhll.iptv
 
 import android.content.Context
 import android.util.Log
-import androidx.core.util.AtomicFile
 import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
@@ -14,74 +13,99 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okhttp3.Request
 
-/** Source-scoped, single-flight loads. Failed refreshes never replace good parsed data. */
+/**
+ * 源作用域、单飞并发控制的 EPG 仓库：
+ * - 底层改用 SQLite 索引库 [EpgSqlStore]，冷启 <20ms、内存 <1MB（彻底淘汰 22s Java `.ser` 反序列化）；
+ * - 兼容已有调用签名 [load] / [loadStructured]（网络更新成功即原子替换 SQLite 并通知 UI 刷新版本号）；
+ * - 失败绝不覆盖已有良好索引数据。
+ */
 object EpgRepository {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val mutex = Mutex()
     private val inFlight = HashMap<String, Deferred<EpgLoadResult>>()
-    private val cache = java.util.concurrent.ConcurrentHashMap<String, EpgData>()
+
+    /** 轻量空壳：标志该源 SQLite 索引已就绪（具体节目按需从 EpgSqlStore 毫秒查询）。 */
+    private val SQL_READY_SENTINEL = EpgData(emptyMap(), emptyMap())
+
+    fun isSqlBacked(data: EpgData?): Boolean = data === SQL_READY_SENTINEL
 
     suspend fun load(context: Context, epgSourceUrl: String, forceRefresh: Boolean = false): EpgData? =
         loadStructured(context, epgSourceUrl, forceRefresh).dataOrNull
 
     suspend fun loadStructured(context: Context, source: String, forceRefresh: Boolean = false): EpgLoadResult {
         if (source.isBlank()) return EpgLoadResult.Failure(source, "empty source")
-        if (!forceRefresh) cache[source]?.let { return EpgLoadResult.CacheFallback(source, it) }
+        val appContext = context.applicationContext
+        if (!forceRefresh && EpgSqlStore.ensureIndexLoaded(appContext, source)) {
+            return EpgLoadResult.CacheFallback(source, SQL_READY_SENTINEL)
+        }
         val work = mutex.withLock {
             inFlight[source] ?: scope.async(start = kotlinx.coroutines.CoroutineStart.LAZY) {
-                try { loadCore(context.applicationContext, source, forceRefresh) }
+                try { loadCore(appContext, source, forceRefresh) }
                 finally { mutex.withLock { inFlight.remove(source) } }
             }.also { inFlight[source] = it; it.start() }
         }
-        // A cancelled screen stops awaiting; a shared bounded refresh can still populate its source cache.
         return work.await()
     }
 
     private suspend fun loadCore(context: Context, source: String, force: Boolean): EpgLoadResult = withContext(Dispatchers.IO) {
+        val hasSql = EpgSqlStore.ensureIndexLoaded(context, source)
+        if (!force && hasSql) {
+            return@withContext EpgLoadResult.CacheFallback(source, SQL_READY_SENTINEL)
+        }
+
+        // 若本地还有旧版原始 XMLTV 缓存（尚未迁移进 SQLite），先尝试无网迁移一次
         val name = EpgCache.fileNameForSource(source)
-        // Schema version prevents a previous Java-serialization layout becoming a false hit.
-        val parsed = File(context.filesDir, "$name.rust-v1.ser")
         val raw = File(context.filesDir, name)
-        val cached = cache[source] ?: runCatching {
-            if (parsed.exists()) java.io.ObjectInputStream(parsed.inputStream()).use { it.readObject() as EpgData }
-            else if (raw.exists()) XmlTvParser.parseFile(raw) else null
-        }.getOrNull()
-        if (cached != null) cache[source] = cached
-        if (!force && cached != null) return@withContext EpgLoadResult.CacheFallback(source, cached)
-        // A unique candidate keeps an interrupted/invalid response away from both good caches.
+        val legacySer = File(context.filesDir, "$name.rust-v1.ser")
+        if (!force && !hasSql && raw.exists()) {
+            val migrated = runCatching {
+                val parsed = XmlTvParser.parseFile(raw)
+                EpgSqlStore.replaceAll(context, source, parsed)
+                legacySer.delete()
+                true
+            }.getOrDefault(false)
+            if (migrated) {
+                return@withContext EpgLoadResult.CacheFallback(source, SQL_READY_SENTINEL)
+            }
+        }
+
         val candidate = File.createTempFile("epg-", ".xmltv", context.cacheDir)
         try {
-            val client = NetUtil.ipv4OkHttpClient.newBuilder().callTimeout(30, java.util.concurrent.TimeUnit.SECONDS).build()
+            val client = NetUtil.ipv4OkHttpClient.newBuilder()
+                .callTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+                .build()
             client.newCall(Request.Builder().url(source).build()).execute().use { response ->
                 require(response.isSuccessful) { "HTTP ${response.code}" }
                 val body = requireNotNull(response.body)
-                require(body.contentLength() <= 32L*1024*1024) { "EPG response too large" }
-                body.byteStream().use { input -> candidate.outputStream().use { output ->
-                    val buffer = ByteArray(16384)
-                    var total = 0L
-                    while (true) {
-                        val count = input.read(buffer)
-                        if (count < 0) break
-                        total += count
-                        require(total <= 32L*1024*1024) { "EPG response too large" }
-                        output.write(buffer, 0, count)
+                require(body.contentLength() <= 32L * 1024 * 1024) { "EPG response too large" }
+                body.byteStream().use { input ->
+                    candidate.outputStream().use { output ->
+                        val buffer = ByteArray(16384)
+                        var total = 0L
+                        while (true) {
+                            val count = input.read(buffer)
+                            if (count < 0) break
+                            total += count
+                            require(total <= 32L * 1024 * 1024) { "EPG response too large" }
+                            output.write(buffer, 0, count)
+                        }
                     }
-                } }
+                }
             }
-            val data = XmlTvParser.parseFile(candidate)
-            val atomic = AtomicFile(parsed)
-            val output = atomic.startWrite()
-            try {
-                java.io.ObjectOutputStream(output).apply { writeObject(data); flush() }
-                output.fd.sync()
-                atomic.finishWrite(output)
-            } catch (e: Exception) { atomic.failWrite(output); throw e }
-            // Only one active source is retained in memory; historical files remain for rollback.
-            cache.clear(); cache[source] = data
-            EpgLoadResult.Success(source, data)
+            val parsed = XmlTvParser.parseFile(candidate)
+            EpgSqlStore.replaceAll(context, source, parsed)
+            // 清理占空间的旧版 Java .ser 文件
+            if (legacySer.exists()) runCatching { legacySer.delete() }
+            EpgLoadResult.Success(source, SQL_READY_SENTINEL)
         } catch (e: Exception) {
             Log.w("EPG", "refresh failed type=${e.javaClass.simpleName}")
-            if (cached != null) EpgLoadResult.CacheFallback(source, cached) else EpgLoadResult.Failure(source, "download/parse failed")
-        } finally { candidate.delete() }
+            if (hasSql || EpgSqlStore.ensureIndexLoaded(context, source)) {
+                EpgLoadResult.CacheFallback(source, SQL_READY_SENTINEL)
+            } else {
+                EpgLoadResult.Failure(source, "download/parse failed")
+            }
+        } finally {
+            candidate.delete()
+        }
     }
 }

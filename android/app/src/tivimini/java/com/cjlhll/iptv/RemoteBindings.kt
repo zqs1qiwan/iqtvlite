@@ -131,8 +131,126 @@ object RemoteBindings {
         for (binding in bindings) {
             if (!longPress && keycode in binding.shortPressKeycodes) return binding.action
         }
+        // 兜底：若长按未绑定但短按绑定了，返回 null（不误触发短按）
         return null
     }
+
+    /**
+     * 判断某键在当前上下文中是否配置了长按动作。
+     * - false → 短按可在 ACTION_DOWN(repeatCount=0) 零延迟即时触发；
+     * - true  → 短按延迟到 ACTION_UP（且未触发长按）才执行，避免长按必然先误触发短按。
+     */
+    fun hasLongPressBinding(
+        bindings: List<KeyBinding>,
+        keycode: Int,
+        context: UiContext,
+    ): Boolean {
+        if (context != UiContext.PLAYER_ONLY) return false
+        return bindings.any { keycode in it.longPressKeycodes }
+    }
+
+    /** 把快速习惯「上下键」同步写入功能→按键绑定真源（彻底消除旧开关失效问题）。 */
+    fun applyUpDownHabit(
+        bindings: List<KeyBinding>,
+        upDown: RemoteHabits.UpDown,
+        channelKeysEnabled: Boolean,
+    ): List<KeyBinding> {
+        val navKeys = setOf(KEY_DPAD_UP, KEY_DPAD_DOWN)
+        val chUpKeys = if (channelKeysEnabled) setOf(KEY_CHANNEL_UP, KEY_PAGE_UP) else emptySet()
+        val chDownKeys = if (channelKeysEnabled) setOf(KEY_CHANNEL_DOWN, KEY_PAGE_DOWN) else emptySet()
+        val allUpDown = navKeys + setOf(KEY_CHANNEL_UP, KEY_CHANNEL_DOWN, KEY_PAGE_UP, KEY_PAGE_DOWN)
+        return bindings.map { b ->
+            when (b.action) {
+                RemoteAction.CHANNEL_UP -> b.copy(
+                    shortPressKeycodes = if (upDown == RemoteHabits.UpDown.CHANNEL_STEP) {
+                        (b.shortPressKeycodes - allUpDown) + KEY_DPAD_UP + chUpKeys
+                    } else {
+                        b.shortPressKeycodes - allUpDown
+                    }
+                )
+                RemoteAction.CHANNEL_DOWN -> b.copy(
+                    shortPressKeycodes = if (upDown == RemoteHabits.UpDown.CHANNEL_STEP) {
+                        (b.shortPressKeycodes - allUpDown) + KEY_DPAD_DOWN + chDownKeys
+                    } else {
+                        b.shortPressKeycodes - allUpDown
+                    }
+                )
+                RemoteAction.OPEN_DRAWER -> b.copy(
+                    shortPressKeycodes = if (upDown == RemoteHabits.UpDown.OPEN_DRAWER) {
+                        (b.shortPressKeycodes - allUpDown) + navKeys + chUpKeys + chDownKeys
+                    } else {
+                        b.shortPressKeycodes - allUpDown
+                    }
+                )
+                else -> b
+            }
+        }
+    }
+
+    /** 把快速习惯「OK键」同步写入功能→按键绑定真源。 */
+    fun applyOkHabit(bindings: List<KeyBinding>, ok: RemoteHabits.Ok): List<KeyBinding> {
+        val okKeys = setOf(KEY_DPAD_CENTER, KEY_ENTER, KEY_NUMPAD_ENTER)
+        return bindings.map { b ->
+            when (b.action) {
+                RemoteAction.SHOW_INFO -> b.copy(
+                    shortPressKeycodes = if (ok == RemoteHabits.Ok.CONFIRM) {
+                        b.shortPressKeycodes + okKeys
+                    } else {
+                        b.shortPressKeycodes - okKeys
+                    }
+                )
+                RemoteAction.OPEN_DRAWER -> b.copy(
+                    shortPressKeycodes = if (ok == RemoteHabits.Ok.OPEN_DRAWER) {
+                        b.shortPressKeycodes + okKeys
+                    } else {
+                        b.shortPressKeycodes - okKeys
+                    }
+                )
+                else -> b.copy(shortPressKeycodes = b.shortPressKeycodes - okKeys)
+            }
+        }
+    }
+
+    /** 把快速习惯「频道键 166/167」同步写入功能→按键绑定真源。 */
+    fun applyChannelKeysHabit(bindings: List<KeyBinding>, enabled: Boolean): List<KeyBinding> {
+        val upKeys = setOf(KEY_CHANNEL_UP, KEY_PAGE_UP)
+        val downKeys = setOf(KEY_CHANNEL_DOWN, KEY_PAGE_DOWN)
+        val allCh = upKeys + downKeys
+        val upIsDrawer = bindings.firstOrNull { it.action == RemoteAction.OPEN_DRAWER }
+            ?.shortPressKeycodes?.contains(KEY_DPAD_UP) == true
+        return bindings.map { b ->
+            when (b.action) {
+                RemoteAction.CHANNEL_UP -> b.copy(
+                    shortPressKeycodes = if (enabled && !upIsDrawer) b.shortPressKeycodes + upKeys else b.shortPressKeycodes - allCh
+                )
+                RemoteAction.CHANNEL_DOWN -> b.copy(
+                    shortPressKeycodes = if (enabled && !upIsDrawer) b.shortPressKeycodes + downKeys else b.shortPressKeycodes - allCh
+                )
+                RemoteAction.OPEN_DRAWER -> b.copy(
+                    shortPressKeycodes = if (enabled && upIsDrawer) b.shortPressKeycodes + allCh else b.shortPressKeycodes - allCh
+                )
+                else -> b
+            }
+        }
+    }
+
+    /** 从当前唯一真源 bindings 反推快速预设展示态，确保设置摘要与实际行为 100% 一致。 */
+    fun deriveUpDownHabit(bindings: List<KeyBinding>): RemoteHabits.UpDown =
+        if (bindings.firstOrNull { it.action == RemoteAction.CHANNEL_UP }?.shortPressKeycodes?.contains(KEY_DPAD_UP) == true) {
+            RemoteHabits.UpDown.CHANNEL_STEP
+        } else {
+            RemoteHabits.UpDown.OPEN_DRAWER
+        }
+
+    fun deriveOkHabit(bindings: List<KeyBinding>): RemoteHabits.Ok =
+        if (bindings.firstOrNull { it.action == RemoteAction.OPEN_DRAWER }?.shortPressKeycodes?.contains(KEY_DPAD_CENTER) == true) {
+            RemoteHabits.Ok.OPEN_DRAWER
+        } else {
+            RemoteHabits.Ok.CONFIRM
+        }
+
+    fun deriveChannelKeysEnabled(bindings: List<KeyBinding>): Boolean =
+        bindings.any { KEY_CHANNEL_UP in it.shortPressKeycodes || KEY_CHANNEL_DOWN in it.shortPressKeycodes }
 
     private fun resolveCatchup(keycode: Int): RemoteAction? = when (keycode) {
         KEY_DPAD_LEFT -> RemoteAction.SEEK_BACK

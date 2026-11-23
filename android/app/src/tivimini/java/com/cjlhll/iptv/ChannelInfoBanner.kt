@@ -1,25 +1,37 @@
 package com.cjlhll.iptv
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -31,6 +43,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -39,15 +52,10 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 
 /**
- * t4（docs/INFO_CARD_V2.md）：播放器底部信息卡 v2。
- *
- * - 顶部：96×60 大台标 + 频道号 overline + `headlineLarge` 32sp 大台名；
- * - 中部：`titleLarge` 当前节目 + 3dp 进度条 + 单行技术参数（音轨 · 分辨率 · 码率）；
- * - 底部：`最近观看` 横向小卡（≤6、40×40 台标、12sp 台名、可左右聚焦、OK 切台）；
- * - 三态（HIDDEN/IDLE/FOCUSED）由 [InfoCardPolicy] 裁决，空闲 3s 自动隐藏、聚焦不隐藏；
- * - 0dp / 无边框 / 无阴影 / 焦点只用 `surfaceVariant` 底色；未聚焦时不拦截任何按键。
- *
- * 零拷贝红线：本文件只画 Compose 覆盖层，不触碰 PlayerView/SurfaceView。
+ * 重构后的播放器底部信息卡（统一极简曜石暗色风格）：
+ * - 修复回看进度条公式 Bug（positionMs 已是相对节目开头的毫秒，不能再减 startMillis）；
+ * - 修复最近观看 5 张台标横向裁剪问题（52dp 卡片 + 8dp 间距 = 292dp，在 960dp/1280dp TV 均完整无裁剪）；
+ * - 帧安全焦点请求（withFrameNanos 后 requestFocus），逻辑焦点与真实焦点一致，不丢高亮。
  */
 @Composable
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
@@ -60,19 +68,15 @@ fun ChannelInfoBanner(
     channelNumber: Int = -1,
     programProgress: Float? = null,
     videoFormat: Format?,
-    // t175: current audio track (language · codec · channels); omitted entirely when null.
     audioLabel: String? = null,
-    // FULLFIX §4.2②：声道数取实际播放音轨 Format；码率/帧率主值缺失时的回退（来自当前 Format）。
     audioChannelCount: Int = -1,
     videoBitrateFallback: Int = -1,
     frameRateFallback: Float = -1f,
     catchupConfiguration: CatchupConfiguration? = null,
-    // t24（INFO_CARD_V3）：右侧节目行所需信息（起止/当前时刻/分组小字）。
     programStartMs: Long = 0L,
     programEndMs: Long = 0L,
     nowMillis: Long = System.currentTimeMillis(),
     groupLabel: String? = null,
-    // t4：底部最近观看快跳（已排除当前台、最多 6 条）。
     recentCards: List<RecentChannelUi> = emptyList(),
     focusIndex: Int = 0,
     onMoveFocus: (Int) -> Unit = {},
@@ -82,9 +86,7 @@ fun ChannelInfoBanner(
     animate: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
-    // UI风格和抽屉保持一致：抽屉是 surface alpha 0.92f；0dp、无边框、无阴影。
-    val containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f)
-    val shape = RoundedCornerShape(0.dp)
+    val containerColor = TvDesignTokens.SurfaceObsidian.copy(alpha = TvDesignTokens.ALPHA_INFO_CARD)
     val visible = InfoCardPolicy.isVisible(state, seekOverlayVisible)
     val focused = state == InfoCardPolicy.State.FOCUSED
 
@@ -98,61 +100,50 @@ fun ChannelInfoBanner(
     val focusManager = LocalFocusManager.current
     val requesters = remember(recentCount) { List(recentCount) { FocusRequester() } }
 
-    // t16（F1）：聚合“最近观看条里到底有没有节点真的持有焦点”。
-    // 旧实现只在获得焦点时回调 onFocusedChanged(true)，从不回调 false → Activity 的
-    // isInfoCardFocused 镜像可能长期为 true；一旦节点被后台刷新/换源重建或窗口焦点被抢，
-    // 守卫会继续吞 DPAD/OK/BACK，BACK 落到系统 finish() 退出播放器。
     var stripFocusIndex by remember { mutableStateOf(-1) }
     var wasFocused by remember { mutableStateOf(false) }
     var lastState by remember { mutableStateOf(state) }
 
-    // F1/F2 状态机：自愈 + 只在“用户主动退聚焦”时清焦点。
-    LaunchedEffect(state, focusIndex, recentCount, stripFocusIndex) {
+    LaunchedEffect(state, focusIndex, recentCount) {
         when (InfoCardPolicy.focusRecoveryAction(state, recentCount)) {
             InfoCardPolicy.FocusRecovery.EXIT_FOCUS -> {
-                // FOCUSED 但 0 条 → 绝不允许存在；退回 IDLE（Activity 镜像随之为 false）。
                 wasFocused = false
+                stripFocusIndex = -1
                 onExitFocus()
             }
             InfoCardPolicy.FocusRecovery.REQUEST_FOCUS -> {
-                // FULLFIX §5（U1）：焦点必须跟随高亮 focusIndex。旧的 `if (stripFocusIndex < 0)`
-                // 守卫使得真实焦点已在卡 0 时，RIGHT 改了 focusIndex 也不会重新请求卡 1 的焦点
-                // （高亮=卡1、真焦点=卡0、OK 目标=卡0，三处不一致 → 用户「不能切换」）。
-                // 现在每次 focusIndex 变化都请求目标卡；先同步 stripFocusIndex 再请求，
-                // 避免 aggregateNodeFocus 短暂为 false 触发镜像抖动。
                 val target = InfoCardPolicy.focusTargetIndex(focusIndex, recentCount)
                 if (target >= 0) {
                     stripFocusIndex = target
-                    runCatching { requesters.getOrNull(target)?.requestFocus() }
+                    repeat(4) {
+                        withFrameNanos { }
+                        if (runCatching { requesters.getOrNull(target)?.requestFocus() }.isSuccess) {
+                            return@repeat
+                        }
+                    }
                 }
                 wasFocused = true
             }
             InfoCardPolicy.FocusRecovery.NONE -> {
-                // F2：只有 FOCUSED→IDLE（用户主动退聚焦）才 clearFocus；
-                // FOCUSED→HIDDEN（覆盖层/计时器）不清——否则会清掉设置抽屉刚拿到的焦点。
                 if (InfoCardPolicy.shouldClearFocusOnTransition(lastState, state) && wasFocused) {
                     runCatching { focusManager.clearFocus(force = true) }
                 }
+                stripFocusIndex = -1
                 wasFocused = false
             }
         }
         lastState = state
     }
 
-    // 镜像同步：条内有节点聚焦才算“聚焦”。
     LaunchedEffect(stripFocusIndex) {
         onFocusedChanged(InfoCardPolicy.aggregateNodeFocus(stripFocusIndex))
     }
-    // 兜底：卡片隐藏时镜像一律为 false（覆盖层接管键盘）。
     LaunchedEffect(state) {
         if (state == InfoCardPolicy.State.HIDDEN) onFocusedChanged(false)
     }
 
-    // t24（INFO_CARD_V3）：右上徽标 / 技术行 / 节目行 / 小字（全部来自 InfoCardPolicy 纯函数）。
-    // FULLFIX §4.2②：帧率/码率用主值优先、回退补齐；声道用音频 Format 的 channelCount（不再取 vf）。
     val vf = videoFormat
     val frameRate = InfoCardPolicy.takePositive(vf?.frameRate ?: -1f, frameRateFallback)
-    // t32 Bug2：右上角一排紧凑徽标（分辨率/帧数/声道数字/动态范围/编码）。
     val colorInfo = vf?.colorInfo
     val compactBadgeText = InfoCardPolicy.compactBadges(
         width = vf?.width ?: 0,
@@ -164,6 +155,7 @@ fun ChannelInfoBanner(
         mime = vf?.sampleMimeType,
         codecs = vf?.codecs,
     ).joinToString(" · ")
+
     val programText = InfoCardPolicy.programTitleOrPlaceholder(programTitle)
     val programTime = InfoCardPolicy.programTimeLine(
         startMillis = programStartMs,
@@ -171,12 +163,17 @@ fun ChannelInfoBanner(
         nowMillis = nowMillis,
         catchup = catchupConfiguration != null,
     )
-    // V4 §6：台标下只留本台分组小字；台名渲染为 "$number. $title"（见主行 Text）。
     val smallMeta = InfoCardPolicy.groupLine(groupLabel)
-    val titleWithNumber = if (channelNumber > 0) "$channelNumber. ${channel?.title ?: "未知频道"}" else (channel?.title ?: "未知频道")
+    val titleWithNumber = if (channelNumber > 0) {
+        "$channelNumber. ${channel?.title ?: "未知频道"}"
+    } else {
+        channel?.title ?: "未知频道"
+    }
+
+    // 修复 P0-9：catchupConfiguration.positionMs 已经是相对节目开头的毫秒数（0..duration）
     val progressValue: Float? = programProgress ?: catchupConfiguration?.let { c ->
-        val d = (c.endMillis - c.startMillis).toFloat()
-        if (d <= 0f) null else ((c.positionMs - c.startMillis).toFloat() / d).coerceIn(0f, 1f)
+        val duration = (c.endMillis - c.startMillis).toFloat()
+        if (duration <= 0f) null else (c.positionMs.toFloat() / duration).coerceIn(0f, 1f)
     }
 
     val content: @Composable () -> Unit = {
@@ -188,18 +185,17 @@ fun ChannelInfoBanner(
                     testTagsAsResourceId = true
                     contentDescription = "频道信息 ${if (channelNumber > 0) "$channelNumber " else ""}${channel?.title.orEmpty()}"
                 }
-                .background(containerColor, shape)
+                .background(containerColor, TvDesignTokens.ShapeFlat)
                 .onPreviewKeyEvent { event ->
-                    // 只有聚焦态接管方向键/OK/BACK；其余状态一律不拦截（红线 §0.2-3）。
                     if (!focused) return@onPreviewKeyEvent false
                     if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                     when (event.key) {
                         Key.DirectionLeft -> { onMoveFocus(-1); true }
                         Key.DirectionRight -> { onMoveFocus(1); true }
-                        // FULLFIX §5（U1）：OK 目标统一取高亮 focusIndex（不是事件来源卡 index）。
-                        // 放在根部统一处理，空/1 张也安全（resolveRecentTarget 返回 null → 不切台）。
                         Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> {
-                            if (showRecent) onSwitchRecent(InfoCardPolicy.focusTargetIndex(focusIndex, recentCount).coerceAtLeast(0))
+                            if (showRecent) {
+                                onSwitchRecent(InfoCardPolicy.focusTargetIndex(focusIndex, recentCount).coerceAtLeast(0))
+                            }
                             true
                         }
                         Key.DirectionUp, Key.DirectionDown, Key.Back -> { onExitFocus(); true }
@@ -210,121 +206,129 @@ fun ChannelInfoBanner(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = 40.dp, end = 40.dp, top = 4.dp, bottom = 4.dp) // t69 ③：上下留白 6→4
+                    .padding(start = 36.dp, end = 36.dp, top = 10.dp, bottom = 8.dp)
             ) {
-                // t32 Bug2：徽标不再单独占一行 —— 用 Box 叠加到主行右上角，消除顶部大空白。
                 Box(modifier = Modifier.fillMaxWidth()) {
-                // ── 主行：台标(160×96) + 台名 同行；右侧节目列 ────────────────
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 96.dp), // t59 ④：min 96dp，含 56dp 最近条时可自然增高，总卡片仍≤140dp
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    ChannelLogo(
-                        logoUrl = channel?.logoUrl,
-                        fallbackTitle = channel?.title ?: "",
+                    Row(
                         modifier = Modifier
-                            .size(width = 160.dp, height = 96.dp)
-                            .testTag("info_card_logo"),
-                        width = 160.dp,
-                        height = 96.dp
-                    )
-
-                    Spacer(modifier = Modifier.width(24.dp))
-
-                    Column(modifier = Modifier.weight(0.44f)) {
-                        Text(
-                            text = titleWithNumber,
-                            style = MaterialTheme.typography.headlineLarge.copy(fontSize = 28.sp, lineHeight = 32.sp), // t69 ③：收紧行高
-                            color = MaterialTheme.colorScheme.onSurface,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.testTag("info_card_title")
+                            .fillMaxWidth()
+                            .heightIn(min = 96.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        ChannelLogo(
+                            logoUrl = channel?.logoUrl,
+                            fallbackTitle = channel?.title ?: "",
+                            modifier = Modifier
+                                .size(width = 144.dp, height = 90.dp)
+                                .testTag("info_card_logo"),
+                            width = 144.dp,
+                            height = 90.dp
                         )
-                        Row(modifier = Modifier.height(12.dp).testTag("info_card_group")) { // t69 ③：16→12
+
+                        Spacer(modifier = Modifier.width(24.dp))
+
+                        Column(modifier = Modifier.weight(0.46f)) {
                             Text(
-                                text = smallMeta,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f),
+                                text = titleWithNumber,
+                                style = MaterialTheme.typography.headlineLarge.copy(
+                                    fontSize = 26.sp,
+                                    lineHeight = 30.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                ),
+                                color = TvDesignTokens.TextPrimary,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.testTag("info_card_number")
+                                modifier = Modifier.testTag("info_card_title")
                             )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.height(16.dp).testTag("info_card_group")
+                            ) {
+                                Text(
+                                    text = smallMeta,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = TvDesignTokens.TextSecondary,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.testTag("info_card_number")
+                                )
+                            }
+                            if (showRecent) {
+                                Spacer(modifier = Modifier.height(4.dp))
+                                RecentStrip(
+                                    items = recentCards,
+                                    focused = focused,
+                                    logicalFocusIndex = focusIndex,
+                                    requesters = requesters,
+                                    onCardFocusChanged = { index, isFocused ->
+                                        if (isFocused) stripFocusIndex = index
+                                        else if (stripFocusIndex == index) stripFocusIndex = -1
+                                    },
+                                )
+                            }
                         }
-                        // t52 §⑥：最近观看 4 logo 内联进主行下半区，与主行共享 96dp，不单独占行。
-                        if (showRecent) {
-                            RecentStrip(
-                                items = recentCards,
-                                requesters = requesters,
-                                onCardFocusChanged = { index, isFocused ->
-                                    if (isFocused) stripFocusIndex = index
-                                    else if (stripFocusIndex == index) stripFocusIndex = -1
+
+                        Spacer(modifier = Modifier.width(24.dp))
+
+                        Column(modifier = Modifier.weight(0.54f).padding(top = 20.dp)) {
+                            Text(
+                                text = programText,
+                                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Medium),
+                                color = if (programTitle.isNullOrBlank()) {
+                                    TvDesignTokens.TextMuted
+                                } else {
+                                    TvDesignTokens.TextPrimary
                                 },
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.width(28.dp))
-
-                    // t32 Bug2：节目列下移一行，给右上角徽标让位（徽标叠加不额外占行）。
-                    Column(modifier = Modifier.weight(0.56f).padding(top = 20.dp)) {
-                        Text(
-                            text = programText,
-                            style = MaterialTheme.typography.titleLarge,
-                            // t38：信息卡"正在播放"信息不再用蓝色（蓝色仅用于选台列表聚焦）。
-                            color = if (programTitle.isNullOrBlank()) {
-                                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f)
-                            } else {
-                                MaterialTheme.colorScheme.onSurface
-                            },
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.testTag("info_card_program")
-                        )
-                        if (programTime.isNotEmpty()) {
-                            Text(
-                                text = programTime,
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f),
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier
-                                    .height(16.dp)
-                                    .testTag("info_card_program_time")
+                                modifier = Modifier.testTag("info_card_program")
                             )
+                            if (programTime.isNotEmpty()) {
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = programTime,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = TvDesignTokens.TextSecondary,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier
+                                        .height(16.dp)
+                                        .testTag("info_card_program_time")
+                                )
+                            }
+                            if (progressValue != null) {
+                                Spacer(modifier = Modifier.height(4.dp))
+                                BannerProgressBar(
+                                    progress = progressValue,
+                                    modifier = Modifier.testTag("info_card_progress")
+                                )
+                            }
                         }
-                        if (progressValue != null) {
-                            Spacer(modifier = Modifier.height(4.dp))
-                            BannerProgressBar(
-                                progress = progressValue,
-                                modifier = Modifier.testTag("info_card_progress")
-                            )
-                        }
+                    }
+
+                    // 右上角紧凑技术参数徽标（分辨率 · 帧率 · 声道 · 动态范围 · 编码）
+                    if (compactBadgeText.isNotEmpty()) {
+                        Text(
+                            text = compactBadgeText,
+                            style = MaterialTheme.typography.labelMedium.copy(
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium,
+                            ),
+                            color = TvDesignTokens.TextSecondary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .testTag("info_card_badges")
+                        )
                     }
                 }
 
-                // t32 Bug2：徽标叠加在主行右上角（不额外占行），一排紧凑含分辨率/帧数/声道/动态范围/编码。
-                if (compactBadgeText.isNotEmpty()) {
-                    Text(
-                        text = compactBadgeText,
-                        style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.sp),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .testTag("info_card_badges")
-                    )
-                }
-                } // Box
-
-                // t52 §⑥：入口提示压成一行极薄角标（最近条已内联进主行），不再占独立区域。
-                // t59 ③：入口提示分两侧（SpaceBetween）——最左频道列表、最右设置。
+                Spacer(modifier = Modifier.height(4.dp))
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween,
-                    modifier = Modifier.height(12.dp).fillMaxWidth() // t69 ③：提示行 14→12 上收紧
+                    modifier = Modifier.height(14.dp).fillMaxWidth()
                 ) {
                     EntryHintLeft()
                     EntryHintRight()
@@ -336,8 +340,8 @@ fun ChannelInfoBanner(
     if (animate) {
         AnimatedVisibility(
             visible = visible,
-            enter = slideInVertically(initialOffsetY = { it }),
-            exit = slideOutVertically(targetOffsetY = { it }),
+            enter = slideInVertically(animationSpec = tween(150), initialOffsetY = { it }),
+            exit = slideOutVertically(animationSpec = tween(120), targetOffsetY = { it }),
             modifier = modifier.fillMaxWidth()
         ) {
             content()
@@ -350,84 +354,93 @@ fun ChannelInfoBanner(
     }
 }
 
-/** t59 ③：入口提示分两侧 —— 最左「← 频道列表」。 */
 @Composable
 private fun EntryHintLeft() {
     Text(
         text = InfoCardPolicy.ENTRY_HINT_LEFT,
         style = MaterialTheme.typography.labelMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
+        color = TvDesignTokens.TextMuted,
         maxLines = 1,
         modifier = Modifier.testTag("info_card_hint_left")
     )
 }
 
-/** t59 ③：入口提示分两侧 —— 最右「→ 设置」。 */
 @Composable
 private fun EntryHintRight() {
     Text(
         text = InfoCardPolicy.ENTRY_HINT_RIGHT,
         style = MaterialTheme.typography.labelMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
+        color = TvDesignTokens.TextMuted,
         maxLines = 1,
         modifier = Modifier.testTag("info_card_hint_right")
     )
 }
 
 /**
- * V4 §6：最近观看小卡行 —— 最多 4 个仅 logo 方块（56×56，logo 48dp），无台名文字行。
- * 无 logo 时用频道号/台名首字居中回退。焦点 = 蓝底 + 白字加粗，不改尺寸（无 remeasure）。
- * 按键统一由 banner 根部 onPreviewKeyEvent 处理（U1 单一真源），这里只渲染 + 上报焦点。
+ * 底部最近观看条：5 张 52dp 台标 + 8dp 间距 = 292dp，在 960dp/1280dp 电视均完整展示零裁剪；
+ * 聚焦态 = 清晰磨砂底 + 底部 2dp 品牌蓝指示条，逻辑焦点与真实焦点统一。
  */
 @Composable
 private fun RecentStrip(
     items: List<RecentChannelUi>,
+    focused: Boolean,
+    logicalFocusIndex: Int,
     requesters: List<FocusRequester>,
     onCardFocusChanged: (Int, Boolean) -> Unit,
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(64.dp) // t69 ③：56→64dp，5 个大 logo
+            .height(54.dp)
             .clipToBounds()
             .testTag("info_card_recent_row"),
         horizontalArrangement = Arrangement.Start,
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         items.forEachIndexed { index, item ->
-            var isFocused by remember(item.title, index) { mutableStateOf(false) }
+            var nodeFocused by remember(item.title, index) { mutableStateOf(false) }
+            val isHighlighted = focused && (nodeFocused || index == logicalFocusIndex)
             val hasLogo = item.logoUrl?.isNotBlank() == true
             Box(
                 modifier = Modifier
-                    .size(64.dp) // t69 ③：56→64dp
+                    .size(52.dp)
                     .testTag("info_card_recent_$index")
                     .semantics { contentDescription = "最近观看第${index + 1}个 ${item.number}. ${item.title}" }
                     .focusRequester(requesters[index])
                     .onFocusChanged {
-                        isFocused = it.isFocused
+                        nodeFocused = it.isFocused
                         onCardFocusChanged(index, it.isFocused)
                     }
                     .focusable()
-                    .background(if (isFocused) BrandFocus.FocusBgColor else Color.Transparent),
+                    .background(if (isHighlighted) BrandFocus.FocusBgColor else Color.Transparent),
                 contentAlignment = Alignment.Center
             ) {
                 if (hasLogo) {
                     ChannelLogo(
                         logoUrl = item.logoUrl,
                         fallbackTitle = "",
-                        width = 56.dp, // t69 ③：48→56dp
-                        height = 56.dp
+                        width = 44.dp,
+                        height = 44.dp
                     )
                 } else {
                     Text(
                         text = item.number.takeIf { it > 0 }?.toString() ?: item.title.take(1),
                         style = MaterialTheme.typography.titleMedium,
-                        color = Color.White,
-                        fontWeight = if (isFocused) androidx.compose.ui.text.font.FontWeight.Bold
-                        else androidx.compose.ui.text.font.FontWeight.Medium
+                        color = if (isHighlighted) TvDesignTokens.TextPrimary else TvDesignTokens.TextSecondary,
+                        fontWeight = if (isHighlighted) FontWeight.Bold else FontWeight.Medium
+                    )
+                }
+                if (isHighlighted) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .fillMaxWidth()
+                            .height(2.dp)
+                            .background(TvDesignTokens.AccentPlaying)
                     )
                 }
             }
-            if (index != items.lastIndex) Spacer(modifier = Modifier.width(12.dp))
+            if (index != items.lastIndex) Spacer(modifier = Modifier.width(8.dp))
         }
     }
 }
@@ -438,14 +451,12 @@ data class CatchupConfiguration(
     val positionMs: Long
 )
 
-// t24：v3 把回看进度并入右侧节目行（三态同高），独立 CatchupProgressRow 已删除。
-
 @Composable
 fun TechSpecText(text: String) {
     Text(
         text = text,
         style = MaterialTheme.typography.labelMedium,
-        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+        color = TvDesignTokens.TextSecondary
     )
 }
 
@@ -455,20 +466,20 @@ private fun BannerProgressBar(
     modifier: Modifier = Modifier
 ) {
     val clamped = progress.coerceIn(0f, 1f)
-    val track = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
-    val fill = MaterialTheme.colorScheme.primary.copy(alpha = 0.80f)
+    val track = TvDesignTokens.TextPrimary.copy(alpha = 0.14f)
+    val fill = BrandFocus.BlueColor
     Box(
         modifier = modifier
             .padding(top = 4.dp)
             .fillMaxWidth()
             .height(3.dp)
-            .background(track, RoundedCornerShape(0.dp))
+            .background(track, TvDesignTokens.ShapeFlat)
     ) {
         Box(
             modifier = Modifier
                 .fillMaxHeight()
                 .fillMaxWidth(clamped)
-                .background(fill, RoundedCornerShape(0.dp))
+                .background(fill, TvDesignTokens.ShapeFlat)
         )
     }
 }

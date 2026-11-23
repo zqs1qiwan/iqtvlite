@@ -45,17 +45,16 @@ object SettingsIA {
     /** 每页可聚焦行的 tag，顺序即展示顺序（含条件行，UI 侧按可用性过滤）。 */
     private val PAGE_ITEMS: Map<SettingsPage, List<String>> = mapOf(
         SettingsPage.PLAYBACK to listOf(
+            "settings_info_ok_mode",
             "settings_playback_buffer",
             "settings_quality_menu",
             "settings_zap_preconnect",
             "settings_multicast_prewarm",
             "settings_jingcai_experiment",
-            "settings_info_ok_mode",
         ),
         SettingsPage.REMOTE to listOf(
             "settings_remote_updown",
             "settings_remote_ok",
-            "settings_remote_back",
             "settings_remote_digits",
             "settings_remote_channel_keys",
             "settings_remote_reset",
@@ -83,6 +82,16 @@ object SettingsIA {
     )
 
     fun itemTags(page: SettingsPage): List<String> = PAGE_ITEMS.getValue(page)
+
+    /** 含动态自定义按键行在内的所有可聚焦 tag（用于焦点记忆校验）。 */
+    fun focusableTags(page: SettingsPage): List<String> {
+        val base = PAGE_ITEMS.getValue(page)
+        if (page != SettingsPage.REMOTE) return base
+        val extra = RemoteBindings.CONFIGURABLE_ACTIONS.flatMap { action ->
+            listOf("settings_remote_action_${action.name}", "settings_remote_bind_long_${action.name}")
+        } + "settings_remote_bindings_reset"
+        return base + extra
+    }
 
     fun rootTag(page: SettingsPage): String = "settings_root_${page.id}"
 
@@ -119,8 +128,8 @@ object SettingsIA {
         put("settings_logo_clear", SettingsPage.LOGO)
     }
 
-    /** 已合并退役的 tag（D-S2：与「立即刷新 EPG」是同一动作，只调 requestManualEpg）。 */
-    val RETIRED_TAGS: Set<String> = setOf("settings_epg_source")
+    /** 已合并/退役的 tag（settings_epg_source 并入 settings_refresh_epg；settings_remote_back 统一由 BackKeyPolicy 分层双按承载）。 */
+    val RETIRED_TAGS: Set<String> = setOf("settings_epg_source", "settings_remote_back")
 
     /**
      * 迁移矩阵的基线行（**23 个旧 tag + 1 个新增 `settings_logo_refresh`，共 24 个**；

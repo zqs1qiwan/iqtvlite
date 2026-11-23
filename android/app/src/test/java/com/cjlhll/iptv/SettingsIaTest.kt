@@ -87,8 +87,8 @@ class SettingsIaTest {
     }
 
     @Test
-    fun retiredSetIsExactlyTheMergedEpgRow() {
-        assertEquals(setOf("settings_epg_source"), SettingsIA.RETIRED_TAGS)
+    fun retiredSetIsExactlyTheMergedEpgAndRetiredBackRows() {
+        assertEquals(setOf("settings_epg_source", "settings_remote_back"), SettingsIA.RETIRED_TAGS)
         // 合并后的手动 EPG 刷新仍由 settings_refresh_epg 承载，且全仓只此一个。
         assertTrue("settings_refresh_epg" in SettingsIA.itemTags(SettingsPage.DATA))
         val manualEpgTags = SettingsPage.entries

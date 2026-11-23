@@ -30,21 +30,24 @@ import kotlinx.coroutines.withContext
 object AutoUpdateScheduler {
     private const val TAG = "AutoUpdate"
     private const val TICK_MS = 60_000L
-    /** t176 (PERF-01): let the first video frame land before the startup network pass. */
-    private const val STARTUP_DELAY_MS = 1_500L
+    /** 错峰冷启：等待首帧渲染及初始媒体缓冲稳态建立后再启动后台更新，避免 4.4s 启动 rebuffer。 */
+    private const val STARTUP_DELAY_MS = 10_000L
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val mutex = Mutex()
 
     @Volatile private var started = false
     @Volatile private var startupDone = false
-    /** t189 (SOURCE-SAVE-02): only one network pass at a time, even across tick/save/manual. */
     private val refreshGate = ManualRefreshPolicy.RefreshGate()
 
-    // t189 (SOURCE-SAVE-02): replay = 1 so an Activity created AFTER the refresh (MainActivity
-    // finishing → PlayerActivity starting) still receives the "源已更新" result instead of missing it.
+    // replay = 1 让 MainActivity 刚切到 PlayerActivity 时不漏收首条结果，消费后立即 clearLastEvent() 防止重建重放。
     private val _events = MutableSharedFlow<String>(replay = 1, extraBufferCapacity = 4)
     val events: SharedFlow<String> = _events.asSharedFlow()
+
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    fun clearReplayedEvent() {
+        _events.resetReplayCache()
+    }
 
     /** Idempotent: starts the policy loop once per process (never on the main thread). */
     fun start(context: Context) {
@@ -73,13 +76,11 @@ object AutoUpdateScheduler {
      * (`BackgroundSourceUpdater.refreshAll`) and the last-success/failure bookkeeping stays in one
      * place.
      */
-    fun onSourceChanged(context: Context) {
+    fun onSourceChanged(context: Context, playlistAlreadyFresh: Boolean = false) {
         val appContext = context.applicationContext
         scope.launch {
             mutex.withLock {
                 if (!refreshGate.tryEnter()) return@withLock
-                // t189 (SOURCE-SAVE-02): the startup gate is touched INSIDE the lock, so a concurrent
-                // 60 s tick can no longer observe "reset but not yet done" and start a second pass.
                 startupDone = false
                 var allOk = true
                 var attempted = false
@@ -87,10 +88,14 @@ object AutoUpdateScheduler {
                     val live = Prefs.getLiveSource(appContext)
                     if (live.isNotBlank()) {
                         attempted = true
-                        val ok = runCatching { BackgroundSourceUpdater.refreshPlaylistUrgent(appContext) }
-                            .getOrDefault(false)
-                        onPlaylistResult(appContext, ok)
-                        if (!ok) allOk = false
+                        if (playlistAlreadyFresh) {
+                            onPlaylistResult(appContext, true)
+                        } else {
+                            val ok = runCatching { BackgroundSourceUpdater.refreshPlaylistUrgent(appContext) }
+                                .getOrDefault(false)
+                            onPlaylistResult(appContext, ok)
+                            if (!ok) allOk = false
+                        }
                     }
                     val epg = Prefs.getEpgSource(appContext)
                     if (epg.isNotBlank()) {
@@ -103,7 +108,6 @@ object AutoUpdateScheduler {
                     startupDone = true
                     refreshGate.exit()
                 }
-                // t189 (SOURCE-EVENT-01): never claim success when something failed.
                 _events.tryEmit(
                     when {
                         !attempted -> "源未配置"

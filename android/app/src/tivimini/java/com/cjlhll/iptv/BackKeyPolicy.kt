@@ -10,6 +10,7 @@ package com.cjlhll.iptv
 object BackKeyPolicy {
 
     enum class Action {
+        CLOSE_UPDATE_DIALOG,
         CLOSE_AUDIO_DIALOG,
         CLOSE_RECENT,
         CLOSE_QUALITY_DIALOG,
@@ -25,12 +26,13 @@ object BackKeyPolicy {
     }
 
     /**
-     * 单一分层裁决。
-     * @param settingsHasSubPage 设置抽屉当前是否在二级页（由 settingsBackHandler 是否可消费决定）。
-     * @param infoCardVisible 信息卡是否可见（IDLE 或 FOCUSED）——由单一 infoCardState 派生。
-     * @param infoCardFocused 信息卡是否处于 FOCUSED（由同一 state 派生，不再用独立镜像 var）。
+     * 单一分层裁决（纯函数，无任何副作用）。
+     * @param settingsHasSubPage 设置抽屉当前是否在二级页（只读查询，不触发退页副作用）。
+     * @param infoCardVisible 信息卡是否可见（IDLE 或 FOCUSED）——由单一 overlay 状态派生。
+     * @param infoCardFocused 信息卡是否处于 FOCUSED。
      * @param catchup 是否回看中。
      * @param lastBackWithin2s 距上次 BACK 是否在 2s 内（双按计时器单一真源，JVM 可注入）。
+     * @param updateDialogOpen 更新弹窗是否打开（最高优先级模态层）。
      */
     fun decide(
         audioDialogOpen: Boolean,
@@ -43,7 +45,9 @@ object BackKeyPolicy {
         infoCardFocused: Boolean,
         catchup: Boolean,
         lastBackWithin2s: Boolean,
+        updateDialogOpen: Boolean = false,
     ): Action = when {
+        updateDialogOpen -> Action.CLOSE_UPDATE_DIALOG
         audioDialogOpen -> Action.CLOSE_AUDIO_DIALOG
         recentOpen -> Action.CLOSE_RECENT
         qualityDialogOpen -> Action.CLOSE_QUALITY_DIALOG

@@ -80,11 +80,13 @@ object BackgroundSourceUpdater {
             if (result.isNetworkSuccess && data != null && Prefs.getEpgSource(context) == epgSource) {
                 Prefs.setLastEpgUpdateTime(context, System.currentTimeMillis())
                 _epgUpdated.tryEmit(data)
-                Log.i(TAG, "epg refreshed. programs=${data.programsByChannelId.size}")
+                Log.i(TAG, "epg refreshed via network")
+                data
             } else {
-                Log.w(TAG, "epg refresh returned null")
+                // 修复 P1-7：网络刷新失败回退缓存时返回 null，避免调度器误报「EPG已更新」并清零退避计数。
+                Log.w(TAG, "epg network refresh did not succeed (fallback=${data != null})")
+                null
             }
-            data
         } catch (e: Exception) {
             Log.w(TAG, "epg refresh failed: ${e.message}")
             null

@@ -78,21 +78,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            val colorScheme = darkColorScheme(
-                primary = BrandFocus.BlueColor,
-                onPrimary = Color.White,
-                secondary = Color(0xFF757575),
-                onSecondary = Color.Black,
-                tertiary = Color(0xFF616161),
-                onTertiary = Color.White,
-                background = Color(0xFF121212),
-                onBackground = Color.White,
-                surface = Color(0xFF1E1E1E),
-                onSurface = Color.White,
-                // V4 §9：焦点统一品牌蓝。
-                surfaceVariant = BrandFocus.FocusBgColor,
-                onSurfaceVariant = Color.White
-            )
+            val colorScheme = TvDesignTokens.colorScheme()
 
             MaterialTheme(colorScheme = colorScheme) {
                 Surface(
@@ -208,10 +194,8 @@ fun MainScreen() {
                     putExtra("PLAYLIST_FILE_NAME", PlaylistCache.fileNameForSource(url))
                     addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK)
                 })
-                // t182 (EPG-SOURCE-SAVE-01): one entry point — the scheduler refreshes both sources,
-            // records last-success/failure and emits a single result event. The old
-            // scheduleRefresh() path bypassed it and could double-run the EPG.
-            AutoUpdateScheduler.onSourceChanged(context)
+                // 修复 P1-8：播放列表刚刚下载并落盘成功，只需后台更新 EPG，避免重复拉取同一份 M3U。
+                AutoUpdateScheduler.onSourceChanged(context, playlistAlreadyFresh = true)
                 (context as? android.app.Activity)?.finish()
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
