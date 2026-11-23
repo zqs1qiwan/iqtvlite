@@ -1270,7 +1270,7 @@ private fun DrawerGroupItem(
 ) {
     var focused by remember { mutableStateOf(false) }
     val bg = when {
-        focused -> BrandFocus.BgColor
+        focused -> BrandFocus.FocusBgColor
         else -> MaterialTheme.colorScheme.surface.copy(alpha = 0.01f)
     }
 
@@ -1335,7 +1335,7 @@ private fun DrawerChannelItem(
         }
     }
     val bg = when {
-        showFocused -> BrandFocus.BgColor
+        showFocused -> BrandFocus.FocusBgColor
         else -> Color.Transparent
     }
 
@@ -1506,7 +1506,7 @@ private fun DrawerDateItem(
 ) {
     var focused by remember { mutableStateOf(false) }
     val bg = when {
-        focused -> BrandFocus.BgColor
+        focused -> BrandFocus.FocusBgColor
         else -> MaterialTheme.colorScheme.surface.copy(alpha = 0.01f)
     }
 
@@ -1549,7 +1549,7 @@ private fun DrawerProgramItem(
 ) {
     var focused by remember { mutableStateOf(false) }
     val bg = when {
-        focused -> BrandFocus.BgColor
+        focused -> BrandFocus.FocusBgColor
         else -> MaterialTheme.colorScheme.surface.copy(alpha = 0.01f)
     }
 

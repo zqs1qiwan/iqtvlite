@@ -233,6 +233,18 @@ def main() -> int:
     if "digitConfirmed" not in activity_code or "BrandFocus.BlueColor" not in activity_code:
         problems.append("PlayerActivity.kt: digit confirm-state brand blue missing (V4 §7)")
 
+    # 14) t41: no focus background uses blue BgColor anywhere in UI files; theme surfaceVariant gray-white.
+    ui_files = ("PlayerDrawer.kt", "SettingsDrawer.kt", "ChannelInfoBanner.kt", "RecentChannelsDialog.kt",
+                "QualitySelectorDialog.kt", "AudioTrackDialog.kt", "MainActivity.kt", "PlayerActivity.kt")
+    for fn in ui_files:
+        content = SRC.joinpath(fn).read_text(encoding="utf-8")
+        if "BrandFocus.BgColor" in content:
+            problems.append(f"{fn}: focus background still uses blue BgColor (t41)")
+    if "surfaceVariant = BrandFocus.FocusBgColor" not in activity_code:
+        problems.append("PlayerActivity.kt: theme surfaceVariant must be gray-white FocusBgColor (t41)")
+    if "surfaceVariant = BrandFocus.FocusBgColor" not in SRC.joinpath("MainActivity.kt").read_text(encoding="utf-8"):
+        problems.append("MainActivity.kt: theme surfaceVariant must be gray-white FocusBgColor (t41)")
+
     if problems:
         for p in problems:
             print(f"check_settings_ia: FAIL {p}")

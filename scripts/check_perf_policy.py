@@ -317,6 +317,15 @@ def main() -> int:
         problems.append("PlayerDrawer.kt: non-selected progress fill must be gray (t38)")
     if ".padding(horizontal = 4.dp, vertical = 10.dp)" not in drawer_code:
         problems.append("PlayerDrawer.kt: EPG cell horizontal padding must be tightened to 4dp (t38)")
+    # t41：焦点底灰白（FocusBgColor），蓝色只用于选中台文字/当前节目。
+    if "val FocusBgColor" not in (SRC / "BrandFocus.kt").read_text(encoding="utf-8"):
+        problems.append("BrandFocus.kt: FocusBgColor (gray-white) token missing (t41)")
+    if "BrandFocus.BgColor" in drawer_code:
+        problems.append("PlayerDrawer.kt: focus background must not use blue BgColor (t41)")
+    if drawer_code.count("BrandFocus.FocusBgColor") < 4:
+        problems.append("PlayerDrawer.kt: channel/group/program/date focus must all use FocusBgColor (t41)")
+    if "BrandFocus.BlueColor" not in drawer_code or "playingNameColor(selected)" not in drawer_code:
+        problems.append("PlayerDrawer.kt: selected channel name must stay blue (t41)")
     # V4 §2: group focus selects group; RIGHT(Groups) collapses + focuses first channel;
     # selectGroup is idempotent with resetFocus; no `if (!showGroups) return` in selectedGroup effect.
     sidebar = (SRC / "SidebarController.kt").read_text(encoding="utf-8")

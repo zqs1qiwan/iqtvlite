@@ -210,7 +210,7 @@ class PlayerActivity : ComponentActivity() {
                 surface = ComposeColor(0xFF1E1E1E),
                 onSurface = ComposeColor.White,
                 // V4 §9：焦点统一品牌蓝（浅底 + 白字），所有 surfaceVariant 焦点点自动变蓝。
-                surfaceVariant = BrandFocus.BgColor,
+                surfaceVariant = BrandFocus.FocusBgColor,
                 onSurfaceVariant = ComposeColor.White
             )
 

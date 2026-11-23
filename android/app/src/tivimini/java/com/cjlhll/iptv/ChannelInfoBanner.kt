@@ -415,7 +415,7 @@ private fun RecentStrip(
                         onCardFocusChanged(index, it.isFocused)
                     }
                     .focusable()
-                    .background(if (isFocused) BrandFocus.BgColor else Color.Transparent),
+                    .background(if (isFocused) BrandFocus.FocusBgColor else Color.Transparent),
                 contentAlignment = Alignment.Center
             ) {
                 if (hasLogo) {

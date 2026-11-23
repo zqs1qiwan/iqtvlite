@@ -90,7 +90,7 @@ class MainActivity : ComponentActivity() {
                 surface = Color(0xFF1E1E1E),
                 onSurface = Color.White,
                 // V4 §9：焦点统一品牌蓝。
-                surfaceVariant = BrandFocus.BgColor,
+                surfaceVariant = BrandFocus.FocusBgColor,
                 onSurfaceVariant = Color.White
             )
 
@@ -354,7 +354,7 @@ fun MainScreen() {
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 val textFieldColors = TextFieldDefaults.colors(
-                    focusedContainerColor = BrandFocus.BgColor,
+                    focusedContainerColor = BrandFocus.FocusBgColor,
                     unfocusedContainerColor = Color(0xFF303030),
                     focusedTextColor = Color.White,
                     unfocusedTextColor = Color.White,

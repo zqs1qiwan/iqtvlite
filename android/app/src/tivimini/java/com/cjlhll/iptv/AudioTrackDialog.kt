@@ -135,7 +135,7 @@ private fun AudioRow(
     onClick: () -> Unit,
 ) {
     var focused by remember { mutableStateOf(false) }
-    val bg = if (focused) BrandFocus.BgColor
+    val bg = if (focused) BrandFocus.FocusBgColor
     else MaterialTheme.colorScheme.surface.copy(alpha = 0.01f)
 
     Box(
