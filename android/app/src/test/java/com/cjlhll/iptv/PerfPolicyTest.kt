@@ -241,12 +241,12 @@ class PerfPolicyTest {
     // ── t15：分帧揭示后校正滚动（冷启首开 / P8b 换台深行） ──────────────────
     @Test
     fun t15ScrollCorrectionIsGatedByRevealedRows() {
-        // t56 方向对称：焦点 idx126 → target=126-6=120（居中，不再是旧 -2 的 124）。
+        // t59 ①：恢复 t56 前基准，焦点 idx126 → target=126-2=124。
         val target = PerfPolicy.drawerScrollTargetIndex(126, 147)
-        assertEquals(120, target)
+        assertEquals(124, target)
         assertFalse("首帧 3 行不足以校正深行", PerfPolicy.drawerScrollCorrected(3, target))
         assertFalse("补到 100 行仍不够", PerfPolicy.drawerScrollCorrected(100, target))
-        assertTrue("补到 121 行覆盖 target=120", PerfPolicy.drawerScrollCorrected(121, target))
+        assertTrue("补到 125 行覆盖 target=124", PerfPolicy.drawerScrollCorrected(125, target))
         assertTrue("补满 147 行可校正", PerfPolicy.drawerScrollCorrected(147, target))
 
         // 浅行：target=0，首帧 revealed=3 已覆盖（>=1）。
@@ -265,9 +265,9 @@ class PerfPolicyTest {
         // t56 方向对称：target=focus-6，钳到 [0, count-viewport=135]。
         assertEquals(0, PerfPolicy.drawerScrollTargetIndex(0, 147))
         assertEquals(0, PerfPolicy.drawerScrollTargetIndex(1, 147))
-        assertEquals(34, PerfPolicy.drawerScrollTargetIndex(40, 147))
+        assertEquals(38, PerfPolicy.drawerScrollTargetIndex(40, 147))
         assertEquals(0, PerfPolicy.drawerScrollTargetIndex(5, 0))
-        assertEquals(135, PerfPolicy.drawerScrollTargetIndex(999, 147)) // 越界→末端上限（非旧 145）
+        assertEquals(145, PerfPolicy.drawerScrollTargetIndex(999, 147))
         assertEquals(0, PerfPolicy.drawerScrollTargetIndex(5, 1))
         assertEquals(0, PerfPolicy.drawerScrollTargetIndex(999, 2))
     }
@@ -392,35 +392,33 @@ class PerfPolicyTest {
         assertEquals(100, PerfPolicy.drawerRevealTarget(60, 100))
     }
 
-    // ── t56：方向对称滚动目标 + 双向限幅 ────────────────────────────────────
+    // ── t59 ①：上滚基准回退（focus-2）+ 双向对称限幅 ±8 ─────────────────────
     @Test
-    fun t56ScrollTargetSymmetricAroundFocus() {
-        // 焦点居中：target=focus-half；上下同距离偏移得到对称的两个 target（差 = 2*焦点位移）。
-        val vp = 12
-        val tUp = PerfPolicy.drawerScrollTargetIndex(80, 147, vp)   // 74
-        val tDown = PerfPolicy.drawerScrollTargetIndex(100, 147, vp) // 94
-        assertEquals(74, tUp)
-        assertEquals(94, tDown)
-        // 以焦点 90 为中心，±10 的 target 相对中心对称：74+94 = 2*(90-6)
-        assertEquals(2 * (90 - vp / 2), tUp + tDown)
-        // 边缘钳制不越界
-        assertEquals(0, PerfPolicy.drawerScrollTargetIndex(0, 147, vp))
-        assertEquals(135, PerfPolicy.drawerScrollTargetIndex(146, 147, vp)) // count-viewport
+    fun t59ScrollTargetRestoredToFocusMinus2() {
+        // 恢复 t56 前用户确认正确的上滚基准：target = focus-2。
+        assertEquals(124, PerfPolicy.drawerScrollTargetIndex(126, 147))
+        assertEquals(0, PerfPolicy.drawerScrollTargetIndex(0, 147))
+        assertEquals(0, PerfPolicy.drawerScrollTargetIndex(1, 147))
+        assertEquals(38, PerfPolicy.drawerScrollTargetIndex(40, 147))
+        assertEquals(145, PerfPolicy.drawerScrollTargetIndex(999, 147))
+        assertEquals(0, PerfPolicy.drawerScrollTargetIndex(5, 0))   // 空组安全
+        assertEquals(0, PerfPolicy.drawerScrollTargetIndex(5, 1))   // 小count安全
+        assertEquals(0, PerfPolicy.drawerScrollTargetIndex(999, 2)) // 小count安全
     }
 
     @Test
-    fun t56ScrollDeltaSymmetricBothDirections() {
-        // 同一 |距离|：上滚 -N、下滚 +N，绝对值一致（旧实现上滚被钳 -8、下滚可到 count → 不对称）。
-        assertEquals(-8, PerfPolicy.drawerScrollDelta(52, 60, maxStep = 12))
-        assertEquals(8, PerfPolicy.drawerScrollDelta(68, 60, maxStep = 12))
+    fun t59ScrollDeltaSymmetricAround8() {
+        // 上滚 -8、下滚 +8 对称；超出都钳到 ±8（不再向下整页翻）。
+        assertEquals(8, PerfPolicy.DRAWER_SCROLL_MAX_STEP)
+        assertEquals(-8, PerfPolicy.drawerScrollDelta(52, 60))
+        assertEquals(8, PerfPolicy.drawerScrollDelta(68, 60))
         assertTrue(
             "上下同距离 delta 绝对值一致",
-            kotlin.math.abs(PerfPolicy.drawerScrollDelta(52, 60, 12)) ==
-                kotlin.math.abs(PerfPolicy.drawerScrollDelta(68, 60, 12)),
+            kotlin.math.abs(PerfPolicy.drawerScrollDelta(52, 60)) ==
+                kotlin.math.abs(PerfPolicy.drawerScrollDelta(68, 60)),
         )
-        // 超出 MAX_STEP 双向都被钳到同一上限（不再向下整页翻）
-        assertEquals(-12, PerfPolicy.drawerScrollDelta(0, 100, maxStep = 12))
-        assertEquals(12, PerfPolicy.drawerScrollDelta(147, 10, maxStep = 12))
-        assertEquals(0, PerfPolicy.drawerScrollDelta(60, 60, maxStep = 12))
+        assertEquals(-8, PerfPolicy.drawerScrollDelta(0, 100))   // 上滚钳到 -8
+        assertEquals(8, PerfPolicy.drawerScrollDelta(147, 10))   // 下滚钳到 +8（非整页翻）
+        assertEquals(0, PerfPolicy.drawerScrollDelta(60, 60))
     }
 }

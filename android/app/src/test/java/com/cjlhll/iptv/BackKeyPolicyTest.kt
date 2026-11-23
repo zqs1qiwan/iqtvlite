@@ -35,6 +35,15 @@ class BackKeyPolicyTest {
             BackKeyPolicy.Action.INFO_CARD_CLOSE,
             p.decide(false, false, false, false, false, false, true, false, false, true),
         )
+        // t59 ②：卡片可见时即便处于"双按窗口内"也只退聚焦/关卡，绝不 EXIT_APP。
+        assertEquals(
+            BackKeyPolicy.Action.INFO_CARD_UNFOCUS,
+            p.decide(false, false, false, false, false, false, true, true, false, true),
+        )
+        assertEquals(
+            BackKeyPolicy.Action.INFO_CARD_CLOSE,
+            p.decide(false, false, false, false, false, false, true, false, false, true),
+        )
     }
 
     @Test

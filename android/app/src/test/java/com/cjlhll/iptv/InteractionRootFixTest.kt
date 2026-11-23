@@ -67,6 +67,7 @@ class InteractionRootFixTest {
         assertTrue(FocusedKeyPolicy.passthrough(RemoteBindings.KEY_MENU, RemoteAction.OPEN_SETTINGS))
         assertFalse("方向键仍闭环", FocusedKeyPolicy.passthrough(22, RemoteAction.OPEN_SETTINGS))
         assertFalse("OK 仍闭环", FocusedKeyPolicy.passthrough(23, RemoteAction.SHOW_INFO))
+        assertTrue("BACK 放行给 BackKeyPolicy 单一真源", FocusedKeyPolicy.passthrough(FocusedKeyPolicy.KEYCODE_BACK, null))
         assertFalse("彩键绑别的动作不放行", FocusedKeyPolicy.passthrough(RemoteBindings.KEY_BUTTON_1, RemoteAction.CHANNEL_DOWN))
     }
 

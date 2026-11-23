@@ -128,33 +128,34 @@ object PerfPolicy {
     fun drawerOpenAnchor(frozen: String?, lastFocusedUrl: String?, playingUrl: String?): String =
         frozen ?: (lastFocusedUrl ?: playingUrl ?: "")
 
-    /** 一屏大约行数（12 行 × 64dp ≈ 768dp 可视高度）；t56 提前声明供滚动纯函数使用。 */
+    /** 一屏大约行数（12 行 × 64dp ≈ 768dp 可视高度）。 */
     const val DRAWER_SCREEN_ROWS = 12
+    /** t52 §④：焦点的"接近可视边缘"提前滚动阈值（行数）；t59 提前声明供对称限幅使用。 */
+    const val DRAWER_SCROLL_EDGE_ROWS = 2
 
     /**
-     * t56：方向对称滚动目标 —— 让焦点位于可视区中部（同一规则用于上/下，不再固定 -2 前置偏置）。
-     * half = viewportRows/2；target = focus - half，钳到 [0, count-viewportRows]，保证焦点始终可见、边缘不越界。
+     * t59 ①：恢复 t56 前（用户确认正确）的上滚基准 —— target = focus-2，钳到 [0, count-2]。
+     * 小 count 安全返回 0。下滚不再用 viewport/half 规则；方向对称由 PlayerDrawer 的
+     * 对称限幅 coerceIn(-8,+8) 保证（上滚不变、下滚不再整页翻）。
      */
-    fun drawerScrollTargetIndex(
-        focusIndex: Int,
-        channelCount: Int,
-        viewportRows: Int = DRAWER_SCREEN_ROWS,
-    ): Int {
+    fun drawerScrollTargetIndex(focusIndex: Int, channelCount: Int): Int {
         if (channelCount <= 0) return 0
-        val vp = viewportRows.coerceIn(1, channelCount)
-        val half = vp / 2
-        val hi = maxOf(0, channelCount - vp)
-        return (focusIndex - half).coerceIn(0, hi)
+        val hi = channelCount - 2
+        if (hi <= 0) return 0
+        return (focusIndex - 2).coerceIn(0, hi)
     }
 
     /**
-     * t56：方向对称的每帧滚动量 —— 正/负双向用同一个 MAX_STEP 限幅，
-     * 杜绝"上滚限到 -8、下滚可到 channels.size"的非对称整页翻。
+     * t59 ①：方向对称的每帧滚动量（正负同限幅 ±EDGE*4 = ±8 行），上滚/下滚逐帧一致，
+     * 杜绝旧实现"上滚 -8、下滚可到 channels.size"的整页翻。
      */
-    const val DRAWER_SCROLL_MAX_STEP = DRAWER_SCREEN_ROWS
+    const val DRAWER_SCROLL_MAX_STEP = DRAWER_SCROLL_EDGE_ROWS * 4
 
-    fun drawerScrollDelta(targetIndex: Int, firstVisibleIndex: Int, maxStep: Int = DRAWER_SCROLL_MAX_STEP): Int =
-        (targetIndex - firstVisibleIndex).coerceIn(-maxStep, maxStep)
+    fun drawerScrollDelta(
+        targetIndex: Int,
+        firstVisibleIndex: Int,
+        maxStep: Int = DRAWER_SCROLL_MAX_STEP,
+    ): Int = (targetIndex - firstVisibleIndex).coerceIn(-maxStep, maxStep)
 
     /**
      * t26（V4 残留）：revealed 已满时关→重开，焦点行若不在可见区，需要补一次滚动校正。
@@ -269,8 +270,6 @@ object PerfPolicy {
      * 旧值 16（1024dp > 一屏）导致"先停住再猛翻一屏"的节奏不均。
      */
     const val DRAWER_LOOKAHEAD_ROWS = 8
-    /** t52 §④：焦点的"接近可视边缘"提前滚动阈值（行数）。 */
-    const val DRAWER_SCROLL_EDGE_ROWS = 2
 
     /** t39/t52：一屏可视高度口径（与上方 DRAWER_SCREEN_ROWS 同值，保留注释供追溯）。 */
 

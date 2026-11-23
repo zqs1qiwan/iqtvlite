@@ -396,14 +396,16 @@ class PlayerActivity : ComponentActivity() {
             // t4 (INFO_CARD_V2 §4.2-2)：卡片聚焦时，方向键/OK/BACK 交给 Compose 焦点节点消费
             // （卡片退聚焦、左右移动、OK 切台）。数字键、166/167、上一台、MENU、音量仍走既有分支。
             // 必须放在数字 OSD 分支之后：数字 OSD 的 BACK 清空/OK 提交要优先。
+            // t59 ②：BACK 不属于信息卡闭环键——所有 BACK 统一走下方 BackKeyPolicy.decide 单一真源
+            // （FOCUSED→退聚焦 / IDLE→关卡，均消费），杜绝 FOCUSED 守卫直接 return 绕过状态机退 app。
             val infoCardKey = when (event.keyCode) {
                 KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN,
                 KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT,
                 KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER,
-                KeyEvent.KEYCODE_NUMPAD_ENTER, KeyEvent.KEYCODE_BACK -> true
+                KeyEvent.KEYCODE_NUMPAD_ENTER -> true
                 else -> false
             }
-            // t35 + t52 §⑧：FOCUSED 态按键闭环 —— 方向键/OK/BACK 由信息卡确定性消费（防穿透），
+            // t35 + t52 §⑧：FOCUSED 态按键闭环 —— 方向键/OK 由信息卡确定性消费（防穿透），
             // 但"已绑定到 OPEN_SETTINGS 的非方向键（彩键/MENU）"放行给全局路由，让 FOCUSED 也能呼出设置。
             if (isInfoCardFocused && infoCardKey) {
                 val resolvedForFocus = resolvePlayerAction(event)

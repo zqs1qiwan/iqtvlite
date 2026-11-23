@@ -332,9 +332,9 @@ object InfoCardPolicy {
     /** t52 §⑥：v4 紧凑卡片高度上界（logo 主行 96 + 上下 padding 6+6 + 入口提示行 14）≈122dp。 */
     const val INFO_CARD_COMPACT_HEIGHT_DP = 122
 
-    /** t52 §⑥：卡片高度纯函数（最近 4 logo 已内联进主行，不额外增高），供门禁/测试断言 ≤140。 */
+    /** t59 ④：最近条放大后卡片略增（主行 min96 + 上下 padding 6+6 + 角标 14）≈122dp ≤140。 */
     fun infoCardHeightV4(showRecent: Boolean): Int =
-        96 + 6 + 6 + 14 // 主行 + 上下 padding + 极薄入口提示行（recent 内联不增高）
+        96 + 6 + 6 + 14
 
     /** 动态范围：colorInfo 缺失或非 HDR → SDR；ST2084(6)→HDR10、HLG(7)→HLG。 */
     fun dynamicRangeLabel(colorTransfer: Int, hasHdrStaticInfo: Boolean): String = when (colorTransfer) {
@@ -397,6 +397,9 @@ object InfoCardPolicy {
     fun takePositive(primary: Int, fallback: Int): Int? =
         if (primary > 0) primary else fallback.takeIf { it > 0 }
 
-    /** 入口提示（captain 要求：OK 默认改为显示信息卡后，频道列表入口必须可见）。 */
-    const val ENTRY_HINT = "← 频道列表　·　→ 设置"
+    /** t59 ③：入口提示分两侧（Row SpaceBetween）：最左频道列表、最右设置。 */
+    const val ENTRY_HINT_LEFT = "← 频道列表"
+    const val ENTRY_HINT_RIGHT = "→ 设置"
+    /** 兼容旧引用（门禁/日志）：拼接文案，UI 已改用左右两个常量。 */
+    const val ENTRY_HINT = "$ENTRY_HINT_LEFT　·　$ENTRY_HINT_RIGHT"
 }

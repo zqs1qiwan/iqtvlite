@@ -218,7 +218,7 @@ fun ChannelInfoBanner(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(96.dp),
+                        .heightIn(min = 96.dp), // t59 ④：min 96dp，含 56dp 最近条时可自然增高，总卡片仍≤140dp
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     ChannelLogo(
@@ -320,20 +320,14 @@ fun ChannelInfoBanner(
                 } // Box
 
                 // t52 §⑥：入口提示压成一行极薄角标（最近条已内联进主行），不再占独立区域。
+                // t59 ③：入口提示分两侧（SpaceBetween）——最左频道列表、最右设置。
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
                     modifier = Modifier.height(14.dp).fillMaxWidth()
                 ) {
-                    if (showRecent) {
-                        Text(
-                            text = "最近",
-                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
-                            modifier = Modifier.testTag("info_card_recent_label")
-                        )
-                    }
-                    Spacer(modifier = Modifier.weight(1f))
-                    EntryHint()
+                    EntryHintLeft()
+                    EntryHintRight()
                 }
             }
         }
@@ -356,15 +350,27 @@ fun ChannelInfoBanner(
     }
 }
 
-/** 入口提示：OK 默认改为“显示信息卡”后，频道列表/设置的入口必须在卡片上可见（不可聚焦）。 */
+/** t59 ③：入口提示分两侧 —— 最左「← 频道列表」。 */
 @Composable
-private fun EntryHint() {
+private fun EntryHintLeft() {
     Text(
-        text = InfoCardPolicy.ENTRY_HINT,
+        text = InfoCardPolicy.ENTRY_HINT_LEFT,
         style = MaterialTheme.typography.labelMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f),
+        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
         maxLines = 1,
-        modifier = Modifier.testTag("info_card_hint")
+        modifier = Modifier.testTag("info_card_hint_left")
+    )
+}
+
+/** t59 ③：入口提示分两侧 —— 最右「→ 设置」。 */
+@Composable
+private fun EntryHintRight() {
+    Text(
+        text = InfoCardPolicy.ENTRY_HINT_RIGHT,
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
+        maxLines = 1,
+        modifier = Modifier.testTag("info_card_hint_right")
     )
 }
 
@@ -382,7 +388,7 @@ private fun RecentStrip(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(40.dp) // t52 §⑥：56→40dp，4 logo 内联更紧凑
+            .height(56.dp) // t59 ④：40→56dp，利用卡片下方留白（仍内联）
             .clipToBounds()
             .testTag("info_card_recent_row"),
         horizontalArrangement = Arrangement.Start,
@@ -392,7 +398,7 @@ private fun RecentStrip(
             val hasLogo = item.logoUrl?.isNotBlank() == true
             Box(
                 modifier = Modifier
-                    .size(40.dp) // t52 §⑥：56→40dp
+                    .size(56.dp) // t59 ④：40→56dp
                     .testTag("info_card_recent_$index")
                     .semantics { contentDescription = "最近观看第${index + 1}个 ${item.number}. ${item.title}" }
                     .focusRequester(requesters[index])
@@ -408,8 +414,8 @@ private fun RecentStrip(
                     ChannelLogo(
                         logoUrl = item.logoUrl,
                         fallbackTitle = "",
-                        width = 36.dp, // t52 §⑥：48→36dp
-                        height = 36.dp
+                        width = 48.dp, // t59 ④：36→48dp
+                        height = 48.dp
                     )
                 } else {
                     Text(

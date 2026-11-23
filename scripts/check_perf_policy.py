@@ -265,17 +265,15 @@ def main() -> int:
     for token in ("drawerScrollCorrected(", "PerfPolicy.drawerScrollTargetIndex("):
         if token not in drawer_code and token not in policy:
             problems.append("scroll pure helper missing: " + token)
-    # t56：方向对称滚动目标（focus-half，viewportRows）+ 双向对称限幅（±MAX_STEP）。
-    if "fun drawerScrollDelta(" not in policy or "DRAWER_SCROLL_MAX_STEP" not in policy:
-        problems.append("PerfPolicy.kt: t56 symmetric scroll target/delta helpers missing")
-    if "viewportRows: Int = DRAWER_SCREEN_ROWS" not in policy:
-        problems.append("PerfPolicy.kt: drawerScrollTargetIndex must be viewport-based (t56 symmetric)")
-    if "val hi = maxOf(0, channelCount - vp)" not in policy:
-        problems.append("PerfPolicy.kt: scroll target upper bound must be count-viewport (t56)")
+    # t59 ①：上滚基准回退 focus-2（用户确认正确）+ 对称限幅 ±EDGE*4(±8)。
+    if "fun drawerScrollDelta(" not in policy or "DRAWER_SCROLL_MAX_STEP = DRAWER_SCROLL_EDGE_ROWS * 4" not in policy:
+        problems.append("PerfPolicy.kt: t59 symmetric ±8 scroll delta helper missing")
+    if "return (focusIndex - 2).coerceIn(0, hi)" not in policy:
+        problems.append("PerfPolicy.kt: t59 scroll target must be focus-2 (reverted t56 viewport rule)")
+    if "viewportRows" in policy:
+        problems.append("PerfPolicy.kt: t56 viewport/half scroll rule must be removed (t59)")
     if "PerfPolicy.drawerScrollDelta(target, first)" not in drawer_code:
-        problems.append("PlayerDrawer.kt: must use symmetric drawerScrollDelta (t56)")
-    if "-PerfPolicy.DRAWER_SCROLL_EDGE_ROWS * 4" in drawer_code:
-        problems.append("PlayerDrawer.kt: old asymmetric delta clamp still present (t56)")
+        problems.append("PlayerDrawer.kt: must use symmetric drawerScrollDelta (t59)")
     # t29（根源重构）：唯一滚动意图真源，删除旧两套机制，唯一校正 effect。
     if "fun drawerScrollDecision(" not in policy or "enum class ScrollDecision" not in policy:
         problems.append("PerfPolicy.kt: drawerScrollDecision / ScrollDecision (single source) missing (t29)")

@@ -38,9 +38,21 @@ class SidebarControllerTest {
     }
 
     @Test
-    fun reopenKeepsValidBrowsingFocus() {
-        val c = controller()
+    fun reopenAnchorsToPlayingChannel() {
+        // t59 ⑤：重新打开以当前播放台为锚点（不回开头、也不停留在旧浏览焦点）。
+        val c = controller() // selectedChannelUrl = a1（播放台）
         c.openDrawer()
+        c.focusChannel("a2") // 浏览焦点移到 a2
+        c.closeDrawer()
+        c.openDrawer()
+        assertEquals("a1", c.value.focusedChannelUrl) // 回到播放台 a1
+    }
+
+    @Test
+    fun openDrawerFallsBackToBrowseFocusWhenPlayingInvalid() {
+        // 播放台 URL 不在列表时退回仍有效的浏览焦点。
+        val c = controller()
+        c.setSelectedChannelUrl("gone")
         c.focusChannel("a2")
         c.closeDrawer()
         c.openDrawer()
@@ -140,18 +152,18 @@ class SidebarControllerTest {
     }
 
     @Test
-    fun reopenUsesRememberedBrowseFocusNotPlayingChannel() {
+    fun reopenAnchorsToPlayingChannelNotBrowseFocus() {
+        // t59 ⑤：再次打开以播放台为锚点（不是旧浏览焦点 a2）。
         val c = controller()
         c.setSelection(0, 0) // 播放 a1
         c.openDrawer()
-        c.selectGroup("央视频道") // 先切到该组，focusChannel 才会按此组名记忆
+        c.selectGroup("央视频道")
         c.focusChannel("a2") // 浏览到 a2
         c.closeDrawer()
         assertEquals("a2", c.value.focusedChannelUrl)
         assertEquals("a2", c.lastFocusedUrlFor("央视频道"))
-        // 再次打开仍保留浏览焦点 a2（不是播放台 a1）。
         c.openDrawer()
-        assertEquals("a2", c.value.focusedChannelUrl)
+        assertEquals("a1", c.value.focusedChannelUrl) // 播放台 a1 优先
     }
 
     // ── V4 §2：分组幂等 + resetFocus 从第一台开始 ──────────────────────────

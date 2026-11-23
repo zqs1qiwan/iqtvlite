@@ -43,10 +43,10 @@ REQUIRED_TAGS = [
     "info_card_program",
     "info_card_progress",
     # t32 Bug2：info_card_tech 已并入右上角徽标，不再有独立技术行。
-    "info_card_recent_label",
     "info_card_recent_row",
     "info_card_recent_$index",
-    "info_card_hint",
+    "info_card_hint_left",
+    "info_card_hint_right",
 ]
 
 
@@ -87,12 +87,12 @@ def main() -> int:
         problems.append("ChannelInfoBanner.kt: the channel name must use headlineLarge")
     if "titleLarge" not in banner:
         problems.append("ChannelInfoBanner.kt: the programme title must use titleLarge")
-    if "40.dp" not in banner:
-        problems.append("ChannelInfoBanner.kt: recent cards need a 40dp logo")
-    if "InfoCardPolicy.ENTRY_HINT" not in banner:
-        problems.append("ChannelInfoBanner.kt: the entry hint must come from InfoCardPolicy.ENTRY_HINT")
-    if "← 频道列表" not in policy:
-        problems.append("InfoCardPolicy.kt: ENTRY_HINT must mention 频道列表 (LEFT)")
+    if "48.dp" not in banner:
+        problems.append("ChannelInfoBanner.kt: recent cards need a 48dp logo (t59 ④)")
+    if "InfoCardPolicy.ENTRY_HINT_LEFT" not in banner or "InfoCardPolicy.ENTRY_HINT_RIGHT" not in banner:
+        problems.append("ChannelInfoBanner.kt: entry hints must use left/right constants (t59 ③)")
+    if "← 频道列表" not in policy or "→ 设置" not in policy:
+        problems.append("InfoCardPolicy.kt: left/right entry hint texts missing (t59 ③)")
     for tag in REQUIRED_TAGS:
         if tag not in banner:
             problems.append(f"ChannelInfoBanner.kt: missing testTag {tag}")
@@ -179,9 +179,9 @@ def main() -> int:
         if bad in banner:
             problems.append("ChannelInfoBanner.kt: forbidden v3 token " + bad)
     # t32 Bug2：徽标不再单独 24dp 行，固定高度只要求主行 96dp。
-    for h in (".height(96.dp)",):
-        if h not in banner:
-            problems.append("ChannelInfoBanner.kt: fixed row height missing " + h)
+    # t59 ④：主行改 heightIn(min=96dp)，含 56dp 最近条时可自然增高（仍≤140dp）。
+    if ".heightIn(min = 96.dp)" not in banner:
+        problems.append("ChannelInfoBanner.kt: main row must use heightIn(min = 96.dp) (t59 ④)")
     if "bitrate <= 0) return null" not in policy or "channelCount <= 0" not in policy:
         problems.append("InfoCardPolicy.kt: unknown badges must be hidden (<= 0 -> null)")
     if 'else -> "SDR"' not in policy:
@@ -222,8 +222,8 @@ def main() -> int:
     # t32 Bug2：徽标改为 compactBadges 全信息一排（不占行），旧 maxWidth 180 布局已移除。
     if "compactBadges(" not in banner:
         problems.append("ChannelInfoBanner.kt: must use compactBadges (t32 Bug2, replaces maxWidth layout)")
-    if ".size(40.dp)" not in banner or "36.dp" not in banner:
-        problems.append("ChannelInfoBanner.kt: recent cards must be 40dp inline logo-only with 36dp logo (t52 §⑥)")
+    if ".size(56.dp)" not in banner or "48.dp" not in banner:
+        problems.append("ChannelInfoBanner.kt: recent cards must be 56dp inline logo-only with 48dp logo (t59 ④)")
 
     # 9) FULLFIX §5 (U1): highlight = real focus = OK target, one source of truth (focusIndex).
     if "focusTargetIndex(" not in policy or "resolveRecentTarget(" not in policy:
@@ -335,6 +335,15 @@ def main() -> int:
         problems.append("RemoteBindings.kt: color-key settings entry missing (t52 §⑧)")
     if "FocusedKeyPolicy.passthrough" not in activity:
         problems.append("PlayerActivity.kt: FOCUSED guard must use FocusedKeyPolicy.passthrough (t52 §⑧)")
+    # t59 ②: BACK must not be an info-card closed-loop key (flows to BackKeyPolicy single source).
+    if "KeyEvent.KEYCODE_NUMPAD_ENTER, KeyEvent.KEYCODE_BACK -> true" in activity:
+        problems.append("PlayerActivity.kt: BACK still in infoCardKey closed-loop set (t59 ②)")
+    fkp = (SRC / "FocusedKeyPolicy.kt").read_text(encoding="utf-8")
+    if "if (keycode == KEYCODE_BACK) return true" not in fkp:
+        problems.append("FocusedKeyPolicy.kt: BACK must pass through to BackKeyPolicy (t59 ②)")
+    # t59 ③: split entry hints left/right with tags.
+    if "info_card_hint_left" not in banner or "info_card_hint_right" not in banner:
+        problems.append("ChannelInfoBanner.kt: split left/right entry hint tags missing (t59 ③)")
 
     if problems:
         for p in problems:

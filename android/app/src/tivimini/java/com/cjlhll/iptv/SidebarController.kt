@@ -79,14 +79,20 @@ class SidebarController {
 
     // ---- drawer visibility / single-Back ----
 
-    /** TIV: on first open focus the currently playing channel; afterwards keep a valid browse focus. */
+    /**
+     * t59 ⑤：从播放器按 LEFT/OK 打开抽屉时，以**当前播放台 URL**为定位锚点（不从头）。
+     * 播放台 URL 有效则优先；否则退回仍有效的上次浏览焦点。切组/分组记忆逻辑不回退。
+     */
     fun openDrawer() = _state.update { s ->
+        val playing = s.selectedChannelUrl?.takeIf { url ->
+            s.channelGroups.any { group -> group.variants.any { it.channel.url == url } }
+        }
         val existingFocus = s.focusedChannelUrl?.takeIf { url ->
             s.channelGroups.any { group -> group.variants.any { it.channel.url == url } }
         }
         s.copy(
             drawerOpen = true,
-            focusedChannelUrl = existingFocus ?: s.selectedChannelUrl,
+            focusedChannelUrl = playing ?: existingFocus,
             activeColumn = DrawerColumn.Channels,
             showGroups = false,
             showDates = false,
