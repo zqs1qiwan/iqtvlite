@@ -128,12 +128,33 @@ object PerfPolicy {
     fun drawerOpenAnchor(frozen: String?, lastFocusedUrl: String?, playingUrl: String?): String =
         frozen ?: (lastFocusedUrl ?: playingUrl ?: "")
 
-    fun drawerScrollTargetIndex(focusIndex: Int, channelCount: Int): Int {
+    /** 一屏大约行数（12 行 × 64dp ≈ 768dp 可视高度）；t56 提前声明供滚动纯函数使用。 */
+    const val DRAWER_SCREEN_ROWS = 12
+
+    /**
+     * t56：方向对称滚动目标 —— 让焦点位于可视区中部（同一规则用于上/下，不再固定 -2 前置偏置）。
+     * half = viewportRows/2；target = focus - half，钳到 [0, count-viewportRows]，保证焦点始终可见、边缘不越界。
+     */
+    fun drawerScrollTargetIndex(
+        focusIndex: Int,
+        channelCount: Int,
+        viewportRows: Int = DRAWER_SCREEN_ROWS,
+    ): Int {
         if (channelCount <= 0) return 0
-        val hi = channelCount - 2
-        if (hi <= 0) return 0 // 1/2 行时无前置 2 行上下文，安全返回 0（避免 coerceIn(0,-1) 抛异常）
-        return (focusIndex - 2).coerceIn(0, hi)
+        val vp = viewportRows.coerceIn(1, channelCount)
+        val half = vp / 2
+        val hi = maxOf(0, channelCount - vp)
+        return (focusIndex - half).coerceIn(0, hi)
     }
+
+    /**
+     * t56：方向对称的每帧滚动量 —— 正/负双向用同一个 MAX_STEP 限幅，
+     * 杜绝"上滚限到 -8、下滚可到 channels.size"的非对称整页翻。
+     */
+    const val DRAWER_SCROLL_MAX_STEP = DRAWER_SCREEN_ROWS
+
+    fun drawerScrollDelta(targetIndex: Int, firstVisibleIndex: Int, maxStep: Int = DRAWER_SCROLL_MAX_STEP): Int =
+        (targetIndex - firstVisibleIndex).coerceIn(-maxStep, maxStep)
 
     /**
      * t26（V4 残留）：revealed 已满时关→重开，焦点行若不在可见区，需要补一次滚动校正。
@@ -251,8 +272,7 @@ object PerfPolicy {
     /** t52 §④：焦点的"接近可视边缘"提前滚动阈值（行数）。 */
     const val DRAWER_SCROLL_EDGE_ROWS = 2
 
-    /** t39：一屏大约行数（56dp 行 × 12 ≈ 672dp 可视高度）。 */
-    const val DRAWER_SCREEN_ROWS = 12
+    /** t39/t52：一屏可视高度口径（与上方 DRAWER_SCREEN_ROWS 同值，保留注释供追溯）。 */
 
     /**
      * 打开时的工作窗口行数。**最终值 28**（t52 回退）：

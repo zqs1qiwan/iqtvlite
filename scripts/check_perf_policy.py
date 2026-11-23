@@ -265,11 +265,17 @@ def main() -> int:
     for token in ("drawerScrollCorrected(", "PerfPolicy.drawerScrollTargetIndex("):
         if token not in drawer_code and token not in policy:
             problems.append("scroll pure helper missing: " + token)
-    # V4 §4: scroll target upper bound channelCount-2 (semantic check; CI #219 accepted both forms).
-    direct_bound = "coerceIn(0, channelCount - 2)" in policy
-    via_hi = ("val hi = channelCount - 2" in policy and "coerceIn(0, hi)" in policy)
-    if not (direct_bound or via_hi):
-        problems.append("PerfPolicy.kt: drawerScrollTargetIndex must clamp upper bound to channelCount-2 (V4 §4)")
+    # t56：方向对称滚动目标（focus-half，viewportRows）+ 双向对称限幅（±MAX_STEP）。
+    if "fun drawerScrollDelta(" not in policy or "DRAWER_SCROLL_MAX_STEP" not in policy:
+        problems.append("PerfPolicy.kt: t56 symmetric scroll target/delta helpers missing")
+    if "viewportRows: Int = DRAWER_SCREEN_ROWS" not in policy:
+        problems.append("PerfPolicy.kt: drawerScrollTargetIndex must be viewport-based (t56 symmetric)")
+    if "val hi = maxOf(0, channelCount - vp)" not in policy:
+        problems.append("PerfPolicy.kt: scroll target upper bound must be count-viewport (t56)")
+    if "PerfPolicy.drawerScrollDelta(target, first)" not in drawer_code:
+        problems.append("PlayerDrawer.kt: must use symmetric drawerScrollDelta (t56)")
+    if "-PerfPolicy.DRAWER_SCROLL_EDGE_ROWS * 4" in drawer_code:
+        problems.append("PlayerDrawer.kt: old asymmetric delta clamp still present (t56)")
     # t29（根源重构）：唯一滚动意图真源，删除旧两套机制，唯一校正 effect。
     if "fun drawerScrollDecision(" not in policy or "enum class ScrollDecision" not in policy:
         problems.append("PerfPolicy.kt: drawerScrollDecision / ScrollDecision (single source) missing (t29)")

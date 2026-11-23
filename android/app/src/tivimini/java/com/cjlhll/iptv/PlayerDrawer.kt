@@ -425,10 +425,10 @@ fun PlayerDrawer(
                 PerfPolicy.ScrollDecision.SCROLL -> {
                     val target = PerfPolicy.drawerScrollTargetIndex(intent, channels.size)
                     desiredScrollIndex = -1 // 先清意图（once），再滚，避免重入/重复
-                    // t52 §④：瞬时 scrollToItem 改平滑 animateScrollBy —— 按"当前首可见行 → 目标行"
-                    // 的差值换算像素，逐帧均匀滚动，消除"整页翻"的突跳。只动列表 layer。
+                    // t56：滚动目标方向对称（焦点居中）+ 每帧滚动量双向对称限幅（±MAX_STEP），
+                    // 无论上/下都逐帧平滑，杜绝向下整页翻。
                     val rowPx = with(prefetchDensity) { PerfPolicy.DRAWER_ROW_HEIGHT_DP.dp.roundToPx() }
-                    val deltaRows = (target - first).coerceIn(-PerfPolicy.DRAWER_SCROLL_EDGE_ROWS * 4, channels.size)
+                    val deltaRows = PerfPolicy.drawerScrollDelta(target, first)
                     if (deltaRows != 0) {
                         runCatching { channelListState.animateScrollBy(deltaRows * rowPx.toFloat()) }
                     }
