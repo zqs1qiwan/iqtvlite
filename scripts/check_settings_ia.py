@@ -245,6 +245,29 @@ def main() -> int:
     if "surfaceVariant = BrandFocus.FocusBgColor" not in SRC.joinpath("MainActivity.kt").read_text(encoding="utf-8"):
         problems.append("MainActivity.kt: theme surfaceVariant must be gray-white FocusBgColor (t41)")
 
+    # 15) t44: VideoPlayerScreen params bundled into <=12 (API28 ART VerifyError root fix).
+    cb_path = SRC / "VideoPlayerCallbacks.kt"
+    if not cb_path.exists():
+        problems.append("VideoPlayerCallbacks.kt: callback bundles missing (t44)")
+    else:
+        cb_text = cb_path.read_text(encoding="utf-8")
+        for bundle in ("PlaybackCallbacks", "OverlayCallbacks", "InfoCardCallbacks", "RemoteCallbacks"):
+            if f"data class {bundle}(" not in cb_text:
+                problems.append(f"VideoPlayerCallbacks.kt: {bundle} missing (t44)")
+    vp = re.search(r"fun VideoPlayerScreen\((.*?)\n\) \{", activity, re.S)
+    if vp:
+        param_lines = [l.strip() for l in vp.group(1).splitlines()
+                       if l.strip() and not l.strip().startswith("//")
+                       and re.match(r"^[a-zA-Z_][a-zA-Z0-9_]*\s*:", l.strip())]
+        if len(param_lines) > 12:
+            problems.append(f"VideoPlayerScreen has {len(param_lines)} params, must be <=12 (t44 VerifyError)")
+    else:
+        problems.append("VideoPlayerScreen signature not found (t44)")
+    for bundle in ("playback = PlaybackCallbacks(", "overlay = OverlayCallbacks(",
+                   "infoCard = InfoCardCallbacks(", "remoteCbs = RemoteCallbacks("):
+        if bundle not in activity:
+            problems.append("PlayerActivity.kt VideoPlayerScreen call missing bundle " + bundle)
+
     if problems:
         for p in problems:
             print(f"check_settings_ia: FAIL {p}")

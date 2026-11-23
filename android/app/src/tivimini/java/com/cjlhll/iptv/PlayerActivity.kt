@@ -224,39 +224,46 @@ class PlayerActivity : ComponentActivity() {
                         title = videoTitle,
                         playlistFileName = playlistFileName,
                         sidebarController = sidebarController,
-                        setOnChannelStep = { onChannelStep = it },
-                        setOnNumberJump = { onNumberJump = it },
-                        setOnPlayLastChannel = { setPlayLastChannel = it },
-                        setRecentChannelsOpenController = { setRecentChannelsOpen = it },
-                        onRecentChannelsOpenChanged = { isRecentChannelsOpen = it },
-                        setAudioDialogOpenController = { setAudioDialogOpen = it },
-                        onRemoteSettingsChanged = { settings -> remote = settings },
-                        // FULLFIX §7：绑定状态 + 捕获回调（dispatch 与设置 UI 共用同一真源）。
-                        remoteBindings = remoteBindings,
-                        captureRequest = captureRequest,
-                        onStartCapture = { action, longPress -> captureRequest = action to longPress },
-                        onCancelCapture = { captureRequest = null },
-                        onBindingsChanged = { bindings -> remoteBindings = bindings },
-                        onAudioDialogOpenChanged = { isAudioDialogOpen = it },
-                        onDrawerOpenChanged = { isDrawerOpen = it },
-                        onDrawerActiveColumnChanged = { drawerActiveColumn = it },
-                        setSettingsDrawerOpenController = { setSettingsDrawerOpen = it },
-                        onSettingsDrawerOpenChanged = { isSettingsDrawerOpen = it },
-                        setSettingsBackHandlerController = { handler -> settingsBackHandler = handler },
-                        setQualityDialogOpenController = { setQualityDialogOpen = it },
-                        onQualityDialogOpenChanged = { isQualityDialogOpen = it },
-                        setInfoBannerOpenController = { setInfoBannerOpen = it },
-                        onInfoBannerOpenChanged = { isInfoBannerOpen = it },
-                        setInfoCardOkController = { setInfoCardOk = it },
-                        setOpenInfoCardFromOkController = { openInfoCardFromOk = it },
-                        setInfoCardFocusedActionController = { infoCardFocusedAction = it },
-                        onInfoCardFocusedChanged = { isInfoCardFocused = it },
-                        setOnCatchupSeek = { onCatchupSeek = it },
-                        setOnReturnToLive = { onReturnToLive = it },
-                        onCatchupPlaybackChanged = { isCatchupPlayback = it }
-                    ) {
-                        finish()
-                    }
+                        // t44：按职责聚合回调，VideoPlayerScreen 参数 35 → 9（API28 VerifyError 根修）。
+                        playback = PlaybackCallbacks(
+                            setOnChannelStep = { onChannelStep = it },
+                            setOnNumberJump = { onNumberJump = it },
+                            setOnPlayLastChannel = { setPlayLastChannel = it },
+                            setOnCatchupSeek = { onCatchupSeek = it },
+                            setOnReturnToLive = { onReturnToLive = it },
+                            onCatchupPlaybackChanged = { isCatchupPlayback = it },
+                            onBack = { finish() },
+                        ),
+                        overlay = OverlayCallbacks(
+                            setRecentChannelsOpenController = { setRecentChannelsOpen = it },
+                            onRecentChannelsOpenChanged = { isRecentChannelsOpen = it },
+                            setAudioDialogOpenController = { setAudioDialogOpen = it },
+                            onAudioDialogOpenChanged = { isAudioDialogOpen = it },
+                            onDrawerOpenChanged = { isDrawerOpen = it },
+                            onDrawerActiveColumnChanged = { drawerActiveColumn = it },
+                            setSettingsDrawerOpenController = { setSettingsDrawerOpen = it },
+                            onSettingsDrawerOpenChanged = { isSettingsDrawerOpen = it },
+                            setSettingsBackHandlerController = { handler -> settingsBackHandler = handler },
+                            setQualityDialogOpenController = { setQualityDialogOpen = it },
+                            onQualityDialogOpenChanged = { isQualityDialogOpen = it },
+                        ),
+                        infoCard = InfoCardCallbacks(
+                            setInfoBannerOpenController = { setInfoBannerOpen = it },
+                            onInfoBannerOpenChanged = { isInfoBannerOpen = it },
+                            setInfoCardOkController = { setInfoCardOk = it },
+                            setOpenInfoCardFromOkController = { openInfoCardFromOk = it },
+                            setInfoCardFocusedActionController = { infoCardFocusedAction = it },
+                            onInfoCardFocusedChanged = { isInfoCardFocused = it },
+                        ),
+                        remoteCbs = RemoteCallbacks(
+                            onRemoteSettingsChanged = { settings -> remote = settings },
+                            remoteBindings = remoteBindings,
+                            captureRequest = captureRequest,
+                            onStartCapture = { action, longPress -> captureRequest = action to longPress },
+                            onCancelCapture = { captureRequest = null },
+                            onBindingsChanged = { bindings -> remoteBindings = bindings },
+                        )
+                    )
                     if (digits.isNotEmpty()) {
                         // t124: visible digit-entry OSD — dark panel + high-contrast brand ink.
                         // V4 §7：数字 OSD 移到右上角（TopEnd），确认态数字用品牌蓝加粗。
@@ -640,42 +647,46 @@ fun VideoPlayerScreen(
     title: String,
     playlistFileName: String?,
     sidebarController: SidebarController,
-    setOnChannelStep: (((Int) -> Boolean)?) -> Unit,
-    setOnNumberJump: (((Int) -> Boolean)?) -> Unit,
-    setOnPlayLastChannel: ((() -> Boolean)?) -> Unit,
-    setRecentChannelsOpenController: (((Boolean) -> Unit)?) -> Unit,
-    onRecentChannelsOpenChanged: (Boolean) -> Unit,
-    setAudioDialogOpenController: (((Boolean) -> Unit)?) -> Unit,
-    onRemoteSettingsChanged: (RemoteHabits.Settings) -> Unit,
-    // FULLFIX §7：功能→按键绑定状态与捕获控制（来自 Activity，dispatch 与 UI 共用同一真源）。
-    remoteBindings: List<KeyBinding> = RemoteBindings.DEFAULT,
-    captureRequest: Pair<RemoteAction, Boolean>? = null,
-    onStartCapture: (RemoteAction, Boolean) -> Unit = { _, _ -> },
-    onCancelCapture: () -> Unit = {},
-    onBindingsChanged: (List<KeyBinding>) -> Unit = {},
-    onAudioDialogOpenChanged: (Boolean) -> Unit,
-    onDrawerOpenChanged: (Boolean) -> Unit,
-    onDrawerActiveColumnChanged: (DrawerColumn?) -> Unit,
-    setSettingsDrawerOpenController: (((Boolean) -> Unit)?) -> Unit,
-    onSettingsDrawerOpenChanged: (Boolean) -> Unit,
-    // t13: 设置二级页的 BACK 处理器（Activity 侧兜底：二级 → 一级）。
-    setSettingsBackHandlerController: (((() -> Boolean)?) -> Unit),
-    setQualityDialogOpenController: (((Boolean) -> Unit)?) -> Unit,
-    onQualityDialogOpenChanged: (Boolean) -> Unit,
-    setInfoBannerOpenController: (((Boolean) -> Unit)?) -> Unit,
-    onInfoBannerOpenChanged: (Boolean) -> Unit,
-    // t4: 第二段 OK（IDLE→FOCUSED）与“焦点在卡片内”的镜像。
-    setInfoCardOkController: (((() -> Boolean)?) -> Unit),
-    // t32 Bug1：主动 OK 出卡 DIRECT/TWO_STEP 控制器注册。
-    setOpenInfoCardFromOkController: (((() -> Boolean)?) -> Unit) = {},
-    // t35：FOCUSED 态按键确定性闭环控制器注册。
-    setInfoCardFocusedActionController: ((((InfoCardPolicy.FocusedKeyAction) -> Boolean)?) -> Unit) = {},
-    onInfoCardFocusedChanged: (Boolean) -> Unit,
-    setOnCatchupSeek: (((Long) -> Boolean)?) -> Unit,
-    setOnReturnToLive: ((() -> Boolean)?) -> Unit,
-    onCatchupPlaybackChanged: (Boolean) -> Unit,
-    onBack: () -> Unit
+    playback: PlaybackCallbacks,
+    overlay: OverlayCallbacks,
+    infoCard: InfoCardCallbacks,
+    remoteCbs: RemoteCallbacks
 ) {
+    // t44：从聚合对象解包为局部 val，body 逻辑零改动（仅减少方法参数/寄存器数量）。
+    val setOnChannelStep = playback.setOnChannelStep
+    val setOnNumberJump = playback.setOnNumberJump
+    val setOnPlayLastChannel = playback.setOnPlayLastChannel
+    val setOnCatchupSeek = playback.setOnCatchupSeek
+    val setOnReturnToLive = playback.setOnReturnToLive
+    val onCatchupPlaybackChanged = playback.onCatchupPlaybackChanged
+    val onBack = playback.onBack
+
+    val setRecentChannelsOpenController = overlay.setRecentChannelsOpenController
+    val onRecentChannelsOpenChanged = overlay.onRecentChannelsOpenChanged
+    val setAudioDialogOpenController = overlay.setAudioDialogOpenController
+    val onAudioDialogOpenChanged = overlay.onAudioDialogOpenChanged
+    val onDrawerOpenChanged = overlay.onDrawerOpenChanged
+    val onDrawerActiveColumnChanged = overlay.onDrawerActiveColumnChanged
+    val setSettingsDrawerOpenController = overlay.setSettingsDrawerOpenController
+    val onSettingsDrawerOpenChanged = overlay.onSettingsDrawerOpenChanged
+    val setSettingsBackHandlerController = overlay.setSettingsBackHandlerController
+    val setQualityDialogOpenController = overlay.setQualityDialogOpenController
+    val onQualityDialogOpenChanged = overlay.onQualityDialogOpenChanged
+
+    val setInfoBannerOpenController = infoCard.setInfoBannerOpenController
+    val onInfoBannerOpenChanged = infoCard.onInfoBannerOpenChanged
+    val setInfoCardOkController = infoCard.setInfoCardOkController
+    val setOpenInfoCardFromOkController = infoCard.setOpenInfoCardFromOkController
+    val setInfoCardFocusedActionController = infoCard.setInfoCardFocusedActionController
+    val onInfoCardFocusedChanged = infoCard.onInfoCardFocusedChanged
+
+    val onRemoteSettingsChanged = remoteCbs.onRemoteSettingsChanged
+    val remoteBindings = remoteCbs.remoteBindings
+    val captureRequest = remoteCbs.captureRequest
+    val onStartCapture = remoteCbs.onStartCapture
+    val onCancelCapture = remoteCbs.onCancelCapture
+    val onBindingsChanged = remoteCbs.onBindingsChanged
+
     val context = LocalContext.current
     val density = LocalDensity.current
     val lifecycleOwner = LocalLifecycleOwner.current
