@@ -339,16 +339,17 @@ fun PlayerDrawer(
 
     val groupListState = rememberLazyListState()
 
-    // FULLFIX §2：把「打开时的恢复焦点」冻结在开抽屉这一刻。抽屉内浏览会通过
-    // onFocusedChannelChanged 回写 SidebarController → Activity 传入新的 initialFocusUrl；
-    // 若让它直接驱动 initialScrollIndex，每次移动焦点都会重触发打开窗口 effect
-    // （revealedRows 被重置成 3 → 行数闪烁 + 性能回退）。remember(visible) 的 key 只在
-    // 开合翻转时重算，正好拿到当时的恢复位置；切组用下方 live 的 initialFocusUrl 单独处理。
-    val openFocusUrl = remember(visible) { if (visible) initialFocusUrl else null }
+    // t49 §③：把「打开时的恢复焦点」与「播放台」都冻结在开抽屉这一刻（openAnchor）。
+    // 旧实现 initialScrollIndex 以 selectedChannelUrl 为 key，换台改变它→开窗 effect 重入→
+    // revealTarget 重置/滚动回退→闪回首页。现在 openAnchor 只在 visible 翻转时重算，
+    // 换台（selectedChannelUrl 变化）不再改变 initialScrollIndex，抽屉 UI 原地保持。
+    val openAnchor = remember(visible) {
+        if (visible) (initialFocusUrl ?: selectedChannelUrl) else null
+    }
 
-    // FULLFIX §2：优先用上次浏览焦点（按组记忆），其次播放台 —— 这是「不再回开头」的核心单变量。
-    val initialScrollIndex = remember(channelIndexByUrl, selectedChannelUrl, openFocusUrl) {
-        PerfPolicy.drawerInitialIndex(openFocusUrl, selectedChannelUrl, channelIndexByUrl)
+    // 只用冻结的 openAnchor 计算初始索引；selectedChannelUrl 不参与 key（语义分离）。
+    val initialScrollIndex = remember(channelIndexByUrl, openAnchor) {
+        PerfPolicy.drawerInitialIndex(openAnchor, null, channelIndexByUrl)
     }
 
     val channelListState = rememberLazyListState(
@@ -373,7 +374,9 @@ fun PlayerDrawer(
         // 0 行 → first=0、openTarget=0；1/2 行 → 目标钳在行数内，不崩也不越界。
         val openTarget = PerfPolicy.drawerSafeOpenTarget(initialScrollIndex, channels.size)
         revealedRows = PerfPolicy.drawerFirstRows(channels.size)
-        revealTarget = openTarget
+        // t49 §③：开窗目标只抬高不回落（与分帧泵"唯一增长入口"一致），即使 effect 被重触发
+        // 也不收缩窗口，避免换台时可见行收缩/重排的闪烁。
+        revealTarget = maxOf(revealTarget, openTarget)
         PerfTrace.d {
             "drawer_compose target=$openTarget first=${PerfPolicy.DRAWER_FIRST_FRAME_ROWS} " +
                 "step=${PerfPolicy.DRAWER_ROWS_PER_FRAME} rows=${channels.size}"
@@ -535,8 +538,8 @@ fun PlayerDrawer(
 
         if (!hasInitializedDrawerFocus) {
             hasInitializedDrawerFocus = true
-            val targetUrl = openFocusUrl?.takeIf { channelIndexByUrl.containsKey(it) }
-                ?: selectedChannelUrl ?: channels.firstOrNull()?.url
+            val targetUrl = openAnchor?.takeIf { channelIndexByUrl.containsKey(it) }
+                ?: channels.firstOrNull()?.url
             if (targetUrl != null) {
                 focusedChannelUrl = targetUrl
                 stableFocusedChannelUrl = targetUrl
@@ -588,25 +591,14 @@ fun PlayerDrawer(
         desiredScrollIndex = idx
     }
 
-    LaunchedEffect(selectedChannelUrl, visible) {
+    LaunchedEffect(openAnchor, visible) {
         if (!visible) return@LaunchedEffect
-        val targetUrl = selectedChannelUrl ?: return@LaunchedEffect
+        // t49 §③：此 effect 只在真正打开（openAnchor 冻结值变化）时初始化焦点；
+        // 换台改变 selectedChannelUrl 不再触发本 effect，抽屉 UI 原地保持、不重跑打开逻辑。
+        val targetUrl = openAnchor ?: return@LaunchedEffect
         if (focusedChannelUrl.isNullOrBlank()) {
             focusedChannelUrl = targetUrl
             stableFocusedChannelUrl = targetUrl
-        }
-        // t15（P8b）：换台使 selectedChannelUrl 变深行（焦点已初始化过）时，同样登记滚动校正。
-        // 但只在抽屉刚打开后的首个 selectedChannelUrl 事件才强制校正；抽屉内正常浏览由
-        // onRowFocusedScroll 跟随，这里不抢。hasInitializedDrawerFocus 为 true 且本次是
-        // 由换台驱动的深行（不在可视区）时才登记，避免打开后反复抖动。
-        if (hasInitializedDrawerFocus) {
-            val idx = channelIndexByUrl[targetUrl]
-            if (idx != null && idx > 0) {
-                val visibleIndices = channelListState.layoutInfo.visibleItemsInfo.map { it.index }
-                if (idx !in visibleIndices) {
-                    desiredScrollIndex = idx
-                }
-            }
         }
     }
 

@@ -509,68 +509,54 @@ class PlayerActivity : ComponentActivity() {
                 }
 
                 KeyEvent.KEYCODE_BACK -> {
-                    if (isAudioDialogOpen) {
-                        setAudioDialogOpen?.invoke(false)
-                        return true
+                    // t49（GOLDEN_SPEC §2 单一分层状态机）：一次裁决，每层明确消费，永不落到 super finish。
+                    // settingsHasSubPage：settingsBackHandler 能消费即二级页（一次性探测，不重复 invoke）。
+                    val settingsHasSubPage = isSettingsDrawerOpen && settingsBackHandler?.invoke() == true
+                    // t49：回看双按与退出双按是两套计时器，按当前上下文选对应的一个作为单一真源。
+                    val nowMs = System.currentTimeMillis()
+                    val lastBackWithin2s = if (isCatchupPlayback) {
+                        nowMs - lastBackPressTimeCatchup <= 2000L
+                    } else {
+                        nowMs - lastBackPressTime <= 2000L
                     }
-                    if (isRecentChannelsOpen) {
-                        setRecentChannelsOpen?.invoke(false)
-                        return true
-                    }
-                    if (isQualityDialogOpen) {
-                        setQualityDialogOpen?.invoke(false)
-                        return true
-                    }
-                    if (sidebarController.value.drawerOpen) {
-                        // TIV: one Back closes the whole native drawer from any column.
-                        sidebarController.closeDrawer()
-                        return true
-                    }
-                    if (isSettingsDrawerOpen) {
-                        // t13：二级页先退到一级（只退一层）；一级再 BACK 才关抽屉。
-                        if (settingsBackHandler?.invoke() == true) return true
-                        setSettingsDrawerOpen?.invoke(false)
-                        return true
-                    }
-                    if (isInfoBannerOpen) {
-                        setInfoBannerOpen?.invoke(false)
-                        return true
-                    }
-
-                    if (isCatchupPlayback) {
-                        val currentTime = System.currentTimeMillis()
-                        if (currentTime - lastBackPressTimeCatchup > 2000) {
-                            lastBackPressTimeCatchup = currentTime
+                    val backAction = BackKeyPolicy.decide(
+                        audioDialogOpen = isAudioDialogOpen,
+                        recentOpen = isRecentChannelsOpen,
+                        qualityDialogOpen = isQualityDialogOpen,
+                        drawerOpen = sidebarController.value.drawerOpen,
+                        settingsOpen = isSettingsDrawerOpen,
+                        settingsHasSubPage = settingsHasSubPage,
+                        infoCardVisible = isInfoBannerOpen,
+                        infoCardFocused = isInfoCardFocused,
+                        catchup = isCatchupPlayback,
+                        lastBackWithin2s = lastBackWithin2s,
+                    )
+                    when (backAction) {
+                        BackKeyPolicy.Action.CLOSE_AUDIO_DIALOG -> setAudioDialogOpen?.invoke(false)
+                        BackKeyPolicy.Action.CLOSE_RECENT -> setRecentChannelsOpen?.invoke(false)
+                        BackKeyPolicy.Action.CLOSE_QUALITY_DIALOG -> setQualityDialogOpen?.invoke(false)
+                        BackKeyPolicy.Action.CLOSE_DRAWER -> sidebarController.closeDrawer()
+                        BackKeyPolicy.Action.SETTINGS_BACK_TO_ROOT -> Unit // 已在 settingsHasSubPage 探测时消费
+                        BackKeyPolicy.Action.CLOSE_SETTINGS -> setSettingsDrawerOpen?.invoke(false)
+                        BackKeyPolicy.Action.INFO_CARD_UNFOCUS -> infoCardFocusedAction?.invoke(
+                            InfoCardPolicy.FocusedKeyAction.EXIT_FOCUS
+                        )
+                        BackKeyPolicy.Action.INFO_CARD_CLOSE -> setInfoBannerOpen?.invoke(false)
+                        BackKeyPolicy.Action.TOAST_RETURN_LIVE -> {
+                            lastBackPressTimeCatchup = System.currentTimeMillis()
                             android.widget.Toast.makeText(this, "再按一次返回直播", android.widget.Toast.LENGTH_SHORT).show()
-                            return true
                         }
-                        if (onReturnToLive?.invoke() == true) {
-                            lastBackPressTimeCatchup = 0
-                            return true
+                        BackKeyPolicy.Action.RETURN_LIVE -> {
+                            onReturnToLive?.invoke()
+                            lastBackPressTimeCatchup = 0L
                         }
-                        return true
+                        BackKeyPolicy.Action.TOAST_EXIT -> {
+                            lastBackPressTime = System.currentTimeMillis()
+                            android.widget.Toast.makeText(this, "再按一次退出app", android.widget.Toast.LENGTH_SHORT).show()
+                        }
+                        BackKeyPolicy.Action.EXIT_APP -> finish() // 唯一 finish 出口
                     }
-
-                    // t186 (F1): 直接退出 exits on the first BACK; 关闭抽屉 keeps the historical
-                    // double-press guard so a stray press never kills playback.
-                    // FULLFIX §7：是否"直接退出"由绑定决定（DEFAULT 的 BACK 长按=RETURN_LIVE，
-                    // 短按不绑 EXIT_APP → 保持双按退出；migrate(back=EXIT) 才立即退出）。
-                    val backIsExit = resolvePlayerAction(event) == RemoteAction.EXIT_APP ||
-                        (isLongPressKey(event) && RemoteBindings.resolveWith(
-                            remoteBindings, event.keyCode, true, UiContext.PLAYER_ONLY
-                        ) == RemoteAction.EXIT_APP)
-                    if (backIsExit) {
-                        // t193 (REMOTE-BACK-01): explicit finish(); the habit no longer depends on the
-                        // key reaching the system back dispatch.
-                        finish()
-                        return true
-                    }
-                    val currentTime = System.currentTimeMillis()
-                    if (currentTime - lastBackPressTime > 2000) {
-                        lastBackPressTime = currentTime
-                        android.widget.Toast.makeText(this, "再按一次退出app", android.widget.Toast.LENGTH_SHORT).show()
-                        return true
-                    }
+                    return true // 任何层都消费，绝不落到 super.dispatchKeyEvent 的默认 finish
                 }
 
                 KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_CHANNEL_UP, KeyEvent.KEYCODE_PAGE_UP -> {

@@ -208,11 +208,11 @@ def main() -> int:
         problems.append("PerfPolicy.kt: DRAWER_FIRST_FRAME_ROWS must be 2 (t56)")
     if "const val DRAWER_ROW_HEIGHT_DP = 64" not in policy:
         problems.append("PerfPolicy.kt: DRAWER_ROW_HEIGHT_DP must be 64 (FULLFIX §1)")
-    # FULLFIX §2: initial scroll index must consult the remembered browse focus (not only playing URL).
-    if "remember(channelIndexByUrl, selectedChannelUrl, openFocusUrl)" not in drawer_code:
-        problems.append("PlayerDrawer.kt: initialScrollIndex must use frozen openFocusUrl (FULLFIX §2)")
-    if "remember(visible) { if (visible) initialFocusUrl else null }" not in drawer_code:
-        problems.append("PlayerDrawer.kt: restore focus must be frozen at drawer open (FULLFIX §2)")
+    # t49 §③：恢复焦点冻结为 openAnchor（visible 翻转时快照），换台 selectedChannelUrl 不再参与 key。
+    if "remember(channelIndexByUrl, openAnchor)" not in drawer_code:
+        problems.append("PlayerDrawer.kt: initialScrollIndex must key only on frozen openAnchor (t49)")
+    if "val openAnchor = remember(visible)" not in drawer_code:
+        problems.append("PlayerDrawer.kt: openAnchor must freeze at drawer open via remember(visible) (t49)")
     if "PerfPolicy.drawerInitialIndex(" not in drawer_code:
         problems.append("PlayerDrawer.kt: initial index must go through PerfPolicy.drawerInitialIndex (FULLFIX §2)")
     if "initialFocusUrl: String? = null" not in drawer_code:
@@ -326,6 +326,18 @@ def main() -> int:
         problems.append("PlayerDrawer.kt: channel/group/program/date focus must all use FocusBgColor (t41)")
     if "BrandFocus.BlueColor" not in drawer_code or "playingNameColor(selected)" not in drawer_code:
         problems.append("PlayerDrawer.kt: selected channel name must stay blue (t41)")
+    # t49 §③: zap must not re-enter open init (openAnchor frozen, no selectedChannelUrl key, revealTarget only raises).
+    if "fun drawerOpenAnchor(" not in policy or "fun drawerRevealTarget(" not in policy:
+        problems.append("PerfPolicy.kt: t49 openAnchor/revealTarget helpers missing")
+    if "val openAnchor = remember(visible)" not in drawer_code:
+        problems.append("PlayerDrawer.kt: openAnchor must freeze at open via remember(visible) (t49)")
+    if "revealTarget = maxOf(revealTarget, openTarget)" not in drawer_code:
+        problems.append("PlayerDrawer.kt: open window must only raise revealTarget (t49)")
+    # initialScrollIndex 不得再以 selectedChannelUrl 为 key（换台重入根因）。
+    if re.search(r"remember\([^)]*selectedChannelUrl[^)]*\)\s*\{\s*PerfPolicy\.drawerInitialIndex", drawer_code):
+        problems.append("PlayerDrawer.kt: initialScrollIndex must not key on selectedChannelUrl (t49)")
+    if "LaunchedEffect(openAnchor, visible)" not in drawer_code:
+        problems.append("PlayerDrawer.kt: focus-init effect must key on openAnchor not selectedChannelUrl (t49)")
     # V4 §2: group focus selects group; RIGHT(Groups) collapses + focuses first channel;
     # selectGroup is idempotent with resetFocus; no `if (!showGroups) return` in selectedGroup effect.
     sidebar = (SRC / "SidebarController.kt").read_text(encoding="utf-8")

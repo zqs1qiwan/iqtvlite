@@ -86,7 +86,9 @@ object RemoteBindings {
         KeyBinding(RemoteAction.SHOW_INFO, setOf(KEY_DPAD_CENTER, KEY_ENTER, KEY_NUMPAD_ENTER)),
         KeyBinding(RemoteAction.RECENT_CHANNELS, setOf(KEY_LAST_CHANNEL)),
         KeyBinding(RemoteAction.RETURN_LIVE, longPressKeycodes = setOf(KEY_BACK)),
-        KeyBinding(RemoteAction.EXIT_APP, longPressKeycodes = setOf(KEY_BACK)),
+        // t49 §②：EXIT_APP 默认不预置任何键（原也绑 BACK 长按=死配置，长按永远解析成 RETURN_LIVE）。
+        // 退出播放器统一走 BackKeyPolicy 双按状态机（先 toast 再退）；EXIT_APP 仅供用户显式绑定。
+        KeyBinding(RemoteAction.EXIT_APP),
         KeyBinding(RemoteAction.SEEK_BACK, setOf(KEY_DPAD_LEFT)),
         KeyBinding(RemoteAction.SEEK_FORWARD, setOf(KEY_DPAD_RIGHT)),
     )

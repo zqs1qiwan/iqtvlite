@@ -116,6 +116,18 @@ object PerfPolicy {
      * （与 PerfPolicyTest.t15ScrollTargetUsesSafeFirstVisibleClamp 一致，修复 CI #216）。
      * 语义：末尾目标仍留 2 行上下文，符合"留 2 行前置"注释；空/1 组 → 0。
      */
+    /**
+     * t49 §③：开窗目标只抬高不回落（防止换台重入时 revealTarget 收缩导致可见行闪烁）。
+     */
+    fun drawerRevealTarget(current: Int, openTarget: Int): Int = maxOf(current, openTarget)
+
+    /**
+     * t49 §③：抽屉"打开锚点"语义 —— 换台（playingUrl 变化）不改变已冻结的 openAnchor。
+     * 打开瞬间 anchor = lastFocusedUrl ?: playingUrl；之后 playingUrl 变化应被忽略。
+     */
+    fun drawerOpenAnchor(frozen: String?, lastFocusedUrl: String?, playingUrl: String?): String =
+        frozen ?: (lastFocusedUrl ?: playingUrl ?: "")
+
     fun drawerScrollTargetIndex(focusIndex: Int, channelCount: Int): Int {
         if (channelCount <= 0) return 0
         val hi = channelCount - 2

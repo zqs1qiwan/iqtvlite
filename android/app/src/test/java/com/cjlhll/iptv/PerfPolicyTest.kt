@@ -373,4 +373,22 @@ class PerfPolicyTest {
             PerfPolicy.drawerScrollDecision(141, 141, 141, 58, 67),
         )
     }
+
+    // ── t49 §③：换台不重入打开初始化（openAnchor 冻结 + 开窗只抬高） ────────
+    @Test
+    fun t49OpenAnchorFrozenAgainstZap() {
+        // 打开瞬间 anchor=播放台 A；换台到 B 后 frozen 仍为 A → anchor 不变。
+        assertEquals("A", PerfPolicy.drawerOpenAnchor(null, null, "A"))
+        assertEquals("A", PerfPolicy.drawerOpenAnchor("A", null, "B"))
+        // 无冻结时：上次焦点优先于播放台。
+        assertEquals("F", PerfPolicy.drawerOpenAnchor(null, "F", "A"))
+        assertEquals("", PerfPolicy.drawerOpenAnchor(null, null, null))
+    }
+
+    @Test
+    fun t49RevealTargetOnlyRaisesNeverFalls() {
+        assertEquals(147, PerfPolicy.drawerRevealTarget(147, 28))
+        assertEquals(28, PerfPolicy.drawerRevealTarget(0, 28))
+        assertEquals(100, PerfPolicy.drawerRevealTarget(60, 100))
+    }
 }

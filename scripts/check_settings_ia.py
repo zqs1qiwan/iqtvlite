@@ -268,6 +268,25 @@ def main() -> int:
         if bundle not in activity:
             problems.append("PlayerActivity.kt VideoPlayerScreen call missing bundle " + bundle)
 
+    # 16) t49 §①/②: BACK layered state machine (single source, no super finish, no direct exit).
+    bp = SRC / "BackKeyPolicy.kt"
+    if not bp.exists() or "fun decide(" not in bp.read_text(encoding="utf-8"):
+        problems.append("BackKeyPolicy.kt: layered BACK state machine missing (t49)")
+    if "BackKeyPolicy.decide(" not in activity_code:
+        problems.append("PlayerActivity.kt: BACK branch must use BackKeyPolicy.decide (t49)")
+    if "when (backAction)" not in activity_code or "BackKeyPolicy.Action.EXIT_APP -> finish()" not in activity_code:
+        problems.append("PlayerActivity.kt: BACK actions must dispatch + single finish exit (t49)")
+    # 双按 toast 必须在（GOLDEN_SPEC §2 第10层）
+    if "再按一次退出app" not in activity:
+        problems.append("PlayerActivity.kt: double-press exit toast missing (t49)")
+    # 旧的 direct-finish 分支必须删除。
+    if "backIsExit" in activity_code:
+        problems.append("PlayerActivity.kt: old backIsExit direct-finish path still present (t49)")
+    # §②: EXIT_APP 默认不再绑 BACK 长按
+    rb = (SRC / "RemoteBindings.kt").read_text(encoding="utf-8")
+    if "KeyBinding(RemoteAction.EXIT_APP, longPressKeycodes = setOf(KEY_BACK))" in rb:
+        problems.append("RemoteBindings.kt: EXIT_APP must not bind BACK long-press by default (t49)")
+
     if problems:
         for p in problems:
             print(f"check_settings_ia: FAIL {p}")

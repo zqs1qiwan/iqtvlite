@@ -142,8 +142,9 @@ def main() -> int:
     # Activity: BACK fallback inside the info-card focus guard
     if not re.search(r"super\.dispatchKeyEvent\(event\)\)\s*return true", activity):
         problems.append("PlayerActivity.kt: info-card guard must first hand the key to Compose")
-    if re.search(r"setInfoBannerOpen\?\.invoke\(false\)\s*\n\s*return true", activity) is None:
-        problems.append("PlayerActivity.kt: F1 BACK fallback (close card instead of finish) missing")
+    # t49：F1 BACK fallback 已由 BackKeyPolicy.Action.INFO_CARD_CLOSE 分层消费（不再有裸 setInfoBannerOpen+return）。
+    if "BackKeyPolicy.Action.INFO_CARD_CLOSE -> setInfoBannerOpen?.invoke(false)" not in activity:
+        problems.append("PlayerActivity.kt: F1 BACK close-card via BackKeyPolicy missing (t49)")
     # The mirror must no longer be derived from the state enum inside the SideEffect.
     if re.search(r"onInfoCardFocusedChanged\(infoCardState == InfoCardPolicy\.State\.FOCUSED\)", activity):
         problems.append("PlayerActivity.kt: F1 mirror must not be derived from state (node focus only)")
