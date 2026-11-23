@@ -73,6 +73,27 @@ object InfoCardPolicy {
 
     /** 主动 OK 出卡后是否直接进入可聚焦态：DIRECT=true；空/1张/回看/快进由调用方单独守卫。 */
     fun openCardFocusesDirectly(mode: InfoOkMode): Boolean = mode == InfoOkMode.DIRECT
+
+    /**
+     * t35：FOCUSED 态按键的确定性闭环动作（与 Android KeyEvent 解耦，可 JVM 单测）。
+     * Activity 在 isInfoCardFocused 时用它决定"Compose 未消费时的兜底动作"，
+     * 无论哪种动作都**消费按键**（绝不穿透到 OPEN_SETTINGS/换台/OSD）。
+     */
+    enum class FocusedKeyAction { MOVE_LEFT, MOVE_RIGHT, SWITCH, EXIT_FOCUS, NONE }
+
+    /**
+     * @param keyCode Android KeyEvent.keyCode 数值（这里用整数避免依赖 Android 类型）。
+     * @param isCenter 是否属于确认键（DPAD_CENTER/ENTER/NUMPAD_ENTER，调用方按绑定判定）。
+     */
+    fun focusedKeyAction(keyCode: Int, isCenter: Boolean): FocusedKeyAction = when {
+        isCenter -> FocusedKeyAction.SWITCH
+        keyCode == 21 -> FocusedKeyAction.MOVE_LEFT     // KEYCODE_DPAD_LEFT
+        keyCode == 22 -> FocusedKeyAction.MOVE_RIGHT    // KEYCODE_DPAD_RIGHT
+        keyCode == 4 -> FocusedKeyAction.EXIT_FOCUS     // KEYCODE_BACK
+        // FOCUSED 态 UP/DOWN 退聚焦（与 banner 根部 onPreviewKeyEvent 一致）。
+        keyCode == 19 || keyCode == 20 -> FocusedKeyAction.EXIT_FOCUS
+        else -> FocusedKeyAction.NONE
+    }
     /** 最近观看条是否渲染：有条、非回看、非快进浮层。 */
     fun showRecentRow(recentCount: Int, catchup: Boolean, seekOverlayVisible: Boolean): Boolean =
         recentCount > 0 && !catchup && !seekOverlayVisible

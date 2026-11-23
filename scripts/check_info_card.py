@@ -270,6 +270,25 @@ def main() -> int:
     if 'testTag("info_card_tech")' in banner:
         problems.append("ChannelInfoBanner.kt: old tech row must be removed (info moved to top-right, t32 Bug2)")
 
+    # 11) t35: FOCUSED keys deterministically consumed, never fall through to Activity when.
+    for token in ("enum class FocusedKeyAction", "fun focusedKeyAction("):
+        if token not in policy:
+            problems.append("InfoCardPolicy.kt: t35 focusedKeyAction helper missing " + token)
+    if "infoCardFocusedAction?.invoke(action)" not in activity:
+        problems.append("PlayerActivity.kt: FOCUSED fallback must invoke deterministic controller (t35)")
+    # 关键回归：FOCUSED 分支必须总是 return true，不得"继续 when"（旧 bug 的根源）。
+    focused_block = re.search(r"if \(isInfoCardFocused && infoCardKey\) \{(.*?)\n            \}", activity, re.S)
+    if focused_block:
+        body = focused_block.group(1)
+        if "return true" not in body:
+            problems.append("PlayerActivity.kt: FOCUSED branch must consume key (return true) - t35")
+        if "super.dispatchKeyEvent(event)" not in body:
+            problems.append("PlayerActivity.kt: FOCUSED branch must try Compose first - t35")
+    else:
+        problems.append("PlayerActivity.kt: FOCUSED key guard block missing (t35)")
+    if "setInfoCardFocusedActionController" not in activity:
+        problems.append("PlayerActivity.kt: t35 focused action controller registration missing")
+
     if problems:
         for p in problems:
             print(f"check_info_card: FAIL {p}")

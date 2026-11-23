@@ -32,6 +32,39 @@ class InfoCardPolicyTest {
         assertFalse(InfoCardPolicy.openCardFocusesDirectly(InfoCardPolicy.InfoOkMode.TWO_STEP))
     }
 
+    // ── t35：FOCUSED 态按键确定性闭环（绝不穿透到 OPEN_SETTINGS/换台） ──────
+    @Test
+    fun t35FocusedKeysMapToCardSemantics() {
+        // RIGHT(22) → MOVE_RIGHT（选第二张卡，不打开设置）；LEFT(21) → MOVE_LEFT。
+        assertEquals(
+            InfoCardPolicy.FocusedKeyAction.MOVE_RIGHT,
+            InfoCardPolicy.focusedKeyAction(22, isCenter = false),
+        )
+        assertEquals(
+            InfoCardPolicy.FocusedKeyAction.MOVE_LEFT,
+            InfoCardPolicy.focusedKeyAction(21, isCenter = false),
+        )
+        // OK/CENTER → SWITCH 切台。
+        assertEquals(
+            InfoCardPolicy.FocusedKeyAction.SWITCH,
+            InfoCardPolicy.focusedKeyAction(23, isCenter = true),
+        )
+        // BACK(4)/UP(19)/DOWN(20) → 退聚焦。
+        assertEquals(
+            InfoCardPolicy.FocusedKeyAction.EXIT_FOCUS,
+            InfoCardPolicy.focusedKeyAction(4, isCenter = false),
+        )
+        assertEquals(
+            InfoCardPolicy.FocusedKeyAction.EXIT_FOCUS,
+            InfoCardPolicy.focusedKeyAction(19, isCenter = false),
+        )
+        // 非信息键 → NONE（调用方据此不消费，但 FOCUSED 分支仍 return true 防穿透）。
+        assertEquals(
+            InfoCardPolicy.FocusedKeyAction.NONE,
+            InfoCardPolicy.focusedKeyAction(82 /* MENU */, isCenter = false),
+        )
+    }
+
     @Test
     fun visibilityFollowsStateAndSeekOverlay() {
         assertTrue(InfoCardPolicy.isVisible(InfoCardPolicy.State.IDLE, seekOverlayVisible = false))

@@ -140,6 +140,11 @@ class PlayerActivity : ComponentActivity() {
     private var setInfoCardOk: (() -> Boolean)? = null
     /** t32 Bug1：主动 OK 出卡控制器（composable 注册，按 infoOkMode 决定 DIRECT/TWO_STEP）。 */
     private var openInfoCardFromOk: (() -> Boolean)? = null
+    /**
+     * t35：FOCUSED 态按键确定性闭环控制器（composable 注册）。
+     * (delta 或 0=switch, action) —— 用枚举参数区分移动/切换/退聚焦。
+     */
+    private var infoCardFocusedAction: ((InfoCardPolicy.FocusedKeyAction) -> Boolean)? = null
     private var setInfoCardFocused: ((Boolean) -> Unit)? = null
     private var isInfoCardFocused: Boolean = false
     private var isCatchupPlayback: Boolean = false
@@ -244,6 +249,7 @@ class PlayerActivity : ComponentActivity() {
                         onInfoBannerOpenChanged = { isInfoBannerOpen = it },
                         setInfoCardOkController = { setInfoCardOk = it },
                         setOpenInfoCardFromOkController = { openInfoCardFromOk = it },
+                        setInfoCardFocusedActionController = { infoCardFocusedAction = it },
                         onInfoCardFocusedChanged = { isInfoCardFocused = it },
                         setOnCatchupSeek = { onCatchupSeek = it },
                         setOnReturnToLive = { onReturnToLive = it },
@@ -390,17 +396,23 @@ class PlayerActivity : ComponentActivity() {
                 KeyEvent.KEYCODE_NUMPAD_ENTER, KeyEvent.KEYCODE_BACK -> true
                 else -> false
             }
+            // t35（根源修复）：FOCUSED 态的所有信息卡按键必须**确定性闭环**，绝不穿透到下方 when。
+            // 旧实现 super 返回 false 时清焦点后继续 when → RIGHT 命中 OPEN_SETTINGS → 覆盖层
+            // 把卡片 hide reason=overlay 隐藏（用户实测"一按右键卡片就没了"）。
+            // 新契约：先交 Compose（焦点就绪时它自己处理并 return true）；若未消费，则无论焦点节点
+            // 是否就绪，都用 composable 注册的确定性控制器执行卡片语义动作，并**总是 return true**。
             if (isInfoCardFocused && infoCardKey) {
-                // t16（F1）：先交 Compose 焦点节点消费。
                 if (super.dispatchKeyEvent(event)) return true
-                // 焦点节点已不在（后台播放列表刷新/换源清空最近观看，或窗口焦点被抢）：
-                // 镜像立刻自愈为 false，BACK 只关卡片，绝不让事件落到系统默认 finish() 退出播放器。
-                isInfoCardFocused = false
-                if (event.keyCode == KeyEvent.KEYCODE_BACK) {
-                    setInfoBannerOpen?.invoke(false)
-                    return true
+                // Compose 未消费：用确定性语义通道闭环（onMoveFocus/onSwitchRecent/onExitFocus 的等价物）。
+                val isCenter = event.keyCode == KeyEvent.KEYCODE_DPAD_CENTER ||
+                    event.keyCode == KeyEvent.KEYCODE_ENTER ||
+                    event.keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER
+                val action = InfoCardPolicy.focusedKeyAction(event.keyCode, isCenter)
+                if (action != InfoCardPolicy.FocusedKeyAction.NONE) {
+                    infoCardFocusedAction?.invoke(action)
                 }
-                // 其它方向键/OK：不 return，继续走下面的既有分支（原语义）。
+                // 无论控制器是否存在都消费：绝不继续 when（杜绝 OPEN_SETTINGS/换台/OSD 穿透）。
+                return true
             }
             when (event.keyCode) {
                 // t133: last channel — only while no overlay is open; repeats are debounced inside.
@@ -656,6 +668,8 @@ fun VideoPlayerScreen(
     setInfoCardOkController: (((() -> Boolean)?) -> Unit),
     // t32 Bug1：主动 OK 出卡 DIRECT/TWO_STEP 控制器注册。
     setOpenInfoCardFromOkController: (((() -> Boolean)?) -> Unit) = {},
+    // t35：FOCUSED 态按键确定性闭环控制器注册。
+    setInfoCardFocusedActionController: ((((InfoCardPolicy.FocusedKeyAction) -> Boolean)?) -> Unit) = {},
     onInfoCardFocusedChanged: (Boolean) -> Unit,
     setOnCatchupSeek: (((Long) -> Boolean)?) -> Unit,
     setOnReturnToLive: ((() -> Boolean)?) -> Unit,
@@ -1805,6 +1819,41 @@ fun VideoPlayerScreen(
             }
             setOpenInfoCardFromOkController(openHandler)
             onDispose { setOpenInfoCardFromOkController(null) }
+        }
+
+        // t35：FOCUSED 态按键确定性闭环控制器 —— Compose 焦点未就绪时也执行卡片语义动作，
+        // 与 ChannelInfoBanner 的 onMoveFocus/onSwitchRecent/onExitFocus 完全等价，绝不穿透。
+        DisposableEffect(cardRecentItems) {
+            val focusedHandler: (InfoCardPolicy.FocusedKeyAction) -> Boolean = { action ->
+                when (action) {
+                    InfoCardPolicy.FocusedKeyAction.MOVE_LEFT,
+                    InfoCardPolicy.FocusedKeyAction.MOVE_RIGHT -> {
+                        val delta = if (action == InfoCardPolicy.FocusedKeyAction.MOVE_RIGHT) 1 else -1
+                        infoCardFocusIndex = InfoCardPolicy.nextFocusIndex(
+                            current = infoCardFocusIndex,
+                            count = cardRecentItems.size,
+                            delta = delta,
+                        )
+                        logInfoCard("focused-fallback move index=$infoCardFocusIndex")
+                    }
+                    InfoCardPolicy.FocusedKeyAction.SWITCH -> {
+                        InfoCardPolicy.resolveRecentTarget(cardRecentItems, infoCardFocusIndex)?.let { item ->
+                            logInfoCard("focused-fallback switch idx=$infoCardFocusIndex group=${item.number} ${item.title}")
+                            if (switchToRecent(item)) infoCardFocusIndex = 0
+                        }
+                    }
+                    InfoCardPolicy.FocusedKeyAction.EXIT_FOCUS -> {
+                        infoCardFocusIndex = 0
+                        infoCardState = InfoCardPolicy.State.IDLE
+                        infoCardTimerTick++
+                        logInfoCard("focused-fallback exit")
+                    }
+                    InfoCardPolicy.FocusedKeyAction.NONE -> Unit
+                }
+                true
+            }
+            setInfoCardFocusedActionController(focusedHandler)
+            onDispose { setInfoCardFocusedActionController(null) }
         }
 
         // t4 (INFO_CARD_V2 §3.6 / D-C2)：第二段 OK —— IDLE→FOCUSED；条为空/回看/快进只重新计时。
