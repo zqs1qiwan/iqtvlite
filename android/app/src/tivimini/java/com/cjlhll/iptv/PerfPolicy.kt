@@ -130,19 +130,21 @@ object PerfPolicy {
 
     /** 一屏大约行数（12 行 × 64dp ≈ 768dp 可视高度）。 */
     const val DRAWER_SCREEN_ROWS = 12
+    /** t72：节目单区域背景透明度（静态 layer alpha，比选台区更透明以视觉区分，无分割线）。 */
+    const val DRAWER_PROGRAM_AREA_ALPHA = 0.55f
     /** t52 §④：焦点的"接近可视边缘"提前滚动阈值（行数）；t59 提前声明供对称限幅使用。 */
     const val DRAWER_SCROLL_EDGE_ROWS = 2
 
     /**
-     * t59 ①：恢复 t56 前（用户确认正确）的上滚基准 —— target = focus-2，钳到 [0, count-2]。
-     * 小 count 安全返回 0。下滚不再用 viewport/half 规则；方向对称由 PlayerDrawer 的
-     * 对称限幅 coerceIn(-8,+8) 保证（上滚不变、下滚不再整页翻）。
+     * t72（TiviMate 设计基准）：焦点**始终位于可视区正中间** —— target = focus - visibleRows/2。
+     * 显示行数取 [DRAWER_SCREEN_ROWS]=12 → half=6，焦点居中约第 7 行。上下滚时焦点不动、
+     * 列表反向滚动使焦点回到中间。边缘钳到 [0, count-visibleRows]；小 count(<visibleRows) 安全返回 0。
      */
     fun drawerScrollTargetIndex(focusIndex: Int, channelCount: Int): Int {
-        if (channelCount <= 0) return 0
-        val hi = channelCount - 2
-        if (hi <= 0) return 0
-        return (focusIndex - 2).coerceIn(0, hi)
+        if (channelCount <= 0 || channelCount < DRAWER_SCREEN_ROWS) return 0
+        val half = DRAWER_SCREEN_ROWS / 2
+        val hi = channelCount - DRAWER_SCREEN_ROWS
+        return (focusIndex - half).coerceIn(0, hi)
     }
 
     /**

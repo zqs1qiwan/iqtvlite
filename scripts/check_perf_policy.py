@@ -268,10 +268,15 @@ def main() -> int:
     # t59 ①：上滚基准回退 focus-2（用户确认正确）+ 对称限幅 ±EDGE*4(±8)。
     if "fun drawerScrollDelta(" not in policy or "DRAWER_SCROLL_MAX_STEP = DRAWER_SCROLL_EDGE_ROWS * 4" not in policy:
         problems.append("PerfPolicy.kt: t59 symmetric ±8 scroll delta helper missing")
-    if "return (focusIndex - 2).coerceIn(0, hi)" not in policy:
-        problems.append("PerfPolicy.kt: t59 scroll target must be focus-2 (reverted t56 viewport rule)")
-    if "viewportRows" in policy:
-        problems.append("PerfPolicy.kt: t56 viewport/half scroll rule must be removed (t59)")
+    # t72（TiviMate 基准）：焦点居中 target=focus-visibleRows/2，替换旧 focus-2。
+    if "return (focusIndex - half).coerceIn(0, hi)" not in policy:
+        problems.append("PerfPolicy.kt: t72 scroll target must be focus-centered (focus - half)")
+    if "val half = DRAWER_SCREEN_ROWS / 2" not in policy:
+        problems.append("PerfPolicy.kt: t72 centered focus must use DRAWER_SCREEN_ROWS/2")
+    if "channelCount < DRAWER_SCREEN_ROWS) return 0" not in policy:
+        problems.append("PerfPolicy.kt: t72 small-count safe return missing")
+    if "DRAWER_PROGRAM_AREA_ALPHA" not in policy:
+        problems.append("PerfPolicy.kt: t72 program-area transparent alpha token missing")
     # t69 ④：滚动执行解耦后用 drawerMonotonicStep 从当前实际位置重算（原 drawerScrollDelta 调用已替换）。
     if "PerfPolicy.drawerMonotonicStep(target, first)" not in drawer_code:
         problems.append("PlayerDrawer.kt: t69 must use symmetric drawerMonotonicStep (from current position)")
@@ -376,6 +381,13 @@ def main() -> int:
         problems.append("PlayerDrawer.kt: initialScrollIndex must not key on selectedChannelUrl (t49)")
     if "LaunchedEffect(openAnchor, visible)" not in drawer_code:
         problems.append("PlayerDrawer.kt: focus-init effect must key on openAnchor not selectedChannelUrl (t49)")
+    # t72：节目单区域无分割线（无 divider=1.dp、无 width(1.dp)+onSurface.copy(0.18) 竖线）+ 透明背景。
+    if "val divider = 1.dp" in drawer_code:
+        problems.append("PlayerDrawer.kt: 1dp divider in width calc must be removed (t72)")
+    if re.search(r"width\(1\.dp\)[\s\S]{0,80}onSurface\.copy\(alpha = 0\.18f\)", drawer_code):
+        problems.append("PlayerDrawer.kt: vertical separator Spacer must be removed (t72)")
+    if "PerfPolicy.DRAWER_PROGRAM_AREA_ALPHA" not in drawer_code:
+        problems.append("PlayerDrawer.kt: program-area transparent background (graphicsLayer alpha) missing (t72)")
     # V4 §2: group focus selects group; RIGHT(Groups) collapses + focuses first channel;
     # selectGroup is idempotent with resetFocus; no `if (!showGroups) return` in selectedGroup effect.
     sidebar = (SRC / "SidebarController.kt").read_text(encoding="utf-8")

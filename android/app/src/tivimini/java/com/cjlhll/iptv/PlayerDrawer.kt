@@ -904,12 +904,12 @@ fun PlayerDrawer(
 
     val datesVisible = showDates && epgDates.isNotEmpty()
     val targetDrawerWidth = remember(showGroups, datesVisible) {
-        val groupsSection = if (showGroups) (150.dp + 1.dp) else 0.dp
+        val groupsSection = if (showGroups) 150.dp else 0.dp // t72：去掉分组列右侧 1dp 分割线占位
         val channelsSection = 300.dp
-        val divider = 1.dp
+        // t72：删除 divider=1.dp（TiviMate 无分割线，节目单靠更透明背景区分）。
         // t32 Bug4：节目单列 300→210dp（-30%）。
         val programsSection = PerfPolicy.DRAWER_PROGRAM_COLUMN_DP.dp + 32.dp + (if (datesVisible) (110.dp + 10.dp) else 0.dp)
-        groupsSection + channelsSection + divider + programsSection
+        groupsSection + channelsSection + programsSection
     }
     // No per-frame drawer animation: animating the whole panel width/offset recomposed + re-laid-out
     // the entire sidebar every frame, which both janked and made the video stutter while opening or
@@ -1067,12 +1067,7 @@ fun PlayerDrawer(
                                 }
                             }
 
-                            Spacer(
-                                modifier = Modifier
-                                    .fillMaxHeight()
-                                    .width(1.dp)
-                                    .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.18f))
-                            )
+                            // t72：删除分组列与频道列之间的 1dp 竖线（TiviMate 无分割线）。
                         }
                     }
 
@@ -1128,13 +1123,16 @@ fun PlayerDrawer(
                         }
                     }
 
-                    Spacer(
-                        modifier = Modifier
-                            .fillMaxHeight()
-                            .width(1.dp)
-                            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.18f))
-                    )
-
+                    // t72：删除 1dp 竖线分割；节目单区域用更透明的静态背景与选台区视觉区分，
+                    // 无任何线/边框。透明只作用于背景 layer（graphicsLayer 一次缓存，不逐帧重绘），
+                    // 节目文字保持不透明。
+                    Box(modifier = Modifier.fillMaxHeight()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .graphicsLayer { alpha = PerfPolicy.DRAWER_PROGRAM_AREA_ALPHA }
+                                .background(MaterialTheme.colorScheme.surfaceVariant)
+                        )
                     DrawerColumnPanel(
                         title = "节目单",
                         modifier = Modifier
@@ -1274,6 +1272,7 @@ fun PlayerDrawer(
                             }
                         }
                     }
+                    } // t72: close program-area transparent background Box
                 }
                 }
             }

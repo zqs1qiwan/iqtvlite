@@ -242,12 +242,12 @@ class PerfPolicyTest {
     // ── t15：分帧揭示后校正滚动（冷启首开 / P8b 换台深行） ──────────────────
     @Test
     fun t15ScrollCorrectionIsGatedByRevealedRows() {
-        // t59 ①：恢复 t56 前基准，焦点 idx126 → target=126-2=124。
+        // t72：TiviMate 焦点居中，target=focus-6；焦点 idx126 → 120。
         val target = PerfPolicy.drawerScrollTargetIndex(126, 147)
-        assertEquals(124, target)
+        assertEquals(120, target)
         assertFalse("首帧 3 行不足以校正深行", PerfPolicy.drawerScrollCorrected(3, target))
         assertFalse("补到 100 行仍不够", PerfPolicy.drawerScrollCorrected(100, target))
-        assertTrue("补到 125 行覆盖 target=124", PerfPolicy.drawerScrollCorrected(125, target))
+        assertTrue("补到 121 行覆盖 target=120", PerfPolicy.drawerScrollCorrected(121, target))
         assertTrue("补满 147 行可校正", PerfPolicy.drawerScrollCorrected(147, target))
 
         // 浅行：target=0，首帧 revealed=3 已覆盖（>=1）。
@@ -263,12 +263,12 @@ class PerfPolicyTest {
 
     @Test
     fun t15ScrollTargetUsesSafeFirstVisibleClamp() {
-        // t56 方向对称：target=focus-6，钳到 [0, count-viewport=135]。
+        // t72 焦点居中：target=focus-6，钳到 [0, count-visibleRows=135]；小 count(<12) 安全返回 0。
         assertEquals(0, PerfPolicy.drawerScrollTargetIndex(0, 147))
         assertEquals(0, PerfPolicy.drawerScrollTargetIndex(1, 147))
-        assertEquals(38, PerfPolicy.drawerScrollTargetIndex(40, 147))
+        assertEquals(34, PerfPolicy.drawerScrollTargetIndex(40, 147))
         assertEquals(0, PerfPolicy.drawerScrollTargetIndex(5, 0))
-        assertEquals(145, PerfPolicy.drawerScrollTargetIndex(999, 147))
+        assertEquals(135, PerfPolicy.drawerScrollTargetIndex(999, 147))
         assertEquals(0, PerfPolicy.drawerScrollTargetIndex(5, 1))
         assertEquals(0, PerfPolicy.drawerScrollTargetIndex(999, 2))
     }
@@ -393,18 +393,33 @@ class PerfPolicyTest {
         assertEquals(100, PerfPolicy.drawerRevealTarget(60, 100))
     }
 
-    // ── t59 ①：上滚基准回退（focus-2）+ 双向对称限幅 ±8 ─────────────────────
+    // ── t72：TiviMate 焦点居中（focus - visibleRows/2）+ 双向对称限幅 ±8 ──────
     @Test
-    fun t59ScrollTargetRestoredToFocusMinus2() {
-        // 恢复 t56 前用户确认正确的上滚基准：target = focus-2。
-        assertEquals(124, PerfPolicy.drawerScrollTargetIndex(126, 147))
+    fun t72ScrollTargetFocusCentered() {
+        // 焦点居中：target = focus - DRAWER_SCREEN_ROWS/2 = focus - 6。
+        assertEquals(6, PerfPolicy.DRAWER_SCREEN_ROWS / 2)
+        assertEquals(120, PerfPolicy.drawerScrollTargetIndex(126, 147))
         assertEquals(0, PerfPolicy.drawerScrollTargetIndex(0, 147))
         assertEquals(0, PerfPolicy.drawerScrollTargetIndex(1, 147))
-        assertEquals(38, PerfPolicy.drawerScrollTargetIndex(40, 147))
-        assertEquals(145, PerfPolicy.drawerScrollTargetIndex(999, 147))
+        assertEquals(34, PerfPolicy.drawerScrollTargetIndex(40, 147))
+        // 边缘：越界下限钳到 0、上限钳到 count-visibleRows=135（不越界、不崩）。
+        assertEquals(135, PerfPolicy.drawerScrollTargetIndex(999, 147))
+        assertEquals(0, PerfPolicy.drawerScrollTargetIndex(-5, 147))
         assertEquals(0, PerfPolicy.drawerScrollTargetIndex(5, 0))   // 空组安全
         assertEquals(0, PerfPolicy.drawerScrollTargetIndex(5, 1))   // 小count安全
         assertEquals(0, PerfPolicy.drawerScrollTargetIndex(999, 2)) // 小count安全
+    }
+
+    @Test
+    fun t72FocusStaysCenteredOnStep() {
+        // 焦点下移 1 行 → target 也 +1（列表反向滚 1 行，焦点保持居中）。
+        val t0 = PerfPolicy.drawerScrollTargetIndex(60, 147)
+        val t1 = PerfPolicy.drawerScrollTargetIndex(61, 147)
+        val tDown = PerfPolicy.drawerScrollTargetIndex(59, 147)
+        assertEquals(t0 + 1, t1)
+        assertEquals(t0 - 1, tDown)
+        // 长按多步累积：target 随焦点单调推进，对称。
+        assertEquals(t0 + 10, PerfPolicy.drawerScrollTargetIndex(70, 147))
     }
 
     @Test
