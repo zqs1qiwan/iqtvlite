@@ -135,8 +135,11 @@ object PerfPolicy {
     /** t75：焦点高亮为固定在可视区中心的静态覆盖层（列表在其下滚动，高亮 bounds 不动）。 */
     const val DRAWER_CENTER_HIGHLIGHT = true
 
-    /** t75：选台抽屉无操作自动收回时长（静止 7s，与信息卡一致）。 */
-    const val DRAWER_AUTO_CLOSE_MS = 7_000L
+    /**
+     * t81：抽屉无操作自动收回时长。临时从 7000 放宽到 15000ms，便于真机 t82 在滚动收敛后
+     * 取稳定终态 dump（15s 窗口）；产品最终值后续可调回 7s。
+     */
+    const val DRAWER_AUTO_CLOSE_MS = 15_000L
 
     /**
      * t75：抽屉自动收回判定 —— 抽屉打开且距最后一次交互 ≥阈值才收；有交互/未打开不收。
@@ -265,14 +268,17 @@ object PerfPolicy {
     }
 
     /**
-     * t29（单一真源）：统一滚动校正决策。
+     * t29/t81（单一真源）：统一滚动校正决策。
      *
      * 意图 [desiredFocusIndex] 是"希望处于可视区的焦点行索引"（=-1 无意图），并非首可见行本身；
-     * 真正 scrollToItem 的索引由 [drawerScrollTargetIndex] 派生。给定当前揭示行数与可见窗口，
+     * 真正落点由 [drawerScrollTargetIndex] 派生（t78：target=focus-half，焦点行落在高亮框中心）。
      * 返回唯一动作：
-     * - SCROLL：意图有效 + 揭示已覆盖焦点行 + 焦点行不在可视区 → 执行一次 scrollToItem；
-     * - CLEAR：焦点行已可见（无需滚，历史回归"焦点已可见不滚"）或意图无效 → 清意图不滚；
-     * - WAIT：意图有效但揭示尚未覆盖焦点行 → 等分帧揭示覆盖后再判（不滚、不清）。
+     * - SCROLL：揭示已覆盖 + 焦点尚未真正居中（first != target）→ 继续单调收敛到 target；
+     * - CLEAR：焦点已居中（first == target，即焦点行中心与高亮框中心重合）或意图无效 → 停；
+     * - WAIT：意图有效但揭示尚未覆盖 target → 等分帧揭示后再判。
+     *
+     * t81 根治：旧 CLEAR 用"焦点在可视区[first,last]内"太宽——焦点在边缘（如 first=12/last=22、focus=21）
+     * 虽可见却不在中心高亮框（中心≈17）→ 提前 break，高亮指向别的台。收紧为 first==target 才停。
      */
     enum class ScrollDecision { SCROLL, CLEAR, WAIT }
 
@@ -282,21 +288,15 @@ object PerfPolicy {
         revealedRows: Int,
         firstVisibleIndex: Int,
         lastVisibleIndex: Int,
+        visibleRows: Int = DRAWER_SCREEN_ROWS,
     ): ScrollDecision {
         if (desiredFocusIndex < 0 || desiredFocusIndex >= channelCount) return ScrollDecision.CLEAR
-        if (!drawerScrollCorrected(revealedRows, drawerScrollTargetIndex(desiredFocusIndex, channelCount))) {
-            return ScrollDecision.WAIT
-        }
+        val target = drawerScrollTargetIndex(desiredFocusIndex, channelCount, visibleRows)
+        if (!drawerScrollCorrected(revealedRows, target)) return ScrollDecision.WAIT
         if (firstVisibleIndex < 0 || lastVisibleIndex < firstVisibleIndex) return ScrollDecision.WAIT
-        // t52 §④：接近可视边缘（≤EDGE_ROWS 行）就提前平滑滚，避免焦点贴边才突跳（整页翻）。
-        // 焦点在可视区"舒适中段"（离两端都 >EDGE_ROWS）才 CLEAR（防过冲回滚）。
-        val nearTopEdge = desiredFocusIndex in firstVisibleIndex..(firstVisibleIndex + DRAWER_SCROLL_EDGE_ROWS)
-        val nearBottomEdge = desiredFocusIndex in (lastVisibleIndex - DRAWER_SCROLL_EDGE_ROWS)..lastVisibleIndex
-        return if (nearTopEdge || nearBottomEdge || desiredFocusIndex < firstVisibleIndex || desiredFocusIndex > lastVisibleIndex) {
-            ScrollDecision.SCROLL
-        } else {
-            ScrollDecision.CLEAR
-        }
+        // t81：只有焦点行真正落在中心高亮框位置（first==target）才 CLEAR；
+        // 焦点在可视区但偏离中心（first!=target，含边缘）→ 继续 SCROLL 收敛，差 0 行。
+        return if (firstVisibleIndex == target) ScrollDecision.CLEAR else ScrollDecision.SCROLL
     }
 
     // ── t32 Bug4：节目单列收窄 ~30% + 聚焦跑马灯（有限圈数） ────────────────

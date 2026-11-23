@@ -333,23 +333,58 @@ class PerfPolicyTest {
     }
 
     @Test
-    fun t29FocusAlreadyVisibleClearsWithoutScroll() {
-        // 历史回归「焦点已可见仍多滚一次」：焦点在可视区 → CLEAR（清意图不滚）。
+    fun t81FocusCenteredClearsEdgeKeepsScrolling() {
+        // t81 根治：CLEAR 只在焦点真正居中（first==target）时触发，不再"焦点可见就停"。
+        // focus=105 → target=105-5=100，first=100 → 居中 → CLEAR。
         assertEquals(
             PerfPolicy.ScrollDecision.CLEAR,
+            PerfPolicy.drawerScrollDecision(105, 141, 141, 100, 111),
+        )
+        // 焦点在可视区边缘（focus=104→target=99，first=100≠99）→ 未居中 → 继续 SCROLL 收敛。
+        assertEquals(
+            "焦点可见但偏离中心 → 继续 SCROLL",
+            PerfPolicy.ScrollDecision.SCROLL,
             PerfPolicy.drawerScrollDecision(104, 141, 141, 100, 111),
         )
-        // t52 §④：焦点贴可视边缘（≤2 行）→ SCROLL 提前平滑滚，不再等到贴边才突跳。
+        // t80 真机复现：first=12/last=22、focus=20 → target=15，first≠target → SCROLL（不再提前 break）。
         assertEquals(
-            "边界 first → SCROLL（提前平滑滚）",
+            "边缘差2行 → 继续 SCROLL",
+            PerfPolicy.ScrollDecision.SCROLL,
+            PerfPolicy.drawerScrollDecision(20, 147, 147, 12, 22),
+        )
+        // 边界 first → 焦点贴顶未居中（focus=58→target=53, first=58）→ SCROLL。
+        assertEquals(
+            "边界 first → SCROLL",
             PerfPolicy.ScrollDecision.SCROLL,
             PerfPolicy.drawerScrollDecision(58, 141, 141, 58, 67),
         )
         assertEquals(
-            "边界 last → SCROLL（提前平滑滚）",
+            "边界 last → SCROLL（未居中）",
             PerfPolicy.ScrollDecision.SCROLL,
             PerfPolicy.drawerScrollDecision(67, 141, 141, 58, 67),
         )
+    }
+
+    @Test
+    fun t81ScrollConvergesToCenteredTarget() {
+        // DOWN×10 后 first=12 落后 target=15 → 单调 +8... 逐步逼近直到 first==target 才 CLEAR。
+        val count = 147
+        val v = 12
+        val focus = 20
+        val target = PerfPolicy.drawerScrollTargetIndex(focus, count, v) // 15
+        assertEquals(15, target)
+        var first = 12
+        var steps = 0
+        while (PerfPolicy.drawerScrollDecision(focus, count, count, first, first + v - 1, v) != PerfPolicy.ScrollDecision.CLEAR && steps < 24) {
+            when (PerfPolicy.drawerScrollDecision(focus, count, count, first, first + v - 1, v)) {
+                PerfPolicy.ScrollDecision.SCROLL -> first += PerfPolicy.drawerMonotonicStep(target, first)
+                else -> Unit
+            }
+            steps++
+        }
+        assertEquals("收敛到 first==target", target, first)
+        assertEquals("居中后 CLEAR 停止，不抖动", PerfPolicy.ScrollDecision.CLEAR,
+            PerfPolicy.drawerScrollDecision(focus, count, count, first, first + v - 1, v))
     }
 
     @Test
@@ -444,13 +479,14 @@ class PerfPolicyTest {
     @Test
     fun t75CenterHighlightAndAutoClose() {
         assertTrue("焦点高亮用固定中心覆盖层", PerfPolicy.DRAWER_CENTER_HIGHLIGHT)
-        assertEquals(7000L, PerfPolicy.DRAWER_AUTO_CLOSE_MS)
+        // t81：验收期临时 15s（产品值后续定回 7s）。
+        assertEquals(15_000L, PerfPolicy.DRAWER_AUTO_CLOSE_MS)
         val now = 50_000L
-        // 静止 ≥7s → 收回；抽屉未开不收；有交互（刚刷新时间戳）不收。
-        assertTrue(PerfPolicy.shouldAutoCloseDrawer(true, now - 7_000, now))
-        assertTrue(PerfPolicy.shouldAutoCloseDrawer(true, now - 9_000, now))
+        // 静止 ≥15s → 收回；抽屉未开不收；有交互（刚刷新时间戳）不收。
+        assertTrue(PerfPolicy.shouldAutoCloseDrawer(true, now - 15_000, now))
+        assertTrue(PerfPolicy.shouldAutoCloseDrawer(true, now - 20_000, now))
         assertFalse(PerfPolicy.shouldAutoCloseDrawer(true, now - 3_000, now))
-        assertFalse(PerfPolicy.shouldAutoCloseDrawer(false, now - 20_000, now))
+        assertFalse(PerfPolicy.shouldAutoCloseDrawer(false, now - 30_000, now))
     }
 
     @Test

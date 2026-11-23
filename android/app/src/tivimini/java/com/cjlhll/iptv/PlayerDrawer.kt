@@ -458,7 +458,8 @@ fun PlayerDrawer(
                 val info = channelListState.layoutInfo
                 val first = info.visibleItemsInfo.firstOrNull()?.index ?: -1
                 val last = info.visibleItemsInfo.lastOrNull()?.index ?: -1
-                when (PerfPolicy.drawerScrollDecision(focus, channels.size, revealedRows, first, last)) {
+                val vr = centerVisibleRowsState.value
+                when (PerfPolicy.drawerScrollDecision(focus, channels.size, revealedRows, first, last, vr)) {
                     PerfPolicy.ScrollDecision.CLEAR -> break // 目标已可见（含边缘阈值），停止
                     PerfPolicy.ScrollDecision.WAIT -> kotlinx.coroutines.delay(16) // 揭示未覆盖，等下一帧
                     PerfPolicy.ScrollDecision.SCROLL -> {

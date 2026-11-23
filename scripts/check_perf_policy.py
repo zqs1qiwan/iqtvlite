@@ -323,6 +323,15 @@ def main() -> int:
     # t29（根源重构）：唯一滚动意图真源，删除旧两套机制，唯一校正 effect。
     if "fun drawerScrollDecision(" not in policy or "enum class ScrollDecision" not in policy:
         problems.append("PerfPolicy.kt: drawerScrollDecision / ScrollDecision (single source) missing (t29)")
+    # t81：CLEAR 收紧为 first==target（焦点真正居中），不再"焦点在可视区就停"。
+    if "if (firstVisibleIndex == target) ScrollDecision.CLEAR else ScrollDecision.SCROLL" not in policy:
+        problems.append("PerfPolicy.kt: t81 CLEAR must require first==target (focus centered)")
+    if "val target = drawerScrollTargetIndex(desiredFocusIndex, channelCount, visibleRows)" not in policy:
+        problems.append("PerfPolicy.kt: t81 decision must use visibleRows-aligned target")
+    if "drawerScrollDecision(focus, channels.size, revealedRows, first, last, vr)" not in drawer_code:
+        problems.append("PlayerDrawer.kt: t81 worker must pass visibleRows to decision")
+    if "DRAWER_AUTO_CLOSE_MS = 15_000L" not in policy:
+        problems.append("PerfPolicy.kt: t81 auto-close temporarily 15s for t82 device verification")
     if "var desiredScrollIndex by remember { mutableIntStateOf(-1) }" not in drawer_code:
         problems.append("PlayerDrawer.kt: single source desiredScrollIndex missing (t29)")
     # 旧两套机制必须彻底删除（禁止补丁式叠加）。
