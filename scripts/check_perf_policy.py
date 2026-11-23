@@ -277,6 +277,17 @@ def main() -> int:
         problems.append("PerfPolicy.kt: t72 small-count safe return missing")
     if "DRAWER_PROGRAM_AREA_ALPHA" not in policy:
         problems.append("PerfPolicy.kt: t72 program-area transparent alpha token missing")
+    # t75: fixed center focus highlight overlay + drawer auto-close.
+    if "DRAWER_CENTER_HIGHLIGHT" not in policy or "DRAWER_CENTER_HIGHLIGHT" not in drawer_code:
+        problems.append("t75: fixed center focus highlight overlay missing")
+    if "drawer_center_focus_highlight" not in drawer_code:
+        problems.append("PlayerDrawer.kt: t75 center highlight testTag missing")
+    if "suppressFocusBg" not in drawer_code:
+        problems.append("PlayerDrawer.kt: t75 per-row focus bg must be suppressed (center overlay only)")
+    if "DRAWER_AUTO_CLOSE_MS" not in policy or "shouldAutoCloseDrawer(" not in policy:
+        problems.append("PerfPolicy.kt: t75 drawer auto-close policy missing")
+    if "shouldAutoCloseDrawer(" not in activity_code:
+        problems.append("PlayerActivity.kt: t75 drawer auto-close timer not wired")
     # t69 ④：滚动执行解耦后用 drawerMonotonicStep 从当前实际位置重算（原 drawerScrollDelta 调用已替换）。
     if "PerfPolicy.drawerMonotonicStep(target, first)" not in drawer_code:
         problems.append("PlayerDrawer.kt: t69 must use symmetric drawerMonotonicStep (from current position)")

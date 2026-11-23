@@ -422,6 +422,19 @@ class PerfPolicyTest {
         assertEquals(t0 + 10, PerfPolicy.drawerScrollTargetIndex(70, 147))
     }
 
+    // ── t75：焦点静态覆盖层 + 抽屉无操作自动收回 ─────────────────────────────
+    @Test
+    fun t75CenterHighlightAndAutoClose() {
+        assertTrue("焦点高亮用固定中心覆盖层", PerfPolicy.DRAWER_CENTER_HIGHLIGHT)
+        assertEquals(7000L, PerfPolicy.DRAWER_AUTO_CLOSE_MS)
+        val now = 50_000L
+        // 静止 ≥7s → 收回；抽屉未开不收；有交互（刚刷新时间戳）不收。
+        assertTrue(PerfPolicy.shouldAutoCloseDrawer(true, now - 7_000, now))
+        assertTrue(PerfPolicy.shouldAutoCloseDrawer(true, now - 9_000, now))
+        assertFalse(PerfPolicy.shouldAutoCloseDrawer(true, now - 3_000, now))
+        assertFalse(PerfPolicy.shouldAutoCloseDrawer(false, now - 20_000, now))
+    }
+
     @Test
     fun t59ScrollDeltaSymmetricAround8() {
         // 上滚 -8、下滚 +8 对称；超出都钳到 ±8（不再向下整页翻）。

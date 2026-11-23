@@ -697,6 +697,27 @@ fun VideoPlayerScreen(
     val sidebarState by sidebarController.state.collectAsState()
     val drawerOpen = sidebarState.drawerOpen
     val drawerActiveColumn = sidebarState.activeColumn
+    // t75：抽屉无操作自动收回 —— 单一计时真源：任何焦点/列/开关变化刷新时间戳并重启计时。
+    var drawerLastInteractionMs by remember { mutableLongStateOf(0L) }
+    LaunchedEffect(drawerOpen) {
+        if (drawerOpen) drawerLastInteractionMs = System.currentTimeMillis()
+    }
+    LaunchedEffect(drawerOpen, sidebarState.focusedChannelUrl, drawerActiveColumn, drawerLastInteractionMs) {
+        if (!drawerOpen) return@LaunchedEffect
+        delay(PerfPolicy.DRAWER_AUTO_CLOSE_MS)
+        if (PerfPolicy.shouldAutoCloseDrawer(
+                sidebarController.value.drawerOpen,
+                drawerLastInteractionMs,
+                System.currentTimeMillis(),
+            )
+        ) {
+            sidebarController.closeDrawer()
+        }
+    }
+    // 焦点/列变化视为交互，重置自动收回计时。
+    LaunchedEffect(sidebarState.focusedChannelUrl, drawerActiveColumn) {
+        if (drawerOpen) drawerLastInteractionMs = System.currentTimeMillis()
+    }
     var settingsDrawerOpen by remember { mutableStateOf(false) }
     var qualityDialogOpen by remember { mutableStateOf(false) }
     // t133: recent-channels list + last-channel debounce bookkeeping.

@@ -132,6 +132,17 @@ object PerfPolicy {
     const val DRAWER_SCREEN_ROWS = 12
     /** t72：节目单区域背景透明度（静态 layer alpha，比选台区更透明以视觉区分，无分割线）。 */
     const val DRAWER_PROGRAM_AREA_ALPHA = 0.55f
+    /** t75：焦点高亮为固定在可视区中心的静态覆盖层（列表在其下滚动，高亮 bounds 不动）。 */
+    const val DRAWER_CENTER_HIGHLIGHT = true
+
+    /** t75：选台抽屉无操作自动收回时长（静止 7s，与信息卡一致）。 */
+    const val DRAWER_AUTO_CLOSE_MS = 7_000L
+
+    /**
+     * t75：抽屉自动收回判定 —— 抽屉打开且距最后一次交互 ≥阈值才收；有交互/未打开不收。
+     */
+    fun shouldAutoCloseDrawer(drawerOpen: Boolean, lastInteractionAt: Long, now: Long): Boolean =
+        drawerOpen && (now - lastInteractionAt) >= DRAWER_AUTO_CLOSE_MS
     /** t52 §④：焦点的"接近可视边缘"提前滚动阈值（行数）；t59 提前声明供对称限幅使用。 */
     const val DRAWER_SCROLL_EDGE_ROWS = 2
 

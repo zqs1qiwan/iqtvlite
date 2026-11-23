@@ -1078,11 +1078,25 @@ fun PlayerDrawer(
                             .width(300.dp)
                             .padding(16.dp),
                     ) {
-                        LazyColumn(
-                            // t58：列表单独一层 —— 滚动/揭示只重录这一层。
-                            modifier = Modifier.fillMaxSize().graphicsLayer(),
-                            state = channelListState
-                        ) {
+                        // t75：焦点高亮为**固定在可视区中心的静态覆盖层** —— 高亮 box 的 bounds
+                        // 永不随列表滚动改变（对齐 TiviMate：按 UP/DOWN 焦点框绝对静止，只有列表在动）。
+                        Box(modifier = Modifier.fillMaxSize()) {
+                            if (PerfPolicy.DRAWER_CENTER_HIGHLIGHT && showContent) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(PerfPolicy.DRAWER_ROW_HEIGHT_DP.dp)
+                                        .align(Alignment.Center)
+                                        .graphicsLayer()
+                                        .background(BrandFocus.FocusBgColor)
+                                        .testTag("drawer_center_focus_highlight")
+                                )
+                            }
+                            LazyColumn(
+                                // t58：列表单独一层 —— 滚动/揭示只重录这一层。
+                                modifier = Modifier.fillMaxSize().graphicsLayer(),
+                                state = channelListState
+                            ) {
                             // t36（回退 t33 的 E3）：只把**已揭示的行**交给列表（subList），
                             // 未揭示的行根本不存在 → 每帧只测量已揭示项（t34 的 Draw ×10 由此消除）。
                             // 56dp 固定行高保留；焦点跟随由下面的 LaunchedEffect 保证。
@@ -1098,6 +1112,8 @@ fun PlayerDrawer(
                                     selected = (ch.url == selectedChannelUrl),
                                     // V4 §1：逻辑焦点（不依赖真实 Compose 焦点），行一被组合即高亮。
                                     logicalFocused = (ch.url == focusTargetUrl),
+                                    // t75：中心覆盖层负责高亮时，行自身的焦点底色关闭（避免双重高亮/随列表移动）。
+                                    suppressFocusBg = PerfPolicy.DRAWER_CENTER_HIGHLIGHT,
                                     nowProgram = nowProgramByChannelUrl[ch.url],
                                     focusRequester = if (ch.url == focusTargetUrl) selectedChannelRequester else null,
                                     onFocused = {
@@ -1121,6 +1137,7 @@ fun PlayerDrawer(
                                 )
                             }
                         }
+                        } // t75: close center-highlight overlay Box
                     }
 
                     // t72：删除 1dp 竖线分割；节目单区域用更透明的静态背景与选台区视觉区分，
@@ -1345,6 +1362,8 @@ private fun DrawerChannelItem(
     selected: Boolean,
     // V4 §1：逻辑焦点（ch.url==focusTargetUrl），与本地真实焦点 focused 正交。
     logicalFocused: Boolean = false,
+    // t75：中心覆盖层负责高亮时关闭行底色（高亮框固定在中心、不随列表滚动）。
+    suppressFocusBg: Boolean = false,
     nowProgram: NowProgramUi?,
     focusRequester: FocusRequester?,
     onFocused: () -> Unit,
@@ -1372,6 +1391,7 @@ private fun DrawerChannelItem(
         }
     }
     val bg = when {
+        suppressFocusBg -> Color.Transparent // t75：高亮交给固定中心覆盖层
         showFocused -> BrandFocus.FocusBgColor
         else -> Color.Transparent
     }
