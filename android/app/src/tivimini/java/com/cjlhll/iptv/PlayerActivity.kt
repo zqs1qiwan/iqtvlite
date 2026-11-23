@@ -797,6 +797,16 @@ fun VideoPlayerScreen(
     val epgSourceConfigured = remember(context) { Prefs.getEpgSource(context).isNotBlank() }
     var epgLoadFailed by remember { mutableStateOf(false) }
     var nowMillis by remember { mutableStateOf(System.currentTimeMillis()) }
+    // t40：渲染帧间隔推断的真实 fps（由 StreamPlayback.Metrics 统计；播放中每秒刷新一次）。
+    var inferredFrameRate by remember { mutableStateOf<Float?>(null) }
+    var fpsSource by remember { mutableStateOf(FrameRateEstimator.Source.FALLBACK) }
+    LaunchedEffect(player, firstFrameRendered) {
+        if (!firstFrameRendered) return@LaunchedEffect
+        while (true) {
+            delay(1_000L)
+            inferredFrameRate = StreamPlayback.inferredFrameRate(player)
+        }
+    }
     var nowProgramByUrl by remember { mutableStateOf<Map<String, NowProgramUi>>(emptyMap()) }
     // t62: push EPG into the Activity-level controller so the native sidebar renders it directly.
     LaunchedEffect(epgData) { sidebarController.setEpgData(epgData) }
@@ -2249,6 +2259,14 @@ fun VideoPlayerScreen(
                 }
                 val bannerGroupLabel = bannerGroup?.let { ChannelGrouper.displayGroupName(it) }
 
+                // t40：帧率来源决策 —— 真实 Format.frameRate>0 优先 → 渲染推断 → 25 兜底。
+                val formatFps = videoFormat?.frameRate ?: -1f
+                val fpsResolution = FrameRateEstimator.resolve(formatFps, inferredFrameRate)
+                fpsSource = fpsResolution.source
+                if (android.util.Log.isLoggable(INFO_CARD_TAG, android.util.Log.DEBUG)) {
+                    logInfoCard("fps source=${fpsResolution.source.name.lowercase()} value=${fpsResolution.value}")
+                }
+
                 ChannelInfoBanner(
                     state = infoCardState,
                     seekOverlayVisible = isSeekOverlayVisible,
@@ -2257,6 +2275,8 @@ fun VideoPlayerScreen(
                     programProgress = displayProgress,
                     channelNumber = displayNumber,
                     videoFormat = videoFormat,
+                    // t40：帧率回退用推断值（format>0 时 banner 内 takePositive 自然优先真实值）。
+                    frameRateFallback = fpsResolution.value,
                     audioLabel = AudioTrackUi.summary(audioTracks, audioOverrideGroup, audioOverrideTrack),
                     // FULLFIX §4.2②：声道数取实际播放音轨 Format（不再是 video Format 的 channelCount）。
                     audioChannelCount = AudioTrackUi.selectedChannelCount(

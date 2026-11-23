@@ -299,6 +299,23 @@ def main() -> int:
     if program_color_block and "colorScheme.primary" in program_color_block.group(0):
         problems.append("ChannelInfoBanner.kt: info-card programText must not use primary blue (t38)")
 
+    # 13) t40: real fps inference (render frame interval) replacing pure 25 fallback.
+    est_path = ROOT.joinpath("android/app/src/tivimini/java/com/cjlhll/iptv/FrameRateEstimator.kt")
+    est_text = est_path.read_text(encoding="utf-8") if est_path.exists() else ""
+    for token in ("fun fpsFromIntervals(", "fun resolve(", "enum class Source"):
+        if token not in est_text:
+            problems.append("FrameRateEstimator.kt: t40 fps inference pure helper missing " + token)
+    stream = ROOT.joinpath("android/app/src/tivimini/java/com/cjlhll/iptv/StreamPlayback.kt").read_text(encoding="utf-8")
+    # Media3 1.11.1 has no onVideoFrameRendered; the real per-frame callback is onVideoFrameProcessingOffset.
+    if "onVideoFrameProcessingOffset" not in stream:
+        problems.append("StreamPlayback.kt: must measure real fps via onVideoFrameProcessingOffset (t40)")
+    if "FrameRateEstimator.FrameRateWindow" not in stream:
+        problems.append("StreamPlayback.kt: must use FrameRateEstimator.FrameRateWindow for fps (t40)")
+    if "frameRateFallback = fpsResolution.value" not in activity:
+        problems.append("PlayerActivity.kt: inferred fps must reach banner frameRateFallback (t40)")
+    if "source=${fpsResolution.source.name.lowercase()}" not in activity:
+        problems.append("PlayerActivity.kt: t40 DEBUG fps source log missing")
+
     if problems:
         for p in problems:
             print(f"check_info_card: FAIL {p}")

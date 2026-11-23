@@ -48,6 +48,9 @@ object StreamPlayback {
     }
     private val sessions = java.util.WeakHashMap<ExoPlayer, Metrics>()
 
+    /** t40：当前 player 的渲染帧间隔推断 fps（无数据返回 null）。供信息卡帧率回退使用。 */
+    fun inferredFrameRate(player: ExoPlayer?): Float? = player?.let { sessions[it]?.inferredFrameRate() }
+
     fun restore(context: Context, url: String, title: String): Channel {
         val prefs = context.getSharedPreferences("iptv_stream", Context.MODE_PRIVATE)
         return if (prefs.getString("url", null) == url) Channel(title=title, url=url,
@@ -274,6 +277,23 @@ object StreamPlayback {
         // t231 diagnosis state
         private var loaderBytes = 0L
         private var downstream = "none"
+        // t40：真实帧率推断 state。Media3 1.11.1 无 onVideoFrameRendered；用
+        // onVideoFrameProcessingOffset 的 frameCount 增量 + 时间窗（~1s）算实际渲染 fps。
+        // 只有几个 long 变量，帧回调里无分配、无主线程负担。
+        private val fpsWindow = FrameRateEstimator.FrameRateWindow()
+        @Volatile private var inferredFps: Float? = null
+        fun inferredFrameRate(): Float? = inferredFps
+
+        override fun onVideoFrameProcessingOffset(
+            eventTime: AnalyticsListener.EventTime,
+            totalProcessingOffsetUs: Long,
+            frameCount: Int,
+        ) {
+            // 只在匹配当前 session 时统计；暂停/后台无帧回调，自然不更新。
+            if (!matches(eventTime)) return
+            val nowMs = android.os.SystemClock.elapsedRealtime()
+            fpsWindow.onFrameBatch(nowMs, frameCount)?.let { inferredFps = it }
+        }
 
         fun diagnosticLine(mode: JingcaiExperiment.Mode): String {
             // t20：bytes 取「onLoadCompleted 累计」与「DataSource 实读」的较大者（直播恒无 complete）。
@@ -324,6 +344,8 @@ object StreamPlayback {
                 }
             }
             firstFrame = false
+            // t40：切台清空帧率推断窗口，避免旧流帧率污染新流。
+            fpsWindow.reset(); inferredFps = null
             bufferStart = 0L; bufferingMs = 0L; rebufferCount = 0; droppedFrames = 0
             emit("prepare", "at=$preparedAt")
         }
