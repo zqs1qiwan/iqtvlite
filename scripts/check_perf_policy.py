@@ -272,17 +272,18 @@ def main() -> int:
         problems.append("PerfPolicy.kt: t59 scroll target must be focus-2 (reverted t56 viewport rule)")
     if "viewportRows" in policy:
         problems.append("PerfPolicy.kt: t56 viewport/half scroll rule must be removed (t59)")
-    if "PerfPolicy.drawerScrollDelta(target, first)" not in drawer_code:
-        problems.append("PlayerDrawer.kt: must use symmetric drawerScrollDelta (t59)")
-    # t62：区分"打开首次定位（瞬时 scrollToItem）"与"抽屉内焦点跟随（±8 平滑）"。
+    # t69 ④：滚动执行解耦后用 drawerMonotonicStep 从当前实际位置重算（原 drawerScrollDelta 调用已替换）。
+    if "PerfPolicy.drawerMonotonicStep(target, first)" not in drawer_code:
+        problems.append("PlayerDrawer.kt: t69 must use symmetric drawerMonotonicStep (from current position)")
+    # t62/t69：区分"打开定位/长按（瞬时 scrollToItem）"与"抽屉内焦点跟随（±8 平滑）"。
     if "fun drawerScrollStep(" not in policy:
         problems.append("PerfPolicy.kt: t62 open-vs-follow scroll step policy missing")
     if "desiredScrollInstant" not in drawer_code:
         problems.append("PlayerDrawer.kt: t62 intent-mode flag (desiredScrollInstant) missing")
-    if "if (instant) {" not in drawer_code or "channelListState.scrollToItem(target)" not in drawer_code:
-        problems.append("PlayerDrawer.kt: t62 open-position must use instant scrollToItem")
-    if "desiredScrollInstant = true" not in drawer_code:
-        problems.append("PlayerDrawer.kt: t62 open-init must mark instant positioning")
+    if "intent.instant || intent.longPress" not in drawer_code or "channelListState.scrollToItem(target)" not in drawer_code:
+        problems.append("PlayerDrawer.kt: t69 open/longpress must use instant scrollToItem")
+    if "instant = true" not in drawer_code:
+        problems.append("PlayerDrawer.kt: t62/t69 open-init must mark instant positioning via postScrollIntent")
     if "desiredScrollInstant = false" not in drawer_code:
         problems.append("PlayerDrawer.kt: t62 instant mode must reset after consume/close")
     # t65：每次关→开都置 instant —— close 分支复位 hasInitializedDrawerFocus，下次开重走定位。
@@ -290,6 +291,13 @@ def main() -> int:
         problems.append("PerfPolicy.kt: t65 shouldArmInstantLocate pure policy missing")
     if "hasInitializedDrawerFocus = false" not in drawer_code:
         problems.append("PlayerDrawer.kt: t65 must reset hasInitializedDrawerFocus on close (every-open instant)")
+    # t69 ④⑤: playing-channel-first anchor + long-press/monotonic helpers.
+    if "fun drawerOpenPositionAnchor(" not in policy:
+        problems.append("PerfPolicy.kt: t69 playing-channel-first anchor policy missing")
+    if "PerfPolicy.drawerOpenPositionAnchor(" not in drawer_code:
+        problems.append("PlayerDrawer.kt: t69 open positioning must use drawerOpenPositionAnchor")
+    if "fun drawerMonotonicStep(" not in policy or "fun isRapidFocus(" not in policy:
+        problems.append("PerfPolicy.kt: t69 monotonic step / rapid-focus helpers missing")
     # t29（根源重构）：唯一滚动意图真源，删除旧两套机制，唯一校正 effect。
     if "fun drawerScrollDecision(" not in policy or "enum class ScrollDecision" not in policy:
         problems.append("PerfPolicy.kt: drawerScrollDecision / ScrollDecision (single source) missing (t29)")
@@ -299,8 +307,17 @@ def main() -> int:
     for dead in ("pendingScrollIndex", "revealCorrectedKey", "drawerFocusNeedsRevealCorrection"):
         if dead in drawer_code:
             problems.append("PlayerDrawer.kt: legacy scroll mechanism still present: " + dead + " (t29)")
-    if "LaunchedEffect(visible, desiredScrollIndex, revealedRows, channels.size)" not in drawer_code:
-        problems.append("PlayerDrawer.kt: single correction effect keyed by desiredScrollIndex missing (t29)")
+    # t69 ④：校正 effect 的 key 不再含 desiredScrollIndex/revealedRows（否则高频重入 cancel 动画→零位移）。
+    if "LaunchedEffect(visible, channels.size)" not in drawer_code:
+        problems.append("PlayerDrawer.kt: t69 scroll worker must be keyed only on visible/channels.size")
+    if re.search(r"LaunchedEffect\(visible, desiredScrollIndex, revealedRows, channels\.size\)", drawer_code):
+        problems.append("PlayerDrawer.kt: t69 old high-frequency correction effect key still present")
+    if "scrollIntentFlow.collect" not in drawer_code:
+        problems.append("PlayerDrawer.kt: t69 decoupled scroll intent flow missing")
+    if "drawerMonotonicStep(target, first)" not in drawer_code:
+        problems.append("PlayerDrawer.kt: t69 monotonic re-compute-from-current-position missing")
+    if "PerfPolicy.isRapidFocus(" not in drawer_code:
+        problems.append("PlayerDrawer.kt: t69 long-press cadence detection missing")
     if "PerfPolicy.drawerScrollDecision(" not in drawer_code:
         problems.append("PlayerDrawer.kt: must use drawerScrollDecision (t29)")
     for decision in ("ScrollDecision.WAIT", "ScrollDecision.CLEAR", "ScrollDecision.SCROLL"):

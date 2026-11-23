@@ -36,8 +36,7 @@ class InteractionRootFixTest {
         val withRecent = InfoCardPolicy.infoCardHeightV4(showRecent = true)
         val without = InfoCardPolicy.infoCardHeightV4(showRecent = false)
         assertTrue("紧凑卡片高度 $withRecent 应 ≤140dp", withRecent <= 140)
-        assertTrue(withRecent >= 96) // 至少主行
-        assertEquals(withRecent, without) // 最近条内联，不增高
+        assertTrue("5 个 64dp 大 logo 内联后高于无最近条", withRecent > without)
         assertTrue(InfoCardPolicy.INFO_CARD_COMPACT_HEIGHT_DP <= 140)
     }
 

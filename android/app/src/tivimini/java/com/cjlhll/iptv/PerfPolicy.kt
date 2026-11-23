@@ -172,6 +172,41 @@ object PerfPolicy {
     fun shouldArmInstantLocate(drawerOpened: Boolean): Boolean = drawerOpened
 
     /**
+     * t69 ④：长按/连续滚动判定 —— repeatCount 达到阈值即视为长按，走瞬时 scrollToItem
+     * （长按本就要快速到两端，天然顺滑到底/顶，不受 ±8 平滑动画被取消的问题影响）；
+     * 单点按（repeat=0）走 ±8 逐行平滑。
+     */
+    const val DRAWER_LONG_PRESS_REPEAT = 3
+
+    fun isLongPressScroll(repeatCount: Int): Boolean = repeatCount >= DRAWER_LONG_PRESS_REPEAT
+
+    /** t69 ④：焦点事件间隔 ≤阈值 视为长按连续滚（Compose focus 无 repeatCount，用节奏判定）。 */
+    const val DRAWER_FOCUS_CADENCE_MS = 180L
+
+    fun isRapidFocus(gapMs: Long): Boolean = gapMs in 0..DRAWER_FOCUS_CADENCE_MS
+
+    /**
+     * t69 ⑤：开抽屉定位锚点 —— 用户从播放器按 LEFT 进入时，**当前播放台**为第一优先；
+     * browse 记忆仅作 fallback（播放台 URL 不在当前列表时）。切组内恢复走独立的 openAnchor 路径，
+     * 不再用残留 browse 焦点覆盖播放台。
+     */
+    fun drawerOpenPositionAnchor(playingUrl: String?, browseAnchor: String?, knownUrls: Set<String>): String? {
+        if (!playingUrl.isNullOrBlank() && playingUrl in knownUrls) return playingUrl
+        if (!browseAnchor.isNullOrBlank() && browseAnchor in knownUrls) return browseAnchor
+        return null
+    }
+
+    /**
+     * t69 ④：单调推进步长 —— 每次从"当前实际首可见行"重算到目标的 delta，双向对称限幅；
+     * 只要目标还没进可视区就继续推进（ repeatedly applied → 位移单调累积到目标，不被取消丢失）。
+     */
+    fun drawerMonotonicStep(
+        targetIndex: Int,
+        currentFirstIndex: Int,
+        maxStep: Int = DRAWER_SCROLL_MAX_STEP,
+    ): Int = (targetIndex - currentFirstIndex).coerceIn(-maxStep, maxStep)
+
+    /**
      * t26（V4 残留）：revealed 已满时关→重开，焦点行若不在可见区，需要补一次滚动校正。
      *
      * 条件：焦点索引有效（>=0 且 < count）、揭示行数已覆盖焦点行（否则交给 t15 的门控，避免钳制）、

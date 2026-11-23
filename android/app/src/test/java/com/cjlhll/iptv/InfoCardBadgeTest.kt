@@ -154,7 +154,7 @@ class InfoCardBadgeTest {
     // ── V4 §6：最近观看 4 个 + 分组小字 ────────────────────────────────────
     @Test
     fun v4RecentCountAndGroupLine() {
-        assertEquals("V4：最近观看最多 4 个", 4, InfoCardPolicy.MAX_RECENT)
+        assertEquals("t69 ③：最近观看最多 5 个", 5, InfoCardPolicy.MAX_RECENT)
         assertEquals("央视频道", InfoCardPolicy.groupLine("央视频道"))
         assertEquals("央视频道", InfoCardPolicy.groupLine("  央视频道  "))
         assertEquals("", InfoCardPolicy.groupLine(null))

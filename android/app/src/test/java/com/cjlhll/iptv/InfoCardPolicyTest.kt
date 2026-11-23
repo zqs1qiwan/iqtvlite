@@ -134,7 +134,14 @@ class InfoCardPolicyTest {
         assertEquals(InfoCardPolicy.MAX_RECENT, card.size)
         assertFalse("current channel must not appear", card.contains("ch3"))
         assertEquals("order is preserved (newest first)", "ch1", card.first())
-        assertEquals(4, InfoCardPolicy.MAX_RECENT) // V4：底部最近观看 4 个 logo
+        assertEquals(5, InfoCardPolicy.MAX_RECENT) // t69 ③：底部最近观看 5 个 logo
+    }
+
+    @Test
+    fun t69FiveBigLogosStillUnderHeightCap() {
+        assertTrue("卡片高度 ${InfoCardPolicy.infoCardHeightV4(true)} 应 ≤140dp",
+            InfoCardPolicy.infoCardHeightV4(true) <= 140)
+        assertTrue(InfoCardPolicy.INFO_CARD_COMPACT_HEIGHT_DP <= 140)
     }
 
     @Test

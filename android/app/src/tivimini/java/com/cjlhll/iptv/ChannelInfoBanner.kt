@@ -210,7 +210,7 @@ fun ChannelInfoBanner(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = 40.dp, end = 40.dp, top = 6.dp, bottom = 6.dp) // t52 §⑥：压紧上下留白
+                    .padding(start = 40.dp, end = 40.dp, top = 4.dp, bottom = 4.dp) // t69 ③：上下留白 6→4
             ) {
                 // t32 Bug2：徽标不再单独占一行 —— 用 Box 叠加到主行右上角，消除顶部大空白。
                 Box(modifier = Modifier.fillMaxWidth()) {
@@ -236,13 +236,13 @@ fun ChannelInfoBanner(
                     Column(modifier = Modifier.weight(0.44f)) {
                         Text(
                             text = titleWithNumber,
-                            style = MaterialTheme.typography.headlineLarge.copy(fontSize = 30.sp, lineHeight = 38.sp),
+                            style = MaterialTheme.typography.headlineLarge.copy(fontSize = 28.sp, lineHeight = 32.sp), // t69 ③：收紧行高
                             color = MaterialTheme.colorScheme.onSurface,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.testTag("info_card_title")
                         )
-                        Row(modifier = Modifier.height(16.dp).testTag("info_card_group")) {
+                        Row(modifier = Modifier.height(12.dp).testTag("info_card_group")) { // t69 ③：16→12
                             Text(
                                 text = smallMeta,
                                 style = MaterialTheme.typography.bodySmall,
@@ -324,7 +324,7 @@ fun ChannelInfoBanner(
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween,
-                    modifier = Modifier.height(14.dp).fillMaxWidth()
+                    modifier = Modifier.height(12.dp).fillMaxWidth() // t69 ③：提示行 14→12 上收紧
                 ) {
                     EntryHintLeft()
                     EntryHintRight()
@@ -388,7 +388,7 @@ private fun RecentStrip(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(56.dp) // t59 ④：40→56dp，利用卡片下方留白（仍内联）
+            .height(64.dp) // t69 ③：56→64dp，5 个大 logo
             .clipToBounds()
             .testTag("info_card_recent_row"),
         horizontalArrangement = Arrangement.Start,
@@ -398,7 +398,7 @@ private fun RecentStrip(
             val hasLogo = item.logoUrl?.isNotBlank() == true
             Box(
                 modifier = Modifier
-                    .size(56.dp) // t59 ④：40→56dp
+                    .size(64.dp) // t69 ③：56→64dp
                     .testTag("info_card_recent_$index")
                     .semantics { contentDescription = "最近观看第${index + 1}个 ${item.number}. ${item.title}" }
                     .focusRequester(requesters[index])
@@ -414,8 +414,8 @@ private fun RecentStrip(
                     ChannelLogo(
                         logoUrl = item.logoUrl,
                         fallbackTitle = "",
-                        width = 48.dp, // t59 ④：36→48dp
-                        height = 48.dp
+                        width = 56.dp, // t69 ③：48→56dp
+                        height = 56.dp
                     )
                 } else {
                     Text(

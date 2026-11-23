@@ -67,8 +67,8 @@ def main() -> int:
     habits = HABITS.read_text(encoding="utf-8")
 
     # 1) pure policy
-    if not re.search(r"const val MAX_RECENT = 4\b", policy):
-        problems.append("InfoCardPolicy.kt: MAX_RECENT must be 4 (V4 §6, was 6)")
+    if not re.search(r"const val MAX_RECENT = 5\b", policy):
+        problems.append("InfoCardPolicy.kt: MAX_RECENT must be 5 (t69 ③, 5 big recent logos)")
     if not re.search(r"const val AUTO_HIDE_MS = 7000L", policy):
         problems.append("InfoCardPolicy.kt: AUTO_HIDE_MS must be 7000L (t32 Bug3)")
     for fn in ("fun isVisible(", "fun autoHideMs(", "fun canFocusRecent(", "fun nextFocusIndex(",
@@ -87,8 +87,8 @@ def main() -> int:
         problems.append("ChannelInfoBanner.kt: the channel name must use headlineLarge")
     if "titleLarge" not in banner:
         problems.append("ChannelInfoBanner.kt: the programme title must use titleLarge")
-    if "48.dp" not in banner:
-        problems.append("ChannelInfoBanner.kt: recent cards need a 48dp logo (t59 ④)")
+    if "56.dp" not in banner:
+        problems.append("ChannelInfoBanner.kt: recent cards need a 56dp logo (t69 ③)")
     if "InfoCardPolicy.ENTRY_HINT_LEFT" not in banner or "InfoCardPolicy.ENTRY_HINT_RIGHT" not in banner:
         problems.append("ChannelInfoBanner.kt: entry hints must use left/right constants (t59 ③)")
     if "← 频道列表" not in policy or "→ 设置" not in policy:
@@ -204,9 +204,9 @@ def main() -> int:
         problems.append("ChannelInfoBanner.kt: channel count must NOT come from video Format (FULLFIX §4.2②)")
     if "InfoCardPolicy.takePositive(" not in banner:
         problems.append("ChannelInfoBanner.kt: badge sources must use InfoCardPolicy.takePositive (FULLFIX §4.2②)")
-    # t52 §⑥：布局进一步压紧，容器 top/bottom 收到 6dp。
-    if "top = 6.dp, bottom = 6.dp" not in banner:
-        problems.append("ChannelInfoBanner.kt: container padding must be 6/6dp (t52 §⑥ compact)")
+    # t69 ③：布局进一步压紧，容器 top/bottom 收到 4dp。
+    if "top = 4.dp, bottom = 4.dp" not in banner:
+        problems.append("ChannelInfoBanner.kt: container padding must be 4/4dp (t69 ③ compact)")
     if banner.count("padding(start = 40.dp") > 1:
         problems.append("ChannelInfoBanner.kt: double 40dp horizontal padding still present (FULLFIX §4.2③)")
     if ".clipToBounds()" not in banner:
@@ -222,8 +222,8 @@ def main() -> int:
     # t32 Bug2：徽标改为 compactBadges 全信息一排（不占行），旧 maxWidth 180 布局已移除。
     if "compactBadges(" not in banner:
         problems.append("ChannelInfoBanner.kt: must use compactBadges (t32 Bug2, replaces maxWidth layout)")
-    if ".size(56.dp)" not in banner or "48.dp" not in banner:
-        problems.append("ChannelInfoBanner.kt: recent cards must be 56dp inline logo-only with 48dp logo (t59 ④)")
+    if ".size(64.dp)" not in banner or "56.dp" not in banner:
+        problems.append("ChannelInfoBanner.kt: recent cards must be 64dp inline logo-only with 56dp logo (t69 ③)")
 
     # 9) FULLFIX §5 (U1): highlight = real focus = OK target, one source of truth (focusIndex).
     if "focusTargetIndex(" not in policy or "resolveRecentTarget(" not in policy:
@@ -344,6 +344,12 @@ def main() -> int:
     # t59 ③: split entry hints left/right with tags.
     if "info_card_hint_left" not in banner or "info_card_hint_right" not in banner:
         problems.append("ChannelInfoBanner.kt: split left/right entry hint tags missing (t59 ③)")
+    # t69 ①: BACK unfocus gives a visible cancel feedback (toast), timers untouched.
+    if "已取消选择" not in activity:
+        problems.append("PlayerActivity.kt: t69 ① BACK unfocus visible feedback missing")
+    # t69 ③: 5 big recent logos.
+    if "const val MAX_RECENT = 5" not in policy:
+        problems.append("InfoCardPolicy.kt: t69 ③ MAX_RECENT must be 5")
 
     if problems:
         for p in problems:

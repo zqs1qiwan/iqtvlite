@@ -542,9 +542,13 @@ class PlayerActivity : ComponentActivity() {
                         BackKeyPolicy.Action.CLOSE_DRAWER -> sidebarController.closeDrawer()
                         BackKeyPolicy.Action.SETTINGS_BACK_TO_ROOT -> Unit // 已在 settingsHasSubPage 探测时消费
                         BackKeyPolicy.Action.CLOSE_SETTINGS -> setSettingsDrawerOpen?.invoke(false)
-                        BackKeyPolicy.Action.INFO_CARD_UNFOCUS -> infoCardFocusedAction?.invoke(
-                            InfoCardPolicy.FocusedKeyAction.EXIT_FOCUS
-                        )
+                        BackKeyPolicy.Action.INFO_CARD_UNFOCUS -> {
+                            infoCardFocusedAction?.invoke(
+                                InfoCardPolicy.FocusedKeyAction.EXIT_FOCUS
+                            )
+                            // t69 ①：退聚焦给一瞬可见反馈（不写双按计时器、不影响关卡/退出语义）。
+                            android.widget.Toast.makeText(this, "已取消选择", android.widget.Toast.LENGTH_SHORT).show()
+                        }
                         BackKeyPolicy.Action.INFO_CARD_CLOSE -> setInfoBannerOpen?.invoke(false)
                         BackKeyPolicy.Action.TOAST_RETURN_LIVE -> {
                             lastBackPressTimeCatchup = System.currentTimeMillis()

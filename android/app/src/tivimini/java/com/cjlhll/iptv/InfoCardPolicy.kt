@@ -10,7 +10,7 @@ package com.cjlhll.iptv
 object InfoCardPolicy {
 
     /** V4 §6：卡片底部「最近观看」最多 4 个 logo（v3 是 6）。 */
-    const val MAX_RECENT = 4
+    const val MAX_RECENT = 5
 
     /** t32 Bug3：静默自动隐藏 7s（原 3000ms）；主动按 OK 与换台统一 7 秒，FOCUSED 不隐藏。 */
     const val AUTO_HIDE_MS = 7000L
@@ -329,12 +329,14 @@ object InfoCardPolicy {
         }
     }
 
-    /** t52 §⑥：v4 紧凑卡片高度上界（logo 主行 96 + 上下 padding 6+6 + 入口提示行 14）≈122dp。 */
-    const val INFO_CARD_COMPACT_HEIGHT_DP = 122
+    /**
+     * t69 ③：5 个 64dp 大 logo 内联；主行 = 台名32 + 分组12 + 最近64 = 108，
+     * + 上下 padding 各 4 + 入口提示行 12 = 128dp ≤140。
+     */
+    const val INFO_CARD_COMPACT_HEIGHT_DP = 128
 
-    /** t59 ④：最近条放大后卡片略增（主行 min96 + 上下 padding 6+6 + 角标 14）≈122dp ≤140。 */
     fun infoCardHeightV4(showRecent: Boolean): Int =
-        96 + 6 + 6 + 14
+        32 + 12 + (if (showRecent) 64 else 0) + 4 + 4 + 12
 
     /** 动态范围：colorInfo 缺失或非 HDR → SDR；ST2084(6)→HDR10、HLG(7)→HLG。 */
     fun dynamicRangeLabel(colorTransfer: Int, hasHdrStaticInfo: Boolean): String = when (colorTransfer) {

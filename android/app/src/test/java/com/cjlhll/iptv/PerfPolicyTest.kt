@@ -2,6 +2,7 @@ package com.cjlhll.iptv
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -446,5 +447,33 @@ class PerfPolicyTest {
         // 不置位时抽屉内滚动仍严格 ±8 对称。
         assertEquals(8, PerfPolicy.drawerScrollStep(openPositioning = false, rawDelta = 100))
         assertEquals(-8, PerfPolicy.drawerScrollStep(openPositioning = false, rawDelta = -100))
+    }
+
+    // ── t69 ④/⑤：长按滚动解耦 + 播放台优先锚点 ──────────────────────────────
+    @Test
+    fun t69LongPressCadenceAndMonotonicScroll() {
+        // 长按节奏判定：单键慢按 gap>阈值 → smooth；连续快速 gap≤阈值 → longPress 瞬时 jump。
+        assertFalse(PerfPolicy.isRapidFocus(500))
+        assertTrue(PerfPolicy.isRapidFocus(30))
+        assertTrue(PerfPolicy.isRapidFocus(0))
+        assertFalse(PerfPolicy.isRapidFocus(-1)) // 无效 gap
+        assertTrue(PerfPolicy.isLongPressScroll(PerfPolicy.DRAWER_LONG_PRESS_REPEAT))
+        // 单调推进：从"当前实际 first"重算，repeat 应用后位移单调累积到目标（±8 对称）。
+        assertEquals(8, PerfPolicy.drawerMonotonicStep(targetIndex = 60, currentFirstIndex = 10))
+        assertEquals(-8, PerfPolicy.drawerMonotonicStep(targetIndex = 20, currentFirstIndex = 60)) // 上滚对称
+        assertEquals(4, PerfPolicy.drawerMonotonicStep(targetIndex = 14, currentFirstIndex = 10))
+        assertEquals(0, PerfPolicy.drawerMonotonicStep(targetIndex = 10, currentFirstIndex = 10))
+    }
+
+    @Test
+    fun t69OpenAnchorPlayingChannelFirst() {
+        val known = setOf("c16", "c15", "browse63")
+        // 播放台有效 → 第一优先（不再被 browse 残留覆盖）。
+        assertEquals("c16", PerfPolicy.drawerOpenPositionAnchor("c16", "browse63", known))
+        // 播放台无效/空 → browse 记忆 fallback。
+        assertEquals("browse63", PerfPolicy.drawerOpenPositionAnchor(null, "browse63", known))
+        assertEquals("browse63", PerfPolicy.drawerOpenPositionAnchor("gone", "browse63", known))
+        // 两者都无效 → null（调用方取第一台）。
+        assertNull(PerfPolicy.drawerOpenPositionAnchor("gone", "gone", known))
     }
 }
