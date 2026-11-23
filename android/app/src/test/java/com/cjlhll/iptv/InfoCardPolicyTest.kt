@@ -17,7 +17,8 @@ class InfoCardPolicyTest {
         // t32 Bug3：主动 OK 与换台统一 7s 自动消失；聚焦不隐藏。
         assertEquals(7000L, InfoCardPolicy.AUTO_HIDE_MS)
         assertEquals(7000L, InfoCardPolicy.autoHideMs(InfoCardPolicy.State.IDLE))
-        assertNull("聚焦时不得自动隐藏", InfoCardPolicy.autoHideMs(InfoCardPolicy.State.FOCUSED))
+        // t52 §⑦：FOCUSED 也 7s 静止自动收起（不再 null 常驻）
+        assertEquals(7000L, InfoCardPolicy.autoHideMs(InfoCardPolicy.State.FOCUSED))
         assertNull(InfoCardPolicy.autoHideMs(InfoCardPolicy.State.HIDDEN))
     }
 

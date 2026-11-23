@@ -145,8 +145,8 @@ class PerfPolicyTest {
         assertEquals(0, PerfPolicy.nextRevealedRows(0, 0))
         assertEquals(2, PerfPolicy.nextRevealedRows(0, 2))
         assertEquals(2, PerfPolicy.nextRevealedRows(1, 2))
-        // t39：焦点前跳用的 lookahead 一次多揭示若干行（保证连续 DOWN 不撞末尾）
-        assertEquals(16, PerfPolicy.DRAWER_LOOKAHEAD_ROWS)
+        // t52 §④：lookahead 收进一屏内（16→8，8×64=512dp < 672dp），滚动节奏均匀
+        assertEquals(8, PerfPolicy.DRAWER_LOOKAHEAD_ROWS)
         assertEquals(12, PerfPolicy.DRAWER_SCREEN_ROWS)
         assertEquals("t58：首屏窗口 28（回 vc10187）", 28, PerfPolicy.DRAWER_OPEN_WINDOW_ROWS)
     }
@@ -339,14 +339,15 @@ class PerfPolicyTest {
             PerfPolicy.ScrollDecision.CLEAR,
             PerfPolicy.drawerScrollDecision(104, 141, 141, 100, 111),
         )
+        // t52 §④：焦点贴可视边缘（≤2 行）→ SCROLL 提前平滑滚，不再等到贴边才突跳。
         assertEquals(
-            "边界 first → CLEAR",
-            PerfPolicy.ScrollDecision.CLEAR,
+            "边界 first → SCROLL（提前平滑滚）",
+            PerfPolicy.ScrollDecision.SCROLL,
             PerfPolicy.drawerScrollDecision(58, 141, 141, 58, 67),
         )
         assertEquals(
-            "边界 last → CLEAR",
-            PerfPolicy.ScrollDecision.CLEAR,
+            "边界 last → SCROLL（提前平滑滚）",
+            PerfPolicy.ScrollDecision.SCROLL,
             PerfPolicy.drawerScrollDecision(67, 141, 141, 58, 67),
         )
     }

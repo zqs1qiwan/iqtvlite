@@ -54,6 +54,8 @@ object RemoteBindings {
     const val KEY_DPAD_CENTER = 23
     const val KEY_BACK = 4
     const val KEY_MENU = 82
+    /** t52 §⑧：设备可用"彩键"设置入口（MENU 在部分 TV launcher 被拦截）。 */
+    const val KEY_BUTTON_1 = 187
     const val KEY_ENTER = 66
     const val KEY_NUMPAD_ENTER = 160
     const val KEY_CHANNEL_UP = 166
@@ -82,7 +84,8 @@ object RemoteBindings {
         KeyBinding(RemoteAction.CHANNEL_UP, setOf(KEY_DPAD_UP, KEY_CHANNEL_UP, KEY_PAGE_UP)),
         KeyBinding(RemoteAction.CHANNEL_DOWN, setOf(KEY_DPAD_DOWN, KEY_CHANNEL_DOWN, KEY_PAGE_DOWN)),
         KeyBinding(RemoteAction.OPEN_DRAWER, setOf(KEY_DPAD_LEFT)),
-        KeyBinding(RemoteAction.OPEN_SETTINGS, setOf(KEY_DPAD_RIGHT, KEY_MENU)),
+        // t52 §⑧：OPEN_SETTINGS 增加设备可用彩键（MENU 在部分 TV launcher 被拦截）作为可靠入口。
+        KeyBinding(RemoteAction.OPEN_SETTINGS, setOf(KEY_DPAD_RIGHT, KEY_MENU, KEY_BUTTON_1)),
         KeyBinding(RemoteAction.SHOW_INFO, setOf(KEY_DPAD_CENTER, KEY_ENTER, KEY_NUMPAD_ENTER)),
         KeyBinding(RemoteAction.RECENT_CHANNELS, setOf(KEY_LAST_CHANNEL)),
         KeyBinding(RemoteAction.RETURN_LIVE, longPressKeycodes = setOf(KEY_BACK)),
@@ -257,7 +260,9 @@ object RemoteBindings {
     ): RemoteAction? {
         if (resolved != RemoteAction.OPEN_SETTINGS) return resolved
         if (rightCustomBound) return resolved
-        if (inGroupColumn || selectedGroup == allGroupName) return RemoteAction.OPEN_DRAWER
+        // t52 §⑧：RIGHT 特例收窄为"仅分组列内"——播放器 PLAYER_ONLY 的 RIGHT 恢复 OPEN_SETTINGS，
+        // "全部频道按→进列表"由分组列内 → 承担。selectedGroup 不再制造死锁（保留参数兼容）。
+        if (inGroupColumn) return RemoteAction.OPEN_DRAWER
         return resolved
     }
 

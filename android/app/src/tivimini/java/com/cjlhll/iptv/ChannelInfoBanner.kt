@@ -210,7 +210,7 @@ fun ChannelInfoBanner(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = 40.dp, end = 40.dp, top = 10.dp, bottom = 16.dp)
+                    .padding(start = 40.dp, end = 40.dp, top = 6.dp, bottom = 6.dp) // t52 §⑥：压紧上下留白
             ) {
                 // t32 Bug2：徽标不再单独占一行 —— 用 Box 叠加到主行右上角，消除顶部大空白。
                 Box(modifier = Modifier.fillMaxWidth()) {
@@ -250,6 +250,17 @@ fun ChannelInfoBanner(
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                                 modifier = Modifier.testTag("info_card_number")
+                            )
+                        }
+                        // t52 §⑥：最近观看 4 logo 内联进主行下半区，与主行共享 96dp，不单独占行。
+                        if (showRecent) {
+                            RecentStrip(
+                                items = recentCards,
+                                requesters = requesters,
+                                onCardFocusChanged = { index, isFocused ->
+                                    if (isFocused) stripFocusIndex = index
+                                    else if (stripFocusIndex == index) stripFocusIndex = -1
+                                },
                             )
                         }
                     }
@@ -308,46 +319,21 @@ fun ChannelInfoBanner(
                 }
                 } // Box
 
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // ── 底部：最近观看快跳（≤6；空/回看/快进中整条不渲染） ──────────────
-                if (showRecent) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            // FULLFIX §4.2③：去掉内层 40dp 左右 padding（父 Column 已有），只留 bottom 间距。
-                            .padding(bottom = 6.dp)
-                    ) {
+                // t52 §⑥：入口提示压成一行极薄角标（最近条已内联进主行），不再占独立区域。
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.height(14.dp).fillMaxWidth()
+                ) {
+                    if (showRecent) {
                         Text(
-                            text = "最近观看",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.60f),
+                            text = "最近",
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
                             modifier = Modifier.testTag("info_card_recent_label")
                         )
-                        Spacer(modifier = Modifier.weight(1f))
-                        EntryHint()
                     }
-                    RecentStrip(
-                        items = recentCards,
-                        requesters = requesters,
-                        onCardFocusChanged = { index, isFocused ->
-                            if (isFocused) stripFocusIndex = index
-                            else if (stripFocusIndex == index) stripFocusIndex = -1
-                        },
-                    )
-                    Spacer(modifier = Modifier.height(24.dp))
-                } else {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            // FULLFIX §4.2③：无最近条时同样去掉内层左右 40dp。
-                            .padding(bottom = 16.dp)
-                    ) {
-                        Spacer(modifier = Modifier.weight(1f))
-                        EntryHint()
-                    }
+                    Spacer(modifier = Modifier.weight(1f))
+                    EntryHint()
                 }
             }
         }
@@ -396,7 +382,7 @@ private fun RecentStrip(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(56.dp)
+            .height(40.dp) // t52 §⑥：56→40dp，4 logo 内联更紧凑
             .clipToBounds()
             .testTag("info_card_recent_row"),
         horizontalArrangement = Arrangement.Start,
@@ -406,7 +392,7 @@ private fun RecentStrip(
             val hasLogo = item.logoUrl?.isNotBlank() == true
             Box(
                 modifier = Modifier
-                    .size(56.dp)
+                    .size(40.dp) // t52 §⑥：56→40dp
                     .testTag("info_card_recent_$index")
                     .semantics { contentDescription = "最近观看第${index + 1}个 ${item.number}. ${item.title}" }
                     .focusRequester(requesters[index])
@@ -422,8 +408,8 @@ private fun RecentStrip(
                     ChannelLogo(
                         logoUrl = item.logoUrl,
                         fallbackTitle = "",
-                        width = 48.dp,
-                        height = 48.dp
+                        width = 36.dp, // t52 §⑥：48→36dp
+                        height = 36.dp
                     )
                 } else {
                     Text(

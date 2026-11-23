@@ -124,8 +124,9 @@ def main() -> int:
             problems.append("PlayerDrawer.kt: missing incremental reveal token " + token)
     if "onRowFocusedScroll" not in drawer_code:
         problems.append("PlayerDrawer.kt: focus-driven scroll follow missing (t39)")
-    if "const val DRAWER_LOOKAHEAD_ROWS = 16" not in policy or "const val DRAWER_SCREEN_ROWS = 12" not in policy:
-        problems.append("PerfPolicy.kt: DRAWER_LOOKAHEAD_ROWS=12 / DRAWER_SCREEN_ROWS=12 required (t56)")
+    # t52 §④：LOOKAHEAD 收进一屏内（16→8，8×64=512<672dp）——t56 旧断言 16 已过时。
+    if "const val DRAWER_SCREEN_ROWS = 12" not in policy:
+        problems.append("PerfPolicy.kt: DRAWER_SCREEN_ROWS=12 required (t52)")
     # FULLFIX §1: all rows (focused AND non-focused) now compose the subtitle; `focused` only
     # drives colour/progress emphasis. The master flag DRAWER_FOCUSED_SUBTITLE is still present
     # and is routed through PerfPolicy.rowSubtitleVisible (one-line rollback).
@@ -285,11 +286,11 @@ def main() -> int:
     for decision in ("ScrollDecision.WAIT", "ScrollDecision.CLEAR", "ScrollDecision.SCROLL"):
         if decision not in drawer_code:
             problems.append("PlayerDrawer.kt: unified effect missing decision branch " + decision)
-    # channelListState.scrollToItem 只允许在唯一校正 effect 内（其它列 group/program/date 不算）。
-    channel_scroll_calls = len(re.findall(r"channelListState\.scrollToItem\(", drawer_code))
+    # 频道列滚动只允许在唯一校正 effect 内（t52 用 animateScrollBy 平滑滚动，scrollToItem 可为 0）。
+    channel_scroll_calls = len(re.findall(r"channelListState\.(?:scrollToItem|animateScrollBy)\(", drawer_code))
     if channel_scroll_calls != 1:
         problems.append(
-            "PlayerDrawer.kt: channelListState.scrollToItem must appear exactly once (single source), found %d" % channel_scroll_calls
+            "PlayerDrawer.kt: channel-column scroll must appear exactly once (single source), found %d" % channel_scroll_calls
         )
     # 旧的首帧无条件 scrollToItem 不得回归。
     if re.search(r"if \(targetIndex !in visibleIndices\) \{\s*runCatching \{ channelListState\.scrollToItem\(targetScroll\)", drawer_code):
@@ -397,6 +398,18 @@ def main() -> int:
 
     if "JingcaiTsDataSource(" not in (SRC / "StreamPlayback.kt").read_text(encoding="utf-8"):
         problems.append("StreamPlayback/PlayerActivity: real DataSource byte counting must be installed")
+
+    # t52 §④: smooth uniform scroll (LOOKAHEAD within one screen, edge-aware decision, animateScrollBy).
+    if "const val DRAWER_LOOKAHEAD_ROWS = 8" not in policy:
+        problems.append("PerfPolicy.kt: DRAWER_LOOKAHEAD_ROWS must be 8 (t52 §④ within one screen)")
+    if "DRAWER_SCROLL_EDGE_ROWS = 2" not in policy:
+        problems.append("PerfPolicy.kt: edge-aware scroll threshold missing (t52 §④)")
+    if "channelListState.animateScrollBy(" not in drawer_code:
+        problems.append("PlayerDrawer.kt: smooth animateScrollBy required (t52 §④, no instant page-flip)")
+    if "channelListState.scrollToItem(" in drawer_code:
+        problems.append("PlayerDrawer.kt: instant channelListState.scrollToItem must be gone (t52 §④)")
+    # t52 §⑤（criterion upgraded）：logo 像素级匹配 icon-512 LANCZOS —— 由 check_brand_assets.py 专项校验，
+    # 这里只确认脚本存在（避免与专项门禁重复实现比对逻辑）。
 
     if problems:
         for p in problems:

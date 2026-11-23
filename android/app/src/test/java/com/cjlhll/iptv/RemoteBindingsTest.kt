@@ -192,11 +192,12 @@ class RemoteBindingsTest {
         assertNull(RemoteBindings.resolveWith(bound, f1, false, UiContext.MENU_OPEN))
     }
 
-    // ── V4 §3（A 方案）：RIGHT 默认 + 全部频道 → 进列表；自定义绑定尊重用户 ──
+    // ── t52 §⑧：RIGHT 特例收窄为"仅分组列"——播放器默认 RIGHT 开设置，不再死锁 ──
     @Test
-    fun rightKeyAPlanAllGroupOpensDrawerOnlyForDefaultBinding() {
+    fun rightKeyOpensSettingsInPlayerOnlyDrawerInGroupColumn() {
         assertEquals(
-            RemoteAction.OPEN_DRAWER,
+            "播放器非分组列（含全部）→ OPEN_SETTINGS（可呼出设置）",
+            RemoteAction.OPEN_SETTINGS,
             RemoteBindings.resolveRight(RemoteAction.OPEN_SETTINGS, "全部", false, false),
         )
         assertEquals(
@@ -204,10 +205,12 @@ class RemoteBindingsTest {
             RemoteBindings.resolveRight(RemoteAction.OPEN_SETTINGS, "央视频道", false, false),
         )
         assertEquals(
+            "分组列内 → 进频道列表（V4 功能保留）",
             RemoteAction.OPEN_DRAWER,
             RemoteBindings.resolveRight(RemoteAction.OPEN_SETTINGS, "央视频道", true, false),
         )
         assertEquals(
+            "用户显式绑定 → 尊重",
             RemoteAction.OPEN_SETTINGS,
             RemoteBindings.resolveRight(RemoteAction.OPEN_SETTINGS, "全部", false, true),
         )

@@ -55,10 +55,28 @@ object InfoCardPolicy {
     fun isVisible(state: State, seekOverlayVisible: Boolean): Boolean =
         state != State.HIDDEN || seekOverlayVisible
 
-    /** 自动隐藏毫秒；null = 不自动隐藏（FOCUSED，以及 HIDDEN 时无需计时）。 */
+    /** t52 §⑦：FOCUSED 也 7s 静止自动收起；HIDDEN 无需计时。 */
+    const val FOCUSED_IDLE_HIDE_MS = 7_000L
+
+    /** 自动隐藏毫秒：IDLE/FOCUSED 都是 7000ms（FOCUSED 仅静止时 arm），HIDDEN=null。 */
     fun autoHideMs(state: State): Long? = when (state) {
         State.IDLE -> AUTO_HIDE_MS
-        State.FOCUSED, State.HIDDEN -> null
+        State.FOCUSED -> FOCUSED_IDLE_HIDE_MS
+        State.HIDDEN -> null
+    }
+
+    /**
+     * t52 §⑦：是否 arm 自动隐藏计时。距最后一次交互 ≥7s 且无进行中的焦点操作时才 arm。
+     * 正在操作（move/switch/按键）刷新 lastInteractionAt → 不 arm，避免操作中途卡片消失。
+     */
+    fun shouldArmAutoHide(
+        state: State,
+        lastInteractionAt: Long,
+        now: Long,
+        interactionInFlight: Boolean = false,
+    ): Boolean {
+        if (state == State.HIDDEN || interactionInFlight) return false
+        return now - lastInteractionAt >= FOCUSED_IDLE_HIDE_MS
     }
 
     /**
@@ -310,6 +328,13 @@ object InfoCardPolicy {
             else -> null
         }
     }
+
+    /** t52 §⑥：v4 紧凑卡片高度上界（logo 主行 96 + 上下 padding 6+6 + 入口提示行 14）≈122dp。 */
+    const val INFO_CARD_COMPACT_HEIGHT_DP = 122
+
+    /** t52 §⑥：卡片高度纯函数（最近 4 logo 已内联进主行，不额外增高），供门禁/测试断言 ≤140。 */
+    fun infoCardHeightV4(showRecent: Boolean): Int =
+        96 + 6 + 6 + 14 // 主行 + 上下 padding + 极薄入口提示行（recent 内联不增高）
 
     /** 动态范围：colorInfo 缺失或非 HDR → SDR；ST2084(6)→HDR10、HLG(7)→HLG。 */
     fun dynamicRangeLabel(colorTransfer: Int, hasHdrStaticInfo: Boolean): String = when (colorTransfer) {

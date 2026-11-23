@@ -180,11 +180,14 @@ object PerfPolicy {
             return ScrollDecision.WAIT
         }
         if (firstVisibleIndex < 0 || lastVisibleIndex < firstVisibleIndex) return ScrollDecision.WAIT
-        // 焦点的"目标首可见行"已落在可视窗口 → 视为已就位、清意图不滚（防过冲回滚）。
-        return if (desiredFocusIndex in firstVisibleIndex..lastVisibleIndex) {
-            ScrollDecision.CLEAR
-        } else {
+        // t52 §④：接近可视边缘（≤EDGE_ROWS 行）就提前平滑滚，避免焦点贴边才突跳（整页翻）。
+        // 焦点在可视区"舒适中段"（离两端都 >EDGE_ROWS）才 CLEAR（防过冲回滚）。
+        val nearTopEdge = desiredFocusIndex in firstVisibleIndex..(firstVisibleIndex + DRAWER_SCROLL_EDGE_ROWS)
+        val nearBottomEdge = desiredFocusIndex in (lastVisibleIndex - DRAWER_SCROLL_EDGE_ROWS)..lastVisibleIndex
+        return if (nearTopEdge || nearBottomEdge || desiredFocusIndex < firstVisibleIndex || desiredFocusIndex > lastVisibleIndex) {
             ScrollDecision.SCROLL
+        } else {
+            ScrollDecision.CLEAR
         }
     }
 
@@ -240,7 +243,13 @@ object PerfPolicy {
      * t39（滚动跟随）：焦点走到底部时一次多揭示几行，保证连续 DOWN 不会“撞到列表末尾”。
      * （之前只按 +2/帧补行，快速连按时目标行还没长出来 → 焦点停在原地。）
      */
-    const val DRAWER_LOOKAHEAD_ROWS = 16
+    /**
+     * t52 §④：滚动前瞻收进一屏内 —— 8 行 × 64dp = 512dp < 一屏 ~672dp。
+     * 旧值 16（1024dp > 一屏）导致"先停住再猛翻一屏"的节奏不均。
+     */
+    const val DRAWER_LOOKAHEAD_ROWS = 8
+    /** t52 §④：焦点的"接近可视边缘"提前滚动阈值（行数）。 */
+    const val DRAWER_SCROLL_EDGE_ROWS = 2
 
     /** t39：一屏大约行数（56dp 行 × 12 ≈ 672dp 可视高度）。 */
     const val DRAWER_SCREEN_ROWS = 12

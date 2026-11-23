@@ -403,23 +403,25 @@ class PlayerActivity : ComponentActivity() {
                 KeyEvent.KEYCODE_NUMPAD_ENTER, KeyEvent.KEYCODE_BACK -> true
                 else -> false
             }
-            // t35（根源修复）：FOCUSED 态的所有信息卡按键必须**确定性闭环**，绝不穿透到下方 when。
-            // 旧实现 super 返回 false 时清焦点后继续 when → RIGHT 命中 OPEN_SETTINGS → 覆盖层
-            // 把卡片 hide reason=overlay 隐藏（用户实测"一按右键卡片就没了"）。
-            // 新契约：先交 Compose（焦点就绪时它自己处理并 return true）；若未消费，则无论焦点节点
-            // 是否就绪，都用 composable 注册的确定性控制器执行卡片语义动作，并**总是 return true**。
+            // t35 + t52 §⑧：FOCUSED 态按键闭环 —— 方向键/OK/BACK 由信息卡确定性消费（防穿透），
+            // 但"已绑定到 OPEN_SETTINGS 的非方向键（彩键/MENU）"放行给全局路由，让 FOCUSED 也能呼出设置。
             if (isInfoCardFocused && infoCardKey) {
-                if (super.dispatchKeyEvent(event)) return true
-                // Compose 未消费：用确定性语义通道闭环（onMoveFocus/onSwitchRecent/onExitFocus 的等价物）。
-                val isCenter = event.keyCode == KeyEvent.KEYCODE_DPAD_CENTER ||
-                    event.keyCode == KeyEvent.KEYCODE_ENTER ||
-                    event.keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER
-                val action = InfoCardPolicy.focusedKeyAction(event.keyCode, isCenter)
-                if (action != InfoCardPolicy.FocusedKeyAction.NONE) {
-                    infoCardFocusedAction?.invoke(action)
+                val resolvedForFocus = resolvePlayerAction(event)
+                if (FocusedKeyPolicy.passthrough(event.keyCode, resolvedForFocus)) {
+                    // 放行：继续下面 when / 通用 fallback（彩键→OPEN_SETTINGS→开设置）
+                } else {
+                    if (super.dispatchKeyEvent(event)) return true
+                    // Compose 未消费：用确定性语义通道闭环（onMoveFocus/onSwitchRecent/onExitFocus 的等价物）。
+                    val isCenter = event.keyCode == KeyEvent.KEYCODE_DPAD_CENTER ||
+                        event.keyCode == KeyEvent.KEYCODE_ENTER ||
+                        event.keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER
+                    val action = InfoCardPolicy.focusedKeyAction(event.keyCode, isCenter)
+                    if (action != InfoCardPolicy.FocusedKeyAction.NONE) {
+                        infoCardFocusedAction?.invoke(action)
+                    }
+                    // 方向键/OK/BACK 无论控制器是否存在都消费：绝不继续 when（防穿透）。
+                    return true
                 }
-                // 无论控制器是否存在都消费：绝不继续 when（杜绝 OPEN_SETTINGS/换台/OSD 穿透）。
-                return true
             }
             when (event.keyCode) {
                 // t133: last channel — only while no overlay is open; repeats are debounced inside.
@@ -596,10 +598,14 @@ class PlayerActivity : ComponentActivity() {
             // 守卫：捕获态（handleCapture，最前）、数字 OSD、信息卡 FOCUSED（均已在上方处理）、
             // 遮罩打开（overlayOpen）一律不走 fallback；resolvePlayerAction 内部按 CATCHUP/PLAYER_ONLY
             // 上下文解析。固定键由上面的分支处理并 return，不会走到这里（避免双触发）。
+            // t52 §⑧：FOCUSED 态也放行"绑定 OPEN_SETTINGS 的非方向键"（彩键/MENU），
+            // 其余键仍被信息卡闭环拦住；非 FOCUSED 保持原样。
+            val focusedAllowsFallback = !isInfoCardFocused ||
+                FocusedKeyPolicy.passthrough(event.keyCode, resolvePlayerAction(event))
             if (!isFixedRoutedKey(event.keyCode) &&
                 !isDrawerOpen && !isSettingsDrawerOpen && !isQualityDialogOpen &&
                 !isRecentChannelsOpen && !isAudioDialogOpen &&
-                !isInfoCardFocused && digits.isEmpty()
+                focusedAllowsFallback && digits.isEmpty()
             ) {
                 when (resolvePlayerAction(event)) {
                     RemoteAction.CHANNEL_UP -> if (onChannelStep?.invoke(-1) == true) return true
@@ -750,6 +756,12 @@ fun VideoPlayerScreen(
     var infoCardState by remember { mutableStateOf(InfoCardPolicy.State.HIDDEN) }
     var infoCardFocusIndex by remember { mutableIntStateOf(0) }
     var infoCardTimerTick by remember { mutableIntStateOf(0) }
+    // t52 §⑦：信息卡最后一次交互时间戳（单一真源）；move/switch/OK/BACK 统一刷新，静止 7s 才收。
+    var infoCardLastInteractionMs by remember { mutableLongStateOf(0L) }
+    fun noteInfoCardInteraction() {
+        infoCardLastInteractionMs = System.currentTimeMillis()
+        infoCardTimerTick++
+    }
     // t32 Bug1：信息卡 OK 行为模式（设置项，DIRECT 默认；改动立即生效）。
     var infoOkMode by remember { mutableStateOf(Prefs.getInfoOkMode(context)) }
 
@@ -764,6 +776,7 @@ fun VideoPlayerScreen(
         infoCardState = InfoCardPolicy.State.IDLE
         infoCardFocusIndex = 0
         infoCardTimerTick++
+        infoCardLastInteractionMs = System.currentTimeMillis() // 换台出卡开始 7s 计时
         logInfoCard("show state=IDLE recent=${recentEntries.size}")
     }
 
@@ -1086,14 +1099,27 @@ fun VideoPlayerScreen(
         onInfoBannerOpenChanged(infoCardState != InfoCardPolicy.State.HIDDEN)
     }
 
-    // 自动隐藏：IDLE 3000ms；FOCUSED 不隐藏（autoHideMs = null）；换台/计时重开都会重启本 effect。
-    LaunchedEffect(infoCardState, infoCardTimerTick, currentGroupIndex, currentVariantIndex) {
-        val hideMs = InfoCardPolicy.autoHideMs(infoCardState) ?: return@LaunchedEffect
+    // 自动隐藏：IDLE 与 FOCUSED 都 7s；FOCUSED 仅在用户静止（距最后交互≥7s）时收起（t52 §⑦）。
+    // 交互（move/switch/OK/BACK）刷新 infoCardLastInteractionMs → 重启本 effect，操作中途不消失。
+    LaunchedEffect(infoCardState, infoCardLastInteractionMs, currentGroupIndex, currentVariantIndex) {
+        val stateAtStart = infoCardState
+        val hideMs = InfoCardPolicy.autoHideMs(stateAtStart) ?: return@LaunchedEffect
         delay(hideMs)
-        if (infoCardState == InfoCardPolicy.State.IDLE) {
-            infoCardState = InfoCardPolicy.State.HIDDEN
-            infoCardFocusIndex = 0
-            logInfoCard("hide reason=timer")
+        if (infoCardState != stateAtStart) return@LaunchedEffect // 期间状态被交互改变，放弃本次
+        if (InfoCardPolicy.shouldArmAutoHide(
+                state = infoCardState,
+                lastInteractionAt = infoCardLastInteractionMs,
+                now = System.currentTimeMillis(),
+            )
+        ) {
+            if (infoCardState == InfoCardPolicy.State.FOCUSED) {
+                infoCardState = InfoCardPolicy.State.IDLE // 先退 IDLE 再下一 tick 收起
+                infoCardFocusIndex = 0
+            } else {
+                infoCardState = InfoCardPolicy.State.HIDDEN
+                infoCardFocusIndex = 0
+            }
+            logInfoCard("hide reason=timer state=$stateAtStart")
         }
     }
 
@@ -1821,7 +1847,8 @@ fun VideoPlayerScreen(
                     infoCardFocusIndex = 0
                     logInfoCard("ok-open ${infoOkMode.name} state=IDLE")
                 }
-                infoCardTimerTick++
+                noteInfoCardInteraction() // t52 §⑦：主动出卡是交互，开始 7s 计时
+                logInfoCard("ok-open ${infoOkMode.name} state=${infoCardState.name}")
                 true
             }
             setOpenInfoCardFromOkController(openHandler)
@@ -2293,6 +2320,7 @@ fun VideoPlayerScreen(
                             count = cardRecentItems.size,
                             delta = delta,
                         )
+                        noteInfoCardInteraction() // t52 §⑦：移动是交互，重置 7s 计时
                         logInfoCard("move index=$infoCardFocusIndex")
                     },
                     onSwitchRecent = { _ ->
@@ -2300,6 +2328,7 @@ fun VideoPlayerScreen(
                         // （高亮/真焦点/OK 目标三者用同一真源，OK→OK→右→OK 才切到第二张卡）。
                         // InfoCardPolicy.resolveRecentTarget 对空/越界返回 null → 空/1 张不崩。
                         InfoCardPolicy.resolveRecentTarget(cardRecentItems, infoCardFocusIndex)?.let { item ->
+                            noteInfoCardInteraction() // t52 §⑦：切台是交互，重置 7s 计时
                             logInfoCard("switch idx=$infoCardFocusIndex group=${item.number} ${item.title}")
                             if (switchToRecent(item)) {
                                 // §5.2：切台后保持 FOCUSED，焦点回到第一张（刚离开的台）。

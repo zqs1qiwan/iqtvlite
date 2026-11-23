@@ -221,8 +221,8 @@ def main() -> int:
         problems.append("PlayerActivity.kt: RIGHT branch must use RemoteBindings.resolveRight (V4 §3)")
     if "rightCustomBound = RemoteBindings.isKeyCustomBound" not in activity_code:
         problems.append("PlayerActivity.kt: RIGHT custom-binding guard missing (V4 §3)")
-    if test_file.exists() and "rightKeyAPlanAllGroupOpensDrawerOnlyForDefaultBinding" not in test_file.read_text(encoding="utf-8"):
-        problems.append("RemoteBindingsTest.kt: V4 §3 RIGHT A-plan test missing")
+    if test_file.exists() and "rightKeyOpensSettingsInPlayerOnlyDrawerInGroupColumn" not in test_file.read_text(encoding="utf-8"):
+        problems.append("RemoteBindingsTest.kt: t52 RIGHT entry test missing")
 
     # 12) V4 §7: digit OSD at top-end with confirm-state brand blue + tag.
     if "Alignment.TopEnd" not in activity_code or "digit_osd" not in activity_code:

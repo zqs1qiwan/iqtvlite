@@ -407,7 +407,7 @@ fun PlayerDrawer(
         }
     }
 
-    // t29（唯一滚动校正 effect）：整个抽屉只有这里调用 channelListState.scrollToItem。
+    // t29/t52（唯一滚动校正 effect）：整个抽屉的频道列滚动只在这里发生（t52 改为平滑 animateScrollBy）。
     // 意图（desiredScrollIndex）由各入口统一写入；本 effect 等布局就绪后按 drawerScrollDecision
     // 判一次：SCROLL→滚一次并清意图；CLEAR→目标已可见/无效，直接清意图不滚；WAIT→揭示未覆盖，等待。
     // once 语义天然满足：SCROLL/CLEAR 都清意图，意图=-1 后不再触发；snapshotFlow 等布局避免钳制。
@@ -425,8 +425,14 @@ fun PlayerDrawer(
                 PerfPolicy.ScrollDecision.SCROLL -> {
                     val target = PerfPolicy.drawerScrollTargetIndex(intent, channels.size)
                     desiredScrollIndex = -1 // 先清意图（once），再滚，避免重入/重复
-                    runCatching { channelListState.scrollToItem(target) }
-                    PerfTrace.d { "drawer_scroll_correct target=$target focus=$intent revealed=$revealedRows first=$first last=$last" }
+                    // t52 §④：瞬时 scrollToItem 改平滑 animateScrollBy —— 按"当前首可见行 → 目标行"
+                    // 的差值换算像素，逐帧均匀滚动，消除"整页翻"的突跳。只动列表 layer。
+                    val rowPx = with(prefetchDensity) { PerfPolicy.DRAWER_ROW_HEIGHT_DP.dp.roundToPx() }
+                    val deltaRows = (target - first).coerceIn(-PerfPolicy.DRAWER_SCROLL_EDGE_ROWS * 4, channels.size)
+                    if (deltaRows != 0) {
+                        runCatching { channelListState.animateScrollBy(deltaRows * rowPx.toFloat()) }
+                    }
+                    PerfTrace.d { "drawer_scroll_correct target=$target focus=$intent revealed=$revealedRows first=$first last=$last smooth=$deltaRows" }
                 }
             }
         }

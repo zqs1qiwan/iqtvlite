@@ -204,9 +204,9 @@ def main() -> int:
         problems.append("ChannelInfoBanner.kt: channel count must NOT come from video Format (FULLFIX §4.2②)")
     if "InfoCardPolicy.takePositive(" not in banner:
         problems.append("ChannelInfoBanner.kt: badge sources must use InfoCardPolicy.takePositive (FULLFIX §4.2②)")
-    # t32 Bug2：布局压紧，容器 top 从 16dp 收到 10dp（消除徽标独立行后的顶部空白）。
-    if "top = 10.dp, bottom = 16.dp" not in banner:
-        problems.append("ChannelInfoBanner.kt: container padding must be 10/16dp (t32 Bug2 compact)")
+    # t52 §⑥：布局进一步压紧，容器 top/bottom 收到 6dp。
+    if "top = 6.dp, bottom = 6.dp" not in banner:
+        problems.append("ChannelInfoBanner.kt: container padding must be 6/6dp (t52 §⑥ compact)")
     if banner.count("padding(start = 40.dp") > 1:
         problems.append("ChannelInfoBanner.kt: double 40dp horizontal padding still present (FULLFIX §4.2③)")
     if ".clipToBounds()" not in banner:
@@ -222,8 +222,8 @@ def main() -> int:
     # t32 Bug2：徽标改为 compactBadges 全信息一排（不占行），旧 maxWidth 180 布局已移除。
     if "compactBadges(" not in banner:
         problems.append("ChannelInfoBanner.kt: must use compactBadges (t32 Bug2, replaces maxWidth layout)")
-    if ".size(56.dp)" not in banner or "48.dp" not in banner:
-        problems.append("ChannelInfoBanner.kt: recent cards must be 56dp logo-only with 48dp logo (V4 §6)")
+    if ".size(40.dp)" not in banner or "36.dp" not in banner:
+        problems.append("ChannelInfoBanner.kt: recent cards must be 40dp inline logo-only with 36dp logo (t52 §⑥)")
 
     # 9) FULLFIX §5 (U1): highlight = real focus = OK target, one source of truth (focusIndex).
     if "focusTargetIndex(" not in policy or "resolveRecentTarget(" not in policy:
@@ -316,6 +316,25 @@ def main() -> int:
         problems.append("PlayerActivity.kt: inferred fps must reach banner frameRateFallback (t40)")
     if "source=${fpsResolution.source.name.lowercase()}" not in activity:
         problems.append("PlayerActivity.kt: t40 DEBUG fps source log missing")
+
+    # 14) t52: compact info card, FOCUSED 7s auto-hide, reliable settings entry.
+    if "fun infoCardHeightV4(" not in policy or "INFO_CARD_COMPACT_HEIGHT_DP" not in policy:
+        problems.append("InfoCardPolicy.kt: t52 infoCardHeightV4 helper missing")
+    if "Spacer(modifier = Modifier.height(24.dp))" in banner:
+        problems.append("ChannelInfoBanner.kt: separate 24dp recent spacer must be removed (t52 §⑥)")
+    if "State.FOCUSED -> FOCUSED_IDLE_HIDE_MS" not in policy:
+        problems.append("InfoCardPolicy.kt: FOCUSED must auto-hide after 7s (t52 §⑦)")
+    if "fun shouldArmAutoHide(" not in policy:
+        problems.append("InfoCardPolicy.kt: shouldArmAutoHide pure helper missing (t52 §⑦)")
+    if "infoCardLastInteractionMs" not in activity:
+        problems.append("PlayerActivity.kt: single-source interaction timestamp missing (t52 §⑦)")
+    fp = SRC / "FocusedKeyPolicy.kt"
+    if not fp.exists() or "fun passthrough(" not in fp.read_text(encoding="utf-8"):
+        problems.append("FocusedKeyPolicy.kt: passthrough pure policy missing (t52 §⑧)")
+    if "KEY_BUTTON_1" not in (SRC / "RemoteBindings.kt").read_text(encoding="utf-8"):
+        problems.append("RemoteBindings.kt: color-key settings entry missing (t52 §⑧)")
+    if "FocusedKeyPolicy.passthrough" not in activity:
+        problems.append("PlayerActivity.kt: FOCUSED guard must use FocusedKeyPolicy.passthrough (t52 §⑧)")
 
     if problems:
         for p in problems:
