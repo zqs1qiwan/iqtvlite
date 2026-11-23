@@ -138,6 +138,8 @@ class PlayerActivity : ComponentActivity() {
     // t4 (INFO_CARD_V2 §4.2-1/2)：卡片聚焦是独立于“可见”的正交状态——
     // BACK 在 IDLE 一次关卡片，在 FOCUSED 只退聚焦，混用一个 Boolean 会双触发。
     private var setInfoCardOk: (() -> Boolean)? = null
+    /** t32 Bug1：主动 OK 出卡控制器（composable 注册，按 infoOkMode 决定 DIRECT/TWO_STEP）。 */
+    private var openInfoCardFromOk: (() -> Boolean)? = null
     private var setInfoCardFocused: ((Boolean) -> Unit)? = null
     private var isInfoCardFocused: Boolean = false
     private var isCatchupPlayback: Boolean = false
@@ -241,6 +243,7 @@ class PlayerActivity : ComponentActivity() {
                         setInfoBannerOpenController = { setInfoBannerOpen = it },
                         onInfoBannerOpenChanged = { isInfoBannerOpen = it },
                         setInfoCardOkController = { setInfoCardOk = it },
+                        setOpenInfoCardFromOkController = { openInfoCardFromOk = it },
                         onInfoCardFocusedChanged = { isInfoCardFocused = it },
                         setOnCatchupSeek = { onCatchupSeek = it },
                         setOnReturnToLive = { onReturnToLive = it },
@@ -421,7 +424,17 @@ class PlayerActivity : ComponentActivity() {
                         ) return true
                         when (okAction) {
                             RemoteAction.OPEN_DRAWER -> sidebarController.openDrawer()
-                            RemoteAction.SHOW_INFO -> setInfoBannerOpen?.invoke(true)
+                            RemoteAction.SHOW_INFO -> {
+                                if (isInfoBannerOpen) {
+                                    // 卡片已开：第二段 OK 进入最近观看聚焦（TWO_STEP 语义，DIRECT 下也幂等）。
+                                    if (setInfoCardOk?.invoke() == true) return true
+                                } else {
+                                    // t32 Bug1：主动 OK 出卡 —— 由 composable 注册的控制器按 infoOkMode 决定
+                                    // DIRECT（直接 FOCUSED 可选最近观看）/ TWO_STEP（IDLE）。
+                                    if (openInfoCardFromOk?.invoke() == true) return true
+                                    setInfoBannerOpen?.invoke(true)
+                                }
+                            }
                             else -> Unit
                         }
                         return true
@@ -641,6 +654,8 @@ fun VideoPlayerScreen(
     onInfoBannerOpenChanged: (Boolean) -> Unit,
     // t4: 第二段 OK（IDLE→FOCUSED）与“焦点在卡片内”的镜像。
     setInfoCardOkController: (((() -> Boolean)?) -> Unit),
+    // t32 Bug1：主动 OK 出卡 DIRECT/TWO_STEP 控制器注册。
+    setOpenInfoCardFromOkController: (((() -> Boolean)?) -> Unit) = {},
     onInfoCardFocusedChanged: (Boolean) -> Unit,
     setOnCatchupSeek: (((Long) -> Boolean)?) -> Unit,
     setOnReturnToLive: ((() -> Boolean)?) -> Unit,
@@ -724,6 +739,8 @@ fun VideoPlayerScreen(
     var infoCardState by remember { mutableStateOf(InfoCardPolicy.State.HIDDEN) }
     var infoCardFocusIndex by remember { mutableIntStateOf(0) }
     var infoCardTimerTick by remember { mutableIntStateOf(0) }
+    // t32 Bug1：信息卡 OK 行为模式（设置项，DIRECT 默认；改动立即生效）。
+    var infoOkMode by remember { mutableStateOf(Prefs.getInfoOkMode(context)) }
 
     fun logInfoCard(message: String) {
         if (android.util.Log.isLoggable(INFO_CARD_TAG, android.util.Log.DEBUG)) {
@@ -731,13 +748,14 @@ fun VideoPlayerScreen(
         }
     }
 
-    // t4：进入 IDLE 并重新计时（换台/上一台/数字跳台/音轨切换/回看 UP-DOWN 共用）。
+    // t4：进入 IDLE 并重新计时（换台/上一台/数字跳台/音轨切换/回看 UP-DOWN 共用，静默 7s 自动消失）。
     fun showInfoCard() {
         infoCardState = InfoCardPolicy.State.IDLE
         infoCardFocusIndex = 0
         infoCardTimerTick++
         logInfoCard("show state=IDLE recent=${recentEntries.size}")
     }
+
     val channelSwitch = rememberChannelSwitchController()
     val playbackErrorEvents = remember { kotlinx.coroutines.channels.Channel<PlaybackFailure>(kotlinx.coroutines.channels.Channel.BUFFERED) }
     val playbackIntent = remember { PlaybackIntent() }
@@ -1764,6 +1782,31 @@ fun VideoPlayerScreen(
             return true
         }
 
+        // t32 Bug1：主动 OK 出卡控制器 —— DIRECT 模式一次 OK 即 FOCUSED 可选最近观看；
+        // TWO_STEP / 空 / 1 张 / 回看 / 快进 → IDLE（7s 自动消失）。由 Activity dispatch 调用。
+        DisposableEffect(cardRecentItems, catchupRequest, isSeekOverlayVisible, infoOkMode) {
+            val openHandler: () -> Boolean = {
+                val canFocus = InfoCardPolicy.canFocusRecent(
+                    recentCount = cardRecentItems.size,
+                    catchup = catchupRequest != null,
+                    seekOverlayVisible = isSeekOverlayVisible,
+                )
+                if (InfoCardPolicy.openCardFocusesDirectly(infoOkMode) && canFocus) {
+                    infoCardFocusIndex = 0
+                    infoCardState = InfoCardPolicy.State.FOCUSED
+                    logInfoCard("ok-open DIRECT focus recent=${cardRecentItems.size}")
+                } else {
+                    infoCardState = InfoCardPolicy.State.IDLE
+                    infoCardFocusIndex = 0
+                    logInfoCard("ok-open ${infoOkMode.name} state=IDLE")
+                }
+                infoCardTimerTick++
+                true
+            }
+            setOpenInfoCardFromOkController(openHandler)
+            onDispose { setOpenInfoCardFromOkController(null) }
+        }
+
         // t4 (INFO_CARD_V2 §3.6 / D-C2)：第二段 OK —— IDLE→FOCUSED；条为空/回看/快进只重新计时。
         DisposableEffect(cardRecentItems, catchupRequest, isSeekOverlayVisible) {
             val handler: () -> Boolean = {
@@ -1918,6 +1961,16 @@ fun VideoPlayerScreen(
                     "睛彩诊断实验：${next.label}（重新选台后生效）",
                     android.widget.Toast.LENGTH_SHORT
                 ).show()
+            },
+            // t32 Bug1：切换信息卡 OK 行为（DIRECT/TWO_STEP），立即生效。
+            infoOkModeLabel = if (infoOkMode == InfoCardPolicy.InfoOkMode.DIRECT) "直接选最近观看" else "两段式",
+            onCycleInfoOkMode = {
+                val next = when (infoOkMode) {
+                    InfoCardPolicy.InfoOkMode.DIRECT -> InfoCardPolicy.InfoOkMode.TWO_STEP
+                    InfoCardPolicy.InfoOkMode.TWO_STEP -> InfoCardPolicy.InfoOkMode.DIRECT
+                }
+                Prefs.setInfoOkMode(context, next)
+                infoOkMode = next
             },
             multicastPrewarmEnabled = multicastPrewarmEnabled,
             onToggleMulticastPrewarm = {

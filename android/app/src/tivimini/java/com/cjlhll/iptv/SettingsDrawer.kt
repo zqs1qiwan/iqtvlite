@@ -99,6 +99,9 @@ fun SettingsDrawer(
     // t231: 睛彩 diagnosis experiment (off / e1 / e2 / e3)
     jingcaiExperimentLabel: String = "关闭",
     onCycleJingcaiExperiment: () -> Unit = {},
+    // t32 Bug1：信息卡 OK 行为（DIRECT 默认 / TWO_STEP）。
+    infoOkModeLabel: String = "直接选最近观看",
+    onCycleInfoOkMode: () -> Unit = {},
     onAudioTrackClick: () -> Unit = {},
     // t186 (F1): remote habits
     remoteUpDownLabel: String = "换台",
@@ -319,6 +322,8 @@ fun SettingsDrawer(
                         onToggleMulticastPrewarm = onToggleMulticastPrewarm,
                         jingcaiLabel = jingcaiExperimentLabel,
                         onCycleJingcai = onCycleJingcaiExperiment,
+                        infoOkModeLabel = infoOkModeLabel,
+                        onCycleInfoOkMode = onCycleInfoOkMode,
                         scroll = scrollFor(SettingsPage.PLAYBACK),
                         requesterOf = ::requesterOf,
                         onFocused = { pageLastFocus[SettingsPage.PLAYBACK.id] = it },
@@ -512,6 +517,9 @@ private fun SettingsPlaybackPage(
     onToggleMulticastPrewarm: () -> Unit,
     jingcaiLabel: String,
     onCycleJingcai: () -> Unit,
+    // t32 Bug1：信息卡 OK 行为设置行。
+    infoOkModeLabel: String = "直接选最近观看",
+    onCycleInfoOkMode: () -> Unit = {},
     scroll: ScrollState,
     requesterOf: (String) -> FocusRequester,
     onFocused: (String) -> Unit,
@@ -523,6 +531,16 @@ private fun SettingsPlaybackPage(
             .testTag(SETTINGS_LIST_TAG)
     ) {
         SettingsPageHeader(SettingsPage.PLAYBACK)
+        // t32 Bug1：信息卡 OK 行为（默认直接选最近观看；两段式为旧行为）。
+        SettingsItem(
+            text = "信息卡 OK 行为：$infoOkModeLabel",
+            focusRequester = requesterOf("settings_info_ok_mode"),
+            tag = "settings_info_ok_mode",
+            onFocused = onFocused,
+            onClick = onCycleInfoOkMode
+        )
+        HelpText("直接选最近观看：按 OK 出卡后即可左右选台、再按 OK 跳台；两段式：需再按一次 OK 进入选择。")
+        RowGap()
         SettingsItem(
             text = "起播缓冲：$bufferLabel",
             focusRequester = requesterOf("settings_playback_buffer"),

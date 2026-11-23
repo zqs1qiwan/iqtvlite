@@ -24,6 +24,19 @@ class PerfPolicyTest {
     }
 
     @Test
+    fun t32EpgColumnNarrowedAndMarqueeBounded() {
+        // t32 Bug4：节目单列收窄 ~30%（300→210），时间列 96→68。
+        assertEquals(210, PerfPolicy.DRAWER_PROGRAM_COLUMN_DP)
+        assertEquals(68, PerfPolicy.DRAWER_PROGRAM_TIME_COLUMN_DP)
+        // 超长聚焦滚动：有限圈数、仅聚焦+可见时跑；绝不 Int.MAX_VALUE。
+        assertEquals(2, PerfPolicy.EPG_MARQUEE_ITERATIONS)
+        assertTrue(PerfPolicy.EPG_MARQUEE_ITERATIONS in 1..3)
+        assertEquals(2, PerfPolicy.epgMarqueeIterations(true, true))
+        assertEquals(0, PerfPolicy.epgMarqueeIterations(true, false))
+        assertEquals(0, PerfPolicy.epgMarqueeIterations(false, true))
+    }
+
+    @Test
     fun drawerUsesOpaquePaintWithCachedLayerAlpha() {
         // FULLFIX §3：paint 仍不透明（容器 surface 无 copy(alpha)），半透明只加在已缓存的
         // 静态背景 layer 上；DRAWER_OPAQUE_CONTAINER 现在只决定 layer alpha（true=1f 回退）。

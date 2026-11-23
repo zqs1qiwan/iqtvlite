@@ -157,4 +157,39 @@ class InfoCardBadgeTest {
         assertEquals("", InfoCardPolicy.groupLine(null))
         assertEquals("", InfoCardPolicy.groupLine("  "))
     }
+
+    // ── t32 Bug2：右上角紧凑徽标（频道数字 / 编码短标 / 全信息一排） ────────
+    @Test
+    fun channelNumberLabelUsesDecimalNotation() {
+        assertEquals("1.0", InfoCardPolicy.channelNumberLabel(1))
+        assertEquals("2.0", InfoCardPolicy.channelNumberLabel(2))
+        assertEquals("5.1", InfoCardPolicy.channelNumberLabel(6))
+        assertEquals("7.1", InfoCardPolicy.channelNumberLabel(8))
+        assertEquals("4.0", InfoCardPolicy.channelNumberLabel(4))
+        assertNull(InfoCardPolicy.channelNumberLabel(0))
+        assertEquals("3.0", InfoCardPolicy.channelNumberLabel(3))
+    }
+
+    @Test
+    fun videoCodecShortMaps264265() {
+        assertEquals("264", InfoCardPolicy.videoCodecShort("video/avc", "avc1.42E01E"))
+        assertEquals("264", InfoCardPolicy.videoCodecShort(null, "h264"))
+        assertEquals("265", InfoCardPolicy.videoCodecShort("video/hevc", "hvc1"))
+        assertEquals("AV1", InfoCardPolicy.videoCodecShort("video/av01", null))
+        assertNull(InfoCardPolicy.videoCodecShort(null, null))
+    }
+
+    @Test
+    fun compactBadgesIncludeAllKnownInfoInOneRow() {
+        // 分辨率/帧数/声道数字/动态范围(SDR)/编码(264) 全部一排、未知隐藏。
+        val badges = InfoCardPolicy.compactBadges(
+            width = 1920, height = 1080, frameRate = 50f, channelCount = 2,
+            colorTransfer = 6 /* HDR10 */, hasHdrStaticInfo = true,
+            mime = "video/avc", codecs = "avc1",
+        )
+        assertEquals(listOf("FHD", "50fps", "2.0", "HDR10", "264"), badges)
+        // 未知项隐藏、动态范围默认 SDR 仍在。
+        val minimal = InfoCardPolicy.compactBadges(0, 0, -1f, 0, -1, false, null, null)
+        assertEquals(listOf("SDR"), minimal)
+    }
 }

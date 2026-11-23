@@ -40,6 +40,8 @@ object Prefs {
     private const val KEY_MULTICAST_PREWARM = "multicast_prewarm_enabled"
     // t231: 睛彩 app-side experiment selector (default "off" → behaviour unchanged).
     private const val KEY_JINGCAI_EXPERIMENT = "jingcai_experiment"
+    // t32 Bug1：信息卡 OK 行为（DIRECT 默认 / TWO_STEP）。
+    private const val KEY_INFO_OK_MODE = "pref_info_ok_mode"
 
     private fun getPrefs(context: Context): SharedPreferences {
         return context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
@@ -299,6 +301,14 @@ object Prefs {
 
     fun setRemoteBindings(context: Context, bindings: List<KeyBinding>) {
         getPrefs(context).edit().putString(KEY_REMOTE_ACTION_BINDINGS, RemoteBindings.serialize(bindings)).apply()
+    }
+
+    // ---- t32 Bug1: info-card OK mode (DIRECT default / TWO_STEP) ----
+    fun getInfoOkMode(context: Context): InfoCardPolicy.InfoOkMode =
+        InfoCardPolicy.parseInfoOkMode(getPrefs(context).getString(KEY_INFO_OK_MODE, null))
+
+    fun setInfoOkMode(context: Context, mode: InfoCardPolicy.InfoOkMode) {
+        getPrefs(context).edit().putString(KEY_INFO_OK_MODE, mode.name).apply()
     }
 
     /** t189: write the EPG failure state in one step (single source: AutoUpdateConfig). */

@@ -869,7 +869,8 @@ fun PlayerDrawer(
         val groupsSection = if (showGroups) (150.dp + 1.dp) else 0.dp
         val channelsSection = 300.dp
         val divider = 1.dp
-        val programsSection = 300.dp + 32.dp + (if (datesVisible) (110.dp + 10.dp) else 0.dp)
+        // t32 Bug4：节目单列 300→210dp（-30%）。
+        val programsSection = PerfPolicy.DRAWER_PROGRAM_COLUMN_DP.dp + 32.dp + (if (datesVisible) (110.dp + 10.dp) else 0.dp)
         groupsSection + channelsSection + divider + programsSection
     }
     // No per-frame drawer animation: animating the whole panel width/offset recomposed + re-laid-out
@@ -1112,7 +1113,7 @@ fun PlayerDrawer(
                             if (programs.isEmpty()) {
                                 Box(
                                     modifier = Modifier
-                                        .width(300.dp)
+                                        .width(PerfPolicy.DRAWER_PROGRAM_COLUMN_DP.dp)
                                         .fillMaxHeight(),
                                     contentAlignment = Alignment.Center
                                 ) {
@@ -1130,7 +1131,7 @@ fun PlayerDrawer(
                             } else {
                                 LazyColumn(
                                     modifier = Modifier
-                                        .width(300.dp)
+                                        .width(PerfPolicy.DRAWER_PROGRAM_COLUMN_DP.dp)
                                         .fillMaxHeight(),
                                     state = programListState
                                 ) {
@@ -1470,11 +1471,14 @@ private fun FocusMarqueeText(
     color: Color,
     focused: Boolean,
     drawerVisible: Boolean,
+    iterations: Int? = null,
     modifier: Modifier = Modifier
 ) {
     // t7：跑马灯只在"抽屉可见 + 该行聚焦"时跑有限圈数。旧实现 iterations=Int.MAX_VALUE 会在抽屉
     // 打开期间永久请求下一帧，弱机上每帧重合成 1080p 半透明层 → gfxinfo 33/33 全 janky。
-    val iterations = PerfPolicy.marqueeIterations(focused = focused, drawerVisible = drawerVisible)
+    // t32 Bug4：EPG 行可传入自己的有限圈数（epgMarqueeIterations），同样禁 Int.MAX_VALUE。
+    val effectiveIterations = iterations
+        ?: PerfPolicy.marqueeIterations(focused = focused, drawerVisible = drawerVisible)
     Text(
         text = text,
         maxLines = 1,
@@ -1482,7 +1486,7 @@ private fun FocusMarqueeText(
         style = style,
         color = color,
         modifier = modifier.then(
-            if (iterations > 0) Modifier.basicMarquee(iterations = iterations) else Modifier
+            if (effectiveIterations > 0) Modifier.basicMarquee(iterations = effectiveIterations) else Modifier
         )
     )
 }
@@ -1568,13 +1572,15 @@ private fun DrawerProgramItem(
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(
+        // t32 Bug4：时间列同比收窄；超长时间也用聚焦跑马灯（有限圈数）。
+        FocusMarqueeText(
             text = time,
-            maxLines = 1,
-            overflow = TextOverflow.Clip,
             style = MaterialTheme.typography.bodySmall,
             color = textColor,
-            modifier = Modifier.width(96.dp)
+            focused = focused,
+            drawerVisible = drawerVisible,
+            iterations = PerfPolicy.epgMarqueeIterations(focused, drawerVisible),
+            modifier = Modifier.width(PerfPolicy.DRAWER_PROGRAM_TIME_COLUMN_DP.dp)
         )
         Spacer(modifier = Modifier.width(6.dp))
         FocusMarqueeText(
@@ -1583,6 +1589,7 @@ private fun DrawerProgramItem(
             color = textColor,
             focused = focused,
             drawerVisible = drawerVisible,
+            iterations = PerfPolicy.epgMarqueeIterations(focused, drawerVisible),
             modifier = Modifier.weight(1f, fill = true)
         )
     }

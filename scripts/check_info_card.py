@@ -42,7 +42,7 @@ REQUIRED_TAGS = [
     "info_card_title",
     "info_card_program",
     "info_card_progress",
-    "info_card_tech",
+    # t32 Bug2：info_card_tech 已并入右上角徽标，不再有独立技术行。
     "info_card_recent_label",
     "info_card_recent_row",
     "info_card_recent_$index",
@@ -69,8 +69,8 @@ def main() -> int:
     # 1) pure policy
     if not re.search(r"const val MAX_RECENT = 4\b", policy):
         problems.append("InfoCardPolicy.kt: MAX_RECENT must be 4 (V4 §6, was 6)")
-    if not re.search(r"const val AUTO_HIDE_MS = 3000L", policy):
-        problems.append("InfoCardPolicy.kt: AUTO_HIDE_MS must be 3000L")
+    if not re.search(r"const val AUTO_HIDE_MS = 7000L", policy):
+        problems.append("InfoCardPolicy.kt: AUTO_HIDE_MS must be 7000L (t32 Bug3)")
     for fn in ("fun isVisible(", "fun autoHideMs(", "fun canFocusRecent(", "fun nextFocusIndex(",
                "fun showRecentRow(", "fun onExternalZap(", "fun techLine("):
         if fn not in policy:
@@ -155,7 +155,8 @@ def main() -> int:
         problems.append("ChannelInfoBanner.kt: info_card_logo tag missing")
     if "headlineLarge.copy" not in banner:
         problems.append("ChannelInfoBanner.kt: channel name must use headlineLarge.copy (v4 titleWithNumber)")
-    for tag in ("info_card_badges", "info_card_tech", "info_card_program_time", "info_card_number", "info_card_group"):
+    # t32 Bug2：tech 行已并入右上角徽标，旧的独立 info_card_tech tag 不再要求。
+    for tag in ("info_card_badges", "info_card_program_time", "info_card_number", "info_card_group"):
         if tag not in banner:
             problems.append("ChannelInfoBanner.kt: missing v3 tag " + tag)
     for fn in ("fun resolutionTier(", "fun frameRateLabel(", "fun bitrateLabel(", "fun channelLabel(",
@@ -168,14 +169,16 @@ def main() -> int:
                   "H.264", "H.265", "AV1", "SDR", "HDR10", "HLG"):
         if token not in policy:
             problems.append("InfoCardPolicy.kt: missing v3 mapping token " + token)
-    if banner.count("maxLines = 1") < 8:
-        problems.append("ChannelInfoBanner.kt: v3 needs >=8 single-line texts")
+    # t32 Bug2：tech 行移除后单行文本数下降，阈值放宽到 6。
+    if banner.count("maxLines = 1") < 6:
+        problems.append("ChannelInfoBanner.kt: v4 needs >=6 single-line texts")
     if "TextOverflow.Ellipsis" not in banner:
         problems.append("ChannelInfoBanner.kt: TextOverflow.Ellipsis missing")
     for bad in ("basicMarquee", "LazyRow", "animateContentSize", "wrapContentHeight"):
         if bad in banner:
             problems.append("ChannelInfoBanner.kt: forbidden v3 token " + bad)
-    for h in (".height(24.dp)", ".height(16.dp)", ".height(96.dp)"):
+    # t32 Bug2：徽标不再单独 24dp 行，固定高度只要求主行 96dp。
+    for h in (".height(96.dp)",):
         if h not in banner:
             problems.append("ChannelInfoBanner.kt: fixed row height missing " + h)
     if "bitrate <= 0) return null" not in policy or "channelCount <= 0" not in policy:
@@ -200,9 +203,9 @@ def main() -> int:
         problems.append("ChannelInfoBanner.kt: channel count must NOT come from video Format (FULLFIX §4.2②)")
     if "InfoCardPolicy.takePositive(" not in banner:
         problems.append("ChannelInfoBanner.kt: badge sources must use InfoCardPolicy.takePositive (FULLFIX §4.2②)")
-    # DP table: container 16dp top/bottom, no double 40dp horizontal padding, fixed row heights.
-    if "top = 16.dp, bottom = 16.dp" not in banner:
-        problems.append("ChannelInfoBanner.kt: container padding must be 16dp (FULLFIX §4.2③)")
+    # t32 Bug2：布局压紧，容器 top 从 16dp 收到 10dp（消除徽标独立行后的顶部空白）。
+    if "top = 10.dp, bottom = 16.dp" not in banner:
+        problems.append("ChannelInfoBanner.kt: container padding must be 10/16dp (t32 Bug2 compact)")
     if banner.count("padding(start = 40.dp") > 1:
         problems.append("ChannelInfoBanner.kt: double 40dp horizontal padding still present (FULLFIX §4.2③)")
     if ".clipToBounds()" not in banner:
@@ -215,15 +218,18 @@ def main() -> int:
         problems.append("ChannelInfoBanner.kt: subtitle must use groupLine (V4 §6)")
     if 'BadgeCandidate("bitrate"' in policy:
         problems.append("InfoCardPolicy.kt: bitrate must not be a badge candidate (V4 §6)")
-    if "maxWidthDp = 180.0" not in banner:
-        problems.append("ChannelInfoBanner.kt: badge maxWidth 180dp missing (V4 §6)")
+    # t32 Bug2：徽标改为 compactBadges 全信息一排（不占行），旧 maxWidth 180 布局已移除。
+    if "compactBadges(" not in banner:
+        problems.append("ChannelInfoBanner.kt: must use compactBadges (t32 Bug2, replaces maxWidth layout)")
     if ".size(56.dp)" not in banner or "48.dp" not in banner:
         problems.append("ChannelInfoBanner.kt: recent cards must be 56dp logo-only with 48dp logo (V4 §6)")
 
     # 9) FULLFIX §5 (U1): highlight = real focus = OK target, one source of truth (focusIndex).
-    if "fun focusTargetIndex(" not in policy or "fun resolveRecentTarget(" not in policy:
+    if "focusTargetIndex(" not in policy or "resolveRecentTarget(" not in policy:
         problems.append("InfoCardPolicy.kt: U1 pure helpers focusTargetIndex/resolveRecentTarget missing")
-    if re.search(r"if \(stripFocusIndex < 0\)", banner):
+    # 忽略注释：U1 守卫注释里会提到旧的 `if (stripFocusIndex < 0)`，代码本身不得再有。
+    banner_code = re.sub(r"//[^\n]*", "", banner)
+    if re.search(r"if \(stripFocusIndex < 0\)", banner_code):
         problems.append("ChannelInfoBanner.kt: the stripFocusIndex<0 guard is back (U1 focus not following highlight)")
     if "InfoCardPolicy.focusTargetIndex(focusIndex, recentCount)" not in banner:
         problems.append("ChannelInfoBanner.kt: REQUEST_FOCUS must target focusIndex (U1)")
@@ -241,6 +247,30 @@ def main() -> int:
     recent_start = banner.find("private fun RecentStrip(")
     if recent_start != -1 and ".onPreviewKeyEvent" in banner[recent_start:]:
         problems.append("ChannelInfoBanner.kt: RecentStrip still has its own onPreviewKeyEvent (U1 dual key path)")
+
+    # 10) t32: OK mode setting, compact badge overlay (no dedicated row), channel-number audio,
+    #     full badge info, 7s auto-hide.
+    for token in ("enum class InfoOkMode", "fun parseInfoOkMode", "fun openCardFocusesDirectly"):
+        if token not in policy:
+            problems.append("InfoCardPolicy.kt: t32 Bug1 OK-mode helper missing " + token)
+    if "openInfoCardFromOk?.invoke()" not in activity or "infoOkMode" not in activity:
+        problems.append("PlayerActivity.kt: OK branch must call openInfoCardFromOk (t32 Bug1)")
+    if "settings_info_ok_mode" not in SRC.joinpath("SettingsDrawer.kt").read_text(encoding="utf-8"):
+        problems.append("SettingsDrawer.kt: settings_info_ok_mode row missing (t32 Bug1)")
+    for token in ("fun channelNumberLabel(", "fun videoCodecShort(", "fun compactBadges("):
+        if token not in policy:
+            problems.append("InfoCardPolicy.kt: t32 Bug2 helper missing " + token)
+    if "compactBadgeText" not in banner or "compactBadges(" not in banner:
+        problems.append("ChannelInfoBanner.kt: must use compactBadges (t32 Bug2)")
+    if ".align(Alignment.TopEnd)" not in banner:
+        problems.append("ChannelInfoBanner.kt: badges must overlay top-end, not a dedicated row (t32 Bug2)")
+    # 旧的独立徽标行 + 技术行必须移除（不额外占行）。
+    if re.search(r"height\(24\.dp\)[\s\S]{0,120}info_card_badges", banner):
+        problems.append("ChannelInfoBanner.kt: dedicated 24dp badge row still present (t32 Bug2)")
+    if 'testTag("info_card_tech")' in banner:
+        problems.append("ChannelInfoBanner.kt: old tech row must be removed (info moved to top-right, t32 Bug2)")
+
+    if problems:
         for p in problems:
             print(f"check_info_card: FAIL {p}")
         return 1

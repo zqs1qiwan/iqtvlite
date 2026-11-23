@@ -152,19 +152,18 @@ fun ChannelInfoBanner(
     // FULLFIX §4.2②：帧率/码率用主值优先、回退补齐；声道用音频 Format 的 channelCount（不再取 vf）。
     val vf = videoFormat
     val frameRate = InfoCardPolicy.takePositive(vf?.frameRate ?: -1f, frameRateFallback)
-    val bitrate = InfoCardPolicy.takePositive(vf?.bitrate ?: -1, videoBitrateFallback)
-    // V4 §6：徽标三项（分辨率/帧率/声道），紧凑上限 180dp。
-    val badgePlan = InfoCardPolicy.planBadges(
-        InfoCardPolicy.badgeCandidates(
-            vf?.width ?: 0, vf?.height ?: 0, frameRate ?: -1f, bitrate ?: -1, audioChannelCount,
-        ),
-        maxWidthDp = 180.0,
-    )
-    val videoCodec = InfoCardPolicy.videoCodecLabel(vf?.sampleMimeType, vf?.codecs)
-    val audioCodec = InfoCardPolicy.audioCodecLabel(audioLabel)
+    // t32 Bug2：右上角一排紧凑徽标（分辨率/帧数/声道数字/动态范围/编码）。
     val colorInfo = vf?.colorInfo
-    val dynamicRange = InfoCardPolicy.dynamicRangeLabel(colorInfo?.colorTransfer ?: -1, colorInfo?.hdrStaticInfo != null)
-    val techText = InfoCardPolicy.techLine(videoCodec, audioCodec, dynamicRange, badgePlan.overflow)
+    val compactBadgeText = InfoCardPolicy.compactBadges(
+        width = vf?.width ?: 0,
+        height = vf?.height ?: 0,
+        frameRate = frameRate ?: -1f,
+        channelCount = audioChannelCount,
+        colorTransfer = colorInfo?.colorTransfer ?: -1,
+        hasHdrStaticInfo = colorInfo?.hdrStaticInfo != null,
+        mime = vf?.sampleMimeType,
+        codecs = vf?.codecs,
+    ).joinToString(" · ")
     val programText = InfoCardPolicy.programTitleOrPlaceholder(programTitle)
     val programTime = InfoCardPolicy.programTimeLine(
         startMillis = programStartMs,
@@ -211,30 +210,11 @@ fun ChannelInfoBanner(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = 40.dp, end = 40.dp, top = 16.dp, bottom = 16.dp)
+                    .padding(start = 40.dp, end = 40.dp, top = 10.dp, bottom = 16.dp)
             ) {
-                // ── 右上徽标行（单行、右对齐、固定 24dp、绝不换行） ──────────────
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(24.dp),
-                    horizontalArrangement = Arrangement.End,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    if (badgePlan.visible.isNotEmpty()) {
-                        Text(
-                            text = badgePlan.visible.joinToString("  ·  "),
-                            style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.sp),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.testTag("info_card_badges")
-                        )
-                    }
-                }
-                Spacer(modifier = Modifier.height(4.dp))
-
-                // ── 主行：台标(160×96) + 台名(34sp) 同行；右侧节目列 ────────────────
+                // t32 Bug2：徽标不再单独占一行 —— 用 Box 叠加到主行右上角，消除顶部大空白。
+                Box(modifier = Modifier.fillMaxWidth()) {
+                // ── 主行：台标(160×96) + 台名 同行；右侧节目列 ────────────────
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -276,7 +256,8 @@ fun ChannelInfoBanner(
 
                     Spacer(modifier = Modifier.width(28.dp))
 
-                    Column(modifier = Modifier.weight(0.56f)) {
+                    // t32 Bug2：节目列下移一行，给右上角徽标让位（徽标叠加不额外占行）。
+                    Column(modifier = Modifier.weight(0.56f).padding(top = 20.dp)) {
                         Text(
                             text = programText,
                             style = MaterialTheme.typography.titleLarge,
@@ -311,25 +292,22 @@ fun ChannelInfoBanner(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(2.dp))
-
-                // ── 技术行（单行 12sp α0.60；编码·音频·HDR + 溢出徽标） ────────────
-                if (techText.isNotEmpty()) {
+                // t32 Bug2：徽标叠加在主行右上角（不额外占行），一排紧凑含分辨率/帧数/声道/动态范围/编码。
+                if (compactBadgeText.isNotEmpty()) {
                     Text(
-                        text = techText,
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.60f),
+                        text = compactBadgeText,
+                        style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.sp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .height(16.dp)
-                            .testTag("info_card_tech")
+                            .align(Alignment.TopEnd)
+                            .testTag("info_card_badges")
                     )
                 }
+                } // Box
 
-                // FULLFIX §4.2③：技术→最近标签 6dp（替代原隐式留白）
-                Spacer(modifier = Modifier.height(6.dp))
+                Spacer(modifier = Modifier.height(8.dp))
 
                 // ── 底部：最近观看快跳（≤6；空/回看/快进中整条不渲染） ──────────────
                 if (showRecent) {

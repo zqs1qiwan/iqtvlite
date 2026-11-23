@@ -299,6 +299,17 @@ def main() -> int:
         problems.append("PlayerDrawer.kt: channelListState initial index must be 0 (V4 §1)")
     if "val showFocused = focused || logicalFocused" not in drawer_code:
         problems.append("PlayerDrawer.kt: logicalFocused highlight missing (V4 §1)")
+    # t32 Bug4: EPG column narrowed ~30% + focus-only bounded marquee.
+    if "const val DRAWER_PROGRAM_COLUMN_DP = 210" not in policy or "const val DRAWER_PROGRAM_TIME_COLUMN_DP = 68" not in policy:
+        problems.append("PerfPolicy.kt: t32 EPG column width constants missing")
+    if "PerfPolicy.DRAWER_PROGRAM_COLUMN_DP.dp" not in drawer_code:
+        problems.append("PlayerDrawer.kt: program column must use DRAWER_PROGRAM_COLUMN_DP (t32 Bug4)")
+    if "fun epgMarqueeIterations(" not in policy or "const val EPG_MARQUEE_ITERATIONS = 2" not in policy:
+        problems.append("PerfPolicy.kt: t32 epgMarqueeIterations / bounded constant missing")
+    if "epgMarqueeIterations(focused, drawerVisible)" not in drawer_code:
+        problems.append("PlayerDrawer.kt: EPG rows must use bounded focus marquee (t32 Bug4)")
+    if "Int.MAX_VALUE" in drawer_code:
+        problems.append("PlayerDrawer.kt: Int.MAX_VALUE marquee forbidden (t32 Bug4)")
     # V4 §2: group focus selects group; RIGHT(Groups) collapses + focuses first channel;
     # selectGroup is idempotent with resetFocus; no `if (!showGroups) return` in selectedGroup effect.
     sidebar = (SRC / "SidebarController.kt").read_text(encoding="utf-8")

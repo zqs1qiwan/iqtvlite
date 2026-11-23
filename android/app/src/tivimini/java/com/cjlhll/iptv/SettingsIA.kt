@@ -50,6 +50,7 @@ object SettingsIA {
             "settings_zap_preconnect",
             "settings_multicast_prewarm",
             "settings_jingcai_experiment",
+            "settings_info_ok_mode",
         ),
         SettingsPage.REMOTE to listOf(
             "settings_remote_updown",

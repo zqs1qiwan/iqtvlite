@@ -176,6 +176,20 @@ object PerfPolicy {
         }
     }
 
+    // ── t32 Bug4：节目单列收窄 ~30% + 聚焦跑马灯（有限圈数） ────────────────
+    /** 节目单列宽：300dp → 210dp（-30%）。 */
+    const val DRAWER_PROGRAM_COLUMN_DP = 210
+    /** 节目时间列宽：96dp → 68dp（同比收窄）。 */
+    const val DRAWER_PROGRAM_TIME_COLUMN_DP = 68
+    /**
+     * t32 Bug4：超长节目名/时间的跑马灯圈数（有限，绝不 Int.MAX_VALUE）。
+     * 与抽屉行一致：只在该行聚焦 + 抽屉可见时跑有限圈，弱机无每帧重绘 jank。
+     */
+    const val EPG_MARQUEE_ITERATIONS = 2
+
+    fun epgMarqueeIterations(focused: Boolean, drawerVisible: Boolean): Int =
+        if (focused && drawerVisible) EPG_MARQUEE_ITERATIONS else 0
+
     /** 之后每帧追加多少行（t33：3→2，把单帧成本再压一半）。 */
     const val DRAWER_ROWS_PER_FRAME = 2
 

@@ -12,8 +12,8 @@ object InfoCardPolicy {
     /** V4 §6：卡片底部「最近观看」最多 4 个 logo（v3 是 6）。 */
     const val MAX_RECENT = 4
 
-    /** 空闲 3s 自动隐藏（旧版 5000ms）；聚焦时不隐藏。 */
-    const val AUTO_HIDE_MS = 3000L
+    /** t32 Bug3：静默自动隐藏 7s（原 3000ms）；主动按 OK 与换台统一 7 秒，FOCUSED 不隐藏。 */
+    const val AUTO_HIDE_MS = 7000L
 
     /** 卡片可见性三态。 */
     enum class State { HIDDEN, IDLE, FOCUSED }
@@ -61,6 +61,18 @@ object InfoCardPolicy {
         State.FOCUSED, State.HIDDEN -> null
     }
 
+    /**
+     * t32 Bug1：主动按 OK 打开信息卡后的行为模式（设置项 pref_info_ok_mode）。
+     * - DIRECT（默认）：一次 OK 出卡即进入 FOCUSED，左右键立即选最近观看、OK 跳台；
+     * - TWO_STEP：恢复旧的两段式（第一次 OK 出卡 IDLE，第二次 OK 才进 FOCUSED）。
+     */
+    enum class InfoOkMode { DIRECT, TWO_STEP }
+
+    fun parseInfoOkMode(raw: String?): InfoOkMode =
+        InfoOkMode.entries.firstOrNull { it.name == raw } ?: InfoOkMode.DIRECT
+
+    /** 主动 OK 出卡后是否直接进入可聚焦态：DIRECT=true；空/1张/回看/快进由调用方单独守卫。 */
+    fun openCardFocusesDirectly(mode: InfoOkMode): Boolean = mode == InfoOkMode.DIRECT
     /** 最近观看条是否渲染：有条、非回看、非快进浮层。 */
     fun showRecentRow(recentCount: Int, catchup: Boolean, seekOverlayVisible: Boolean): Boolean =
         recentCount > 0 && !catchup && !seekOverlayVisible
@@ -147,6 +159,31 @@ object InfoCardPolicy {
         return "${mbps.toPlainString()}Mbps"
     }
 
+    /**
+     * t32 Bug2：声道用数字表达（单声道=1.0、立体声=2.0、6ch=5.1、8ch=7.1；其它=N.0）。
+     * <=0 → null（隐藏）。注意与老的 [channelLabel]（2ch/单声道）区分，徽标改用本函数。
+     */
+    fun channelNumberLabel(channelCount: Int): String? = when {
+        channelCount <= 0 -> null
+        channelCount == 1 -> "1.0"
+        channelCount == 2 -> "2.0"
+        channelCount == 6 -> "5.1"
+        channelCount == 8 -> "7.1"
+        channelCount == 4 -> "4.0"
+        else -> "${channelCount}.0"
+    }
+
+    /** t32 Bug2：视频编码短标（H.264→264、H.265→265、AV1→AV1）；未知 null。 */
+    fun videoCodecShort(mime: String?, codecs: String?): String? {
+        val s = "${mime.orEmpty()} ${codecs.orEmpty()}".lowercase()
+        return when {
+            s.contains("avc") || s.contains("h264") -> "264"
+            s.contains("hevc") || s.contains("hvc1") || s.contains("hev1") || s.contains("h265") -> "265"
+            s.contains("av01") || s.contains("av1") -> "AV1"
+            else -> null
+        }
+    }
+
     /** 声道：1→单声道、2→2ch、6→5.1、8→7.1、其它→Nch；<=0 → null。 */
     fun channelLabel(channelCount: Int): String? = when {
         channelCount <= 0 -> null
@@ -155,6 +192,29 @@ object InfoCardPolicy {
         channelCount == 6 -> "5.1"
         channelCount == 8 -> "7.1"
         else -> "${channelCount}ch"
+    }
+
+    /**
+     * t32 Bug2：右上角紧凑徽标（分辨率 > 帧数 > 声道数字 > 动态范围 > 编码），全部一排。
+     * 只有实际可得项才加入，未知即隐藏、不补 `—`。单声道示例：HD · 50fps · 2.0 · SDR · 264。
+     */
+    fun compactBadges(
+        width: Int,
+        height: Int,
+        frameRate: Float,
+        channelCount: Int,
+        colorTransfer: Int,
+        hasHdrStaticInfo: Boolean,
+        mime: String?,
+        codecs: String?,
+    ): List<String> {
+        val out = ArrayList<String>(5)
+        resolutionTier(width, height)?.label?.let(out::add)
+        frameRateLabel(frameRate)?.let(out::add)
+        channelNumberLabel(channelCount)?.let(out::add)
+        dynamicRangeLabel(colorTransfer, hasHdrStaticInfo).let(out::add) // 总有值（默认 SDR）
+        videoCodecShort(mime, codecs)?.let(out::add)
+        return out
     }
 
     /**

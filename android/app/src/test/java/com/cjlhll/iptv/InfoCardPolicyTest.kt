@@ -13,11 +13,23 @@ import org.junit.Test
 class InfoCardPolicyTest {
 
     @Test
-    fun autoHideIsThreeSecondsOnlyWhenIdle() {
-        assertEquals(3000L, InfoCardPolicy.AUTO_HIDE_MS)
-        assertEquals(3000L, InfoCardPolicy.autoHideMs(InfoCardPolicy.State.IDLE))
+    fun autoHideIsSevenSecondsOnlyWhenIdle() {
+        // t32 Bug3：主动 OK 与换台统一 7s 自动消失；聚焦不隐藏。
+        assertEquals(7000L, InfoCardPolicy.AUTO_HIDE_MS)
+        assertEquals(7000L, InfoCardPolicy.autoHideMs(InfoCardPolicy.State.IDLE))
         assertNull("聚焦时不得自动隐藏", InfoCardPolicy.autoHideMs(InfoCardPolicy.State.FOCUSED))
         assertNull(InfoCardPolicy.autoHideMs(InfoCardPolicy.State.HIDDEN))
+    }
+
+    @Test
+    fun infoOkModeDefaultsToDirectRequiringTwoStepOptIn() {
+        // t32 Bug1：默认 DIRECT（一次 OK 即可选最近观看），可切 TWO_STEP。
+        assertEquals(InfoCardPolicy.InfoOkMode.DIRECT, InfoCardPolicy.parseInfoOkMode(null))
+        assertEquals(InfoCardPolicy.InfoOkMode.DIRECT, InfoCardPolicy.parseInfoOkMode("garbage"))
+        assertEquals(InfoCardPolicy.InfoOkMode.DIRECT, InfoCardPolicy.parseInfoOkMode("DIRECT"))
+        assertEquals(InfoCardPolicy.InfoOkMode.TWO_STEP, InfoCardPolicy.parseInfoOkMode("TWO_STEP"))
+        assertTrue(InfoCardPolicy.openCardFocusesDirectly(InfoCardPolicy.InfoOkMode.DIRECT))
+        assertFalse(InfoCardPolicy.openCardFocusesDirectly(InfoCardPolicy.InfoOkMode.TWO_STEP))
     }
 
     @Test
