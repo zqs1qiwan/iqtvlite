@@ -1,10 +1,10 @@
 # IQTV Lite 交付说明（2026-11-23 · 根源重构最终版）
 
 > 仓库：https://github.com/zqs1qiwan/iqtvlite ｜ 分支：`integration/tivimini-baseline`
-> 最终包：CI run **#223** / versionCode **10223** / `2.2.0-tivimini-611dfde0-validation`
-> 主包 sha256 `66cbc5a07c63ced4004d3f6d6b326c938d0430691de86f5a8ac227ec97b5630a`（13,327,873 B ≈12.71MB）
-> 本地：`delivery-apks/iqtvlite-ci-v4c-validation.apk`（回滚：v4b / v4 / ci-213）
-> 真机验收：**根源重构通过，两条判据同时成立**（`docs/SCROLL_REFACTOR_VERIFY.md`）；`main` 未动、未打 tag
+> 最终包：CI run **#225** / versionCode **10225** / `2.2.0-tivimini-0a1c1d2c-validation`
+> 主包 sha256 `c5db4a4f02a698c56be582e99292410b6013b4e893579d72892f740d8831e7c0`（13,386,629 B ≈12.77MB）
+> 本地：`delivery-apks/iqtvlite-ci-infocard-validation.apk`（回滚：ci-v4c / ci-v4b / ci-213）
+> 真机验收：**信息卡 5 条断言 + 滚动根源重构全通过**（`docs/INFOCARD_FIX_VERIFY.md`、`docs/SCROLL_REFACTOR_VERIFY.md`）；`main` 未动、未打 tag
 
 ## 一、本轮目标：根源修复（非补丁）
 
@@ -24,6 +24,9 @@
 | 分组要点才进 / 右键进不去 / 从头开始 | ✅ 聚焦即展示、→进入收起分组从组头、全部→正常进列表 |
 | 播放台 ▶ 文字 | ✅ 品牌蓝变色，无 ▶ |
 | 信息卡排版 | ✅ v4：右上 HD·帧数·声道、台标下只序号+台名+分组、右侧节目+进度、底部 4 logo、~223dp |
+| 信息卡 3 个实测 bug（OK可选/徽标右上不占行全字段/7秒） | ✅ OK 一次即 FOCUSED+左右+OK 跳台（可切两段式）；徽标 TopEnd 一排 `FHD·2.0·SDR·264` 不占行、顶部无大空白；IDLE 7.4s 消失、BACK 提前取消（真机断言全过） |
+| EPG 列过宽 | ✅ 收窄 300→210dp、时间 96→68dp，超长聚焦有界滚动、无 jank |
+| app 方块图标重心 | ✅ 居中（中心 x 与标签同心、140×140） |
 | 最近观看不能切换 | ✅ 4 logo 左右聚焦 + OK 跳台 |
 | 数字跳台位置 | ✅ 右上角 + 3s 超时 + 确认态蓝 |
 | 遥控功能→按键映射 | ✅ TiviMate 式，自定义键实际切台 |
