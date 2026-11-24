@@ -64,6 +64,7 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
         val epgSourceConfigured: Boolean = true,
         val epgLoadFailed: Boolean = false,
         val initialFocusUrl: String? = null,
+        val uiScale: UiScalePreset = UiScalePreset.DEFAULT,
     )
 
     interface Listener {
@@ -110,10 +111,16 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
     private fun dp(v: Int): Int = (v * density).roundToInt()
     private fun dpF(v: Float): Float = v * density
 
-    private val channelRowHeightPx = dp(64)
-    private val groupRowHeightPx = dp(46)
-    private val programRowHeightPx = dp(58)
-    private val dateRowHeightPx = dp(44)
+    private var appliedUiScale: UiScalePreset = UiScalePreset.DEFAULT
+    private val textScale: Float get() = appliedUiScale.textScale
+    private val logoScale: Float get() = appliedUiScale.logoScale
+
+    private val channelRowHeightPx: Int get() = dp((66f * logoScale).roundToInt().coerceIn(56, 78))
+    private val groupRowHeightPx: Int get() = dp((46f * textScale).roundToInt().coerceIn(40, 54))
+    private val programRowHeightPx: Int get() = dp((58f * textScale).roundToInt().coerceIn(50, 68))
+    private val dateRowHeightPx: Int get() = dp((44f * textScale).roundToInt().coerceIn(38, 52))
+    private val channelLogoWidthPx: Int get() = dp((58f * logoScale).roundToInt())
+    private val channelLogoHeightPx: Int get() = dp((36f * logoScale).roundToInt())
 
     // 视图组件
     private val groupsPanel: LinearLayout
@@ -173,11 +180,11 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
         groupsPanel.addView(groupsRecycler, LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         addView(groupsPanel)
 
-        // ── 2. 频道列（紧凑 260dp，自然有界居中滚动，顶部/底部零空白） ────────
+        // ── 2. 频道列（自然有界居中滚动，顶部/底部零空白，支持小/中/大缩放） ────
         channelsPanel = LinearLayout(context).apply {
             orientation = VERTICAL
             setBackgroundColor(COLOR_SURFACE_SOLID)
-            layoutParams = LayoutParams(dp(260), ViewGroup.LayoutParams.MATCH_PARENT)
+            layoutParams = LayoutParams(dp(278), ViewGroup.LayoutParams.MATCH_PARENT)
         }
         val channelsHeader = buildColumnHeader("全部", "0/0")
         channelsTitleView = channelsHeader.first.getChildAt(0) as TextView
@@ -318,11 +325,62 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
         super.onDetachedFromWindow()
     }
 
+    private fun applyUiScale(scale: UiScalePreset) {
+        appliedUiScale = scale
+        val groupsW = when (scale) {
+            UiScalePreset.SMALL -> dp(148)
+            UiScalePreset.MEDIUM -> dp(158)
+            UiScalePreset.LARGE -> dp(178)
+        }
+        val channelsW = when (scale) {
+            UiScalePreset.SMALL -> dp(254)
+            UiScalePreset.MEDIUM -> dp(278)
+            UiScalePreset.LARGE -> dp(312)
+        }
+        val programsW = when (scale) {
+            UiScalePreset.SMALL -> dp(204)
+            UiScalePreset.MEDIUM -> dp(220)
+            UiScalePreset.LARGE -> dp(248)
+        }
+        val datesW = when (scale) {
+            UiScalePreset.SMALL -> dp(98)
+            UiScalePreset.MEDIUM -> dp(106)
+            UiScalePreset.LARGE -> dp(120)
+        }
+        (groupsPanel.layoutParams as? LayoutParams)?.width = groupsW
+        (channelsPanel.layoutParams as? LayoutParams)?.width = channelsW
+        (programsPanel.layoutParams as? LayoutParams)?.width = programsW
+        (datesPanel.layoutParams as? LayoutParams)?.width = datesW
+        channelsTitleView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f * scale.textScale)
+        channelsCountView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11.5f * scale.textScale)
+        programsChannelTitleView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14.5f * scale.textScale)
+        programsSubtitleView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f * scale.textScale)
+
+        // 清空复用池并重绑适配器，确保所有行高、台标与字号立即切换至新档位
+        groupsRecycler.recycledViewPool.clear()
+        channelsRecycler.recycledViewPool.clear()
+        programsRecycler.recycledViewPool.clear()
+        datesRecycler.recycledViewPool.clear()
+        groupsRecycler.adapter = groupsAdapter
+        channelsRecycler.adapter = channelsAdapter
+        programsRecycler.adapter = programsAdapter
+        datesRecycler.adapter = datesAdapter
+        requestLayout()
+        if (isOpen) {
+            scrollChannelBounded(focusedChannelIndex)
+            scrollProgramBounded(focusedProgramIndex)
+        }
+    }
+
     // ── 数据与开合控制 ───────────────────────────────────────────────────────
 
     fun updateSnapshot(newSnapshot: Snapshot) {
         val prev = snapshot
         snapshot = newSnapshot
+
+        if (newSnapshot.uiScale != appliedUiScale) {
+            applyUiScale(newSnapshot.uiScale)
+        }
 
         if (newSnapshot.epgVersion != cachedEpgVersion) {
             cachedEpgVersion = newSnapshot.epgVersion
@@ -952,7 +1010,7 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
                 }
             }
             val label = TextView(context).apply {
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f * textScale)
                 isSingleLine = true
                 ellipsize = TextUtils.TruncateAt.END
                 layoutParams = LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
@@ -1019,35 +1077,36 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
                 orientation = HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
                 background = rowBg
-                setPadding(dp(10), dp(6), dp(10), dp(6))
+                setPadding(dp(6), dp(5), dp(10), dp(5))
                 layoutParams = RecyclerView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, channelRowHeightPx).apply {
-                    marginStart = dp(8)
-                    marginEnd = dp(8)
+                    marginStart = dp(6)
+                    marginEnd = dp(6)
                 }
             }
 
             val numTv = TextView(context).apply {
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
-                gravity = Gravity.END or Gravity.CENTER_VERTICAL
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 12.5f * textScale)
+                gravity = Gravity.CENTER
                 isSingleLine = true
-                layoutParams = LayoutParams(dp(28), ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginEnd = dp(8) }
+                layoutParams = LayoutParams(dp(24), ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginEnd = dp(6) }
             }
 
+            val logoPlateBg = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = dpF(5f)
+                setColor(COLOR_LOGO_PLATE)
+            }
             val logoBox = FrameLayout(context).apply {
-                background = GradientDrawable().apply {
-                    shape = GradientDrawable.RECTANGLE
-                    cornerRadius = dpF(5f)
-                    setColor(COLOR_LOGO_PLATE)
-                }
-                layoutParams = LayoutParams(dp(38), dp(24)).apply { marginEnd = dp(9) }
+                background = null
+                layoutParams = LayoutParams(channelLogoWidthPx, channelLogoHeightPx).apply { marginEnd = dp(10) }
             }
             val logoImg = ImageView(context).apply {
                 scaleType = ImageView.ScaleType.FIT_CENTER
-                setPadding(dp(2), dp(2), dp(2), dp(2))
             }
             val logoFallback = TextView(context).apply {
+                background = logoPlateBg
                 setTextColor(COLOR_TEXT_SECONDARY)
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 9f)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f * textScale)
                 typeface = Typeface.DEFAULT_BOLD
                 gravity = Gravity.CENTER
                 isSingleLine = true
@@ -1061,12 +1120,12 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
                 layoutParams = LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f)
             }
             val titleTv = TextView(context).apply {
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 14.5f)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 14.5f * textScale)
                 isSingleLine = true
                 ellipsize = TextUtils.TruncateAt.END
             }
             val programTv = TextView(context).apply {
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f * textScale)
                 isSingleLine = true
                 ellipsize = TextUtils.TruncateAt.END
                 setPadding(0, dp(2), 0, 0)
@@ -1265,12 +1324,12 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
                 gravity = Gravity.CENTER_VERTICAL
             }
             val timeTv = TextView(context).apply {
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f * textScale)
                 isSingleLine = true
                 layoutParams = LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
             }
             val badgeTv = TextView(context).apply {
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f * textScale)
                 typeface = Typeface.DEFAULT_BOLD
                 isSingleLine = true
             }
@@ -1278,7 +1337,7 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
             metaRow.addView(badgeTv)
 
             val titleTv = TextView(context).apply {
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f * textScale)
                 isSingleLine = true
                 ellipsize = TextUtils.TruncateAt.END
                 setPadding(0, dp(2), 0, 0)
@@ -1387,7 +1446,7 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
                 }
             }
             val label = TextView(context).apply {
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f * textScale)
                 isSingleLine = true
                 layoutParams = LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
             }

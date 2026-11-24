@@ -29,10 +29,11 @@ sealed interface PlayerOverlay {
     /** 左侧选台 + 节目单抽屉（交互时间戳独立维护，确保高频切台/翻页零 Compose 重组）。 */
     data object Drawer : PlayerOverlay
 
-    /** 右侧设置抽屉（包含一级/二级页状态，彻底消除 BackHandler 副作用探针）。 */
+    /** 右侧设置抽屉（包含一级 / 二级页 / 三级展开选项选择器状态，彻底消除 BackHandler 副作用探针）。 */
     data class Settings(
         val page: SettingsPage? = null,
         val rootFocusIndex: Int = 0,
+        val picker: String? = null,
     ) : PlayerOverlay
 
     /** 居中源/线路选择弹窗。 */
@@ -134,18 +135,33 @@ class PlayerUiController(
         clearDigits()
         _captureRequest.value = null
         val keepIndex = (_overlay.value as? PlayerOverlay.Settings)?.rootFocusIndex ?: rootFocusIndex
-        _overlay.value = PlayerOverlay.Settings(page = null, rootFocusIndex = keepIndex)
+        _overlay.value = PlayerOverlay.Settings(page = null, rootFocusIndex = keepIndex, picker = null)
     }
 
     fun openSettingsPage(page: SettingsPage) {
         _captureRequest.value = null
         _overlay.update { cur ->
             if (cur is PlayerOverlay.Settings) {
-                cur.copy(page = page, rootFocusIndex = SettingsNavPolicy.rootIndexFor(page))
+                cur.copy(page = page, rootFocusIndex = SettingsNavPolicy.rootIndexFor(page), picker = null)
             } else {
-                PlayerOverlay.Settings(page = page, rootFocusIndex = SettingsNavPolicy.rootIndexFor(page))
+                PlayerOverlay.Settings(page = page, rootFocusIndex = SettingsNavPolicy.rootIndexFor(page), picker = null)
             }
         }
+    }
+
+    fun openSettingsPicker(pickerId: String) {
+        _captureRequest.value = null
+        _overlay.update { cur ->
+            if (cur is PlayerOverlay.Settings) cur.copy(picker = pickerId) else cur
+        }
+    }
+
+    fun closeSettingsPicker(): Boolean {
+        val cur = _overlay.value as? PlayerOverlay.Settings ?: return false
+        if (cur.picker == null) return false
+        _captureRequest.value = null
+        _overlay.value = cur.copy(picker = null)
+        return true
     }
 
     fun setSettingsRootFocus(index: Int) {
@@ -156,8 +172,14 @@ class PlayerUiController(
         }
     }
 
+    /** 三级逐层回退：选项选择器 → 二级页 → 设置根页。 */
     fun settingsBackToRoot(): Boolean {
         val cur = _overlay.value as? PlayerOverlay.Settings ?: return false
+        if (cur.picker != null) {
+            _captureRequest.value = null
+            _overlay.value = cur.copy(picker = null)
+            return true
+        }
         if (cur.page == null) return false
         _captureRequest.value = null
         _overlay.value = cur.copy(page = null)
@@ -311,7 +333,7 @@ class PlayerUiController(
             qualityDialogOpen = cur is PlayerOverlay.QualityDialog,
             drawerOpen = cur is PlayerOverlay.Drawer,
             settingsOpen = cur is PlayerOverlay.Settings,
-            settingsHasSubPage = (cur as? PlayerOverlay.Settings)?.page != null,
+            settingsHasSubPage = (cur as? PlayerOverlay.Settings)?.let { it.picker != null || it.page != null } == true,
             infoCardVisible = cur is PlayerOverlay.InfoCard,
             infoCardFocused = (cur as? PlayerOverlay.InfoCard)?.focused == true,
             catchup = catchup,

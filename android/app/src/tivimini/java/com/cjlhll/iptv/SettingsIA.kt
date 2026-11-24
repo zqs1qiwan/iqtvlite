@@ -45,6 +45,7 @@ object SettingsIA {
     /** 每页可聚焦行的 tag，顺序即展示顺序（含条件行，UI 侧按可用性过滤）。 */
     private val PAGE_ITEMS: Map<SettingsPage, List<String>> = mapOf(
         SettingsPage.PLAYBACK to listOf(
+            "settings_ui_scale",
             "settings_info_ok_mode",
             "settings_playback_buffer",
             "settings_quality_menu",

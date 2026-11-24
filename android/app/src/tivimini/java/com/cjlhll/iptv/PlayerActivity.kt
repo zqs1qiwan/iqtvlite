@@ -326,6 +326,8 @@ class PlayerActivity : ComponentActivity() {
         remoteBindings = updated
         Prefs.setRemoteBindings(this, updated)
         uiController.cancelCapture()
+        val modeLabel = if (req.second) "长按" else "短按"
+        Toast.makeText(this, "已将 [${RemoteBindings.keyLabel(event.keyCode)}] 设为「${req.first.label}」$modeLabel", Toast.LENGTH_SHORT).show()
         return true
     }
 
@@ -719,6 +721,7 @@ fun VideoPlayerScreen(
     var multicastPrewarmEnabled by remember { mutableStateOf(Prefs.getMulticastPrewarmEnabled(context)) }
     var jingcaiExperiment by remember { mutableStateOf(JingcaiExperiment.parse(Prefs.getJingcaiExperiment(context))) }
     var infoOkMode by remember { mutableStateOf(Prefs.getInfoOkMode(context)) }
+    var uiScale by remember { mutableStateOf(Prefs.getUiScale(context)) }
 
     var catchupRequest by remember { mutableStateOf<CatchupPlayRequest?>(null) }
     var catchupPositionMs by remember { mutableLongStateOf(0L) }
@@ -1493,6 +1496,7 @@ fun VideoPlayerScreen(
         epgVersion,
         epgProgramProvider,
         epgLoadFailed,
+        uiScale,
         drawerOpen,
     ) {
         nativeDrawer.updateSnapshot(
@@ -1509,6 +1513,7 @@ fun VideoPlayerScreen(
                 epgSourceConfigured = epgSourceConfigured,
                 epgLoadFailed = epgLoadFailed,
                 initialFocusUrl = sidebarController.lastFocusedUrlFor(selectedGroup),
+                uiScale = uiScale,
             )
         )
         nativeDrawer.setOpen(drawerOpen)
@@ -1536,7 +1541,11 @@ fun VideoPlayerScreen(
         val settingsState = SettingsUiState(
             visible = settingsDrawerOpen,
             page = settingsOverlay?.page,
+            picker = settingsOverlay?.picker,
             rootFocusIndex = settingsOverlay?.rootFocusIndex ?: 0,
+            uiScale = uiScale,
+            infoOkMode = infoOkMode,
+            playbackBufferMin = playbackBufferMin,
             qualityMenuEnabled = playingGroup?.variants?.size?.let { it > 1 } == true,
             recentCount = recentEntries.size,
             logoCacheSummary = logoCacheSummary,
@@ -1545,22 +1554,21 @@ fun VideoPlayerScreen(
             audioSummary = audioSummaryText,
             audioEntryLabel = AudioTrackUi.entryLabel(audioTracks),
             audioSelectable = AudioTrackUi.canSelect(audioTracks),
-            playbackBufferLabel = LoadControlTuning.tierLabel(playbackBufferMin),
             zapPreconnectEnabled = zapPreconnectEnabled,
             multicastPrewarmEnabled = multicastPrewarmEnabled,
-            jingcaiExperimentLabel = jingcaiExperiment.label,
-            infoOkModeLabel = if (infoOkMode == InfoCardPolicy.InfoOkMode.DIRECT) "直接选最近观看" else "两段式",
+            jingcaiExperiment = jingcaiExperiment,
             remoteBindings = remoteCbs.remoteBindings,
-            remoteDigitsLabel = remoteHabits.digits.label,
+            remoteDigits = remoteHabits.digits,
             captureRequest = captureRequest,
-            autoUpdatePlaylistLabel = autoUpdatePlaylist.label,
-            autoUpdateEpgLabel = autoUpdateEpg.label,
+            autoUpdatePlaylist = autoUpdatePlaylist,
+            autoUpdateEpg = autoUpdateEpg,
             lastUpdateSummary = lastUpdateSummary,
         )
 
         val settingsActions = remember(
             remoteCbs.remoteBindings,
             remoteHabits,
+            uiScale,
             playbackBufferMin,
             zapPreconnectEnabled,
             multicastPrewarmEnabled,
@@ -1574,9 +1582,54 @@ fun VideoPlayerScreen(
         ) {
             SettingsActions(
                 onOpenPage = { uiController.openSettingsPage(it) },
+                onOpenPicker = { uiController.openSettingsPicker(it) },
+                onClosePicker = { uiController.closeSettingsPicker() },
                 onBackToRoot = { uiController.settingsBackToRoot() },
                 onRootFocusChanged = { uiController.setSettingsRootFocus(it) },
                 onClose = { uiController.closeSettings() },
+                onSelectUiScale = { preset ->
+                    uiScale = preset
+                    Prefs.setUiScale(context, preset)
+                    Toast.makeText(context, "界面大小已切换为「${preset.label}」", Toast.LENGTH_SHORT).show()
+                },
+                onSelectInfoOkMode = { mode ->
+                    Prefs.setInfoOkMode(context, mode)
+                    infoOkMode = mode
+                },
+                onSelectPlaybackBuffer = { tier ->
+                    Prefs.setPlaybackBufferMin(context, tier)
+                    playbackBufferMin = tier
+                    Toast.makeText(context, "起播缓冲：${LoadControlTuning.tierLabel(tier)}（下次切台生效）", Toast.LENGTH_SHORT).show()
+                },
+                onSelectJingcaiExperiment = { mode ->
+                    Prefs.setJingcaiExperiment(context, mode.id)
+                    jingcaiExperiment = mode
+                    Toast.makeText(context, "码流兼容模式：${mode.label}（重新选台生效）", Toast.LENGTH_SHORT).show()
+                },
+                onSelectPlaylistInterval = { iv ->
+                    autoUpdatePlaylist = iv
+                    Prefs.setAutoUpdatePlaylist(context, iv)
+                },
+                onSelectEpgInterval = { iv ->
+                    autoUpdateEpg = iv
+                    Prefs.setAutoUpdateEpg(context, iv)
+                },
+                onSelectRemoteUpDown = { habit ->
+                    val chKeys = RemoteBindings.deriveChannelKeysEnabled(remoteCbs.remoteBindings)
+                    val updated = RemoteBindings.applyUpDownHabit(remoteCbs.remoteBindings, habit, chKeys)
+                    Prefs.setRemoteUpDown(context, habit)
+                    remoteCbs.onBindingsChanged(updated)
+                },
+                onSelectRemoteOk = { habit ->
+                    val updated = RemoteBindings.applyOkHabit(remoteCbs.remoteBindings, habit)
+                    Prefs.setRemoteOk(context, habit)
+                    remoteCbs.onBindingsChanged(updated)
+                },
+                onSelectRemoteDigits = { habit ->
+                    Prefs.setRemoteDigits(context, habit)
+                    remoteHabits = remoteHabits.copy(digits = habit)
+                    remoteCbs.onRemoteSettingsChanged(remoteHabits)
+                },
                 onSourceConfigClick = { context.startActivity(Intent(context, MainActivity::class.java)) },
                 onQualityMenuClick = { uiController.openQualityDialog(playingGroupIndex) },
                 onCheckUpdateClick = {
@@ -1619,12 +1672,6 @@ fun VideoPlayerScreen(
                     LogoLoader.setLogoLoadEnabledRuntime(enabled)
                     if (!enabled) LogoLoader.clearMemory()
                 },
-                onCyclePlaybackBuffer = {
-                    val next = LoadControlTuning.next(playbackBufferMin)
-                    Prefs.setPlaybackBufferMin(context, next)
-                    playbackBufferMin = next
-                    Toast.makeText(context, "起播缓冲：${LoadControlTuning.tierLabel(next)}（下次切台生效）", Toast.LENGTH_SHORT).show()
-                },
                 onToggleZapPreconnect = {
                     val next = !zapPreconnectEnabled
                     Prefs.setZapPreconnectEnabled(context, next)
@@ -1637,19 +1684,6 @@ fun VideoPlayerScreen(
                     multicastPrewarmEnabled = next
                     if (!next) MulticastPrewarm.cancel()
                 },
-                onCycleJingcaiExperiment = {
-                    val next = JingcaiExperiment.next(jingcaiExperiment)
-                    Prefs.setJingcaiExperiment(context, next.id)
-                    jingcaiExperiment = next
-                    Toast.makeText(context, "码流兼容模式：${next.label}（重新选台生效）", Toast.LENGTH_SHORT).show()
-                },
-                onCycleInfoOkMode = {
-                    val next = if (infoOkMode == InfoCardPolicy.InfoOkMode.DIRECT) {
-                        InfoCardPolicy.InfoOkMode.TWO_STEP
-                    } else InfoCardPolicy.InfoOkMode.DIRECT
-                    Prefs.setInfoOkMode(context, next)
-                    infoOkMode = next
-                },
                 onAudioTrackClick = {
                     if (!AudioTrackUi.canSelect(audioTracks)) {
                         Toast.makeText(
@@ -1661,28 +1695,6 @@ fun VideoPlayerScreen(
                         uiController.openAudioDialog()
                     }
                 },
-                // 修复 P0-4：快速习惯直接联动修改唯一真源 remoteBindings，100% 即时生效！
-                onCycleRemoteUpDown = {
-                    val cur = RemoteBindings.deriveUpDownHabit(remoteCbs.remoteBindings)
-                    val next = RemoteHabits.nextUpDown(cur)
-                    val chKeys = RemoteBindings.deriveChannelKeysEnabled(remoteCbs.remoteBindings)
-                    val updated = RemoteBindings.applyUpDownHabit(remoteCbs.remoteBindings, next, chKeys)
-                    Prefs.setRemoteUpDown(context, next)
-                    remoteCbs.onBindingsChanged(updated)
-                },
-                onCycleRemoteOk = {
-                    val cur = RemoteBindings.deriveOkHabit(remoteCbs.remoteBindings)
-                    val next = RemoteHabits.nextOk(cur)
-                    val updated = RemoteBindings.applyOkHabit(remoteCbs.remoteBindings, next)
-                    Prefs.setRemoteOk(context, next)
-                    remoteCbs.onBindingsChanged(updated)
-                },
-                onCycleRemoteDigits = {
-                    val next = RemoteHabits.nextDigits(remoteHabits.digits)
-                    Prefs.setRemoteDigits(context, next)
-                    remoteHabits = remoteHabits.copy(digits = next)
-                    remoteCbs.onRemoteSettingsChanged(remoteHabits)
-                },
                 onToggleRemoteChannelKeys = {
                     val next = !RemoteBindings.deriveChannelKeysEnabled(remoteCbs.remoteBindings)
                     val updated = RemoteBindings.applyChannelKeysHabit(remoteCbs.remoteBindings, next)
@@ -1690,6 +1702,13 @@ fun VideoPlayerScreen(
                     remoteCbs.onBindingsChanged(updated)
                 },
                 onStartCapture = { action, longPress -> uiController.startCapture(action, longPress) },
+                onClearBinding = { action, longPress ->
+                    val updated = RemoteBindings.clearBinding(remoteCbs.remoteBindings, action, longPress)
+                    remoteCbs.onBindingsChanged(updated)
+                    uiController.cancelCapture()
+                    val modeLabel = if (longPress) "长按" else "短按"
+                    Toast.makeText(context, "已清除「${action.label}」$modeLabel 绑定", Toast.LENGTH_SHORT).show()
+                },
                 onCancelCapture = { uiController.cancelCapture() },
                 onResetRemoteBindings = {
                     Prefs.resetRemoteSettings(context)
@@ -1698,14 +1717,6 @@ fun VideoPlayerScreen(
                     remoteCbs.onBindingsChanged(RemoteBindings.DEFAULT)
                     uiController.cancelCapture()
                     Toast.makeText(context, "已恢复默认遥控配置", Toast.LENGTH_SHORT).show()
-                },
-                onCyclePlaylistInterval = {
-                    autoUpdatePlaylist = AutoUpdateConfig.next(autoUpdatePlaylist)
-                    Prefs.setAutoUpdatePlaylist(context, autoUpdatePlaylist)
-                },
-                onCycleEpgInterval = {
-                    autoUpdateEpg = AutoUpdateConfig.next(autoUpdateEpg)
-                    Prefs.setAutoUpdateEpg(context, autoUpdateEpg)
                 },
                 onRefreshPlaylistNow = {
                     Toast.makeText(context, "正在刷新播放列表…", Toast.LENGTH_SHORT).show()
@@ -1832,6 +1843,7 @@ fun VideoPlayerScreen(
                 },
                 onExitFocus = { uiController.unfocusInfoCard() },
                 onFocusedChanged = { /* 单源状态已在 uiController，无需反向镜像 */ },
+                uiScale = uiScale,
                 animate = true,
                 modifier = Modifier.fillMaxWidth(),
             )

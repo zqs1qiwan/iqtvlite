@@ -40,8 +40,10 @@ object Prefs {
     private const val KEY_MULTICAST_PREWARM = "multicast_prewarm_enabled"
     // t231: 睛彩 app-side experiment selector (default "off" → behaviour unchanged).
     private const val KEY_JINGCAI_EXPERIMENT = "jingcai_experiment"
-    // t32 Bug1：信息卡 OK 行为（DIRECT 默认 / TWO_STEP）。
+    // 信息卡 OK 行为（默认两段式 TWO_STEP，可切 DIRECT）。
     private const val KEY_INFO_OK_MODE = "pref_info_ok_mode"
+    // TiviMate 风格文字+台标全局缩放档位（小 / 中[默认] / 大）。
+    private const val KEY_UI_SCALE = "pref_ui_scale"
 
     private fun getPrefs(context: Context): SharedPreferences {
         return context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
@@ -309,6 +311,13 @@ object Prefs {
 
     fun setInfoOkMode(context: Context, mode: InfoCardPolicy.InfoOkMode) {
         getPrefs(context).edit().putString(KEY_INFO_OK_MODE, mode.name).apply()
+    }
+
+    fun getUiScale(context: Context): UiScalePreset =
+        UiScalePreset.parse(getPrefs(context).getString(KEY_UI_SCALE, null))
+
+    fun setUiScale(context: Context, preset: UiScalePreset) {
+        getPrefs(context).edit().putString(KEY_UI_SCALE, preset.id).apply()
     }
 
     /** t189: write the EPG failure state in one step (single source: AutoUpdateConfig). */

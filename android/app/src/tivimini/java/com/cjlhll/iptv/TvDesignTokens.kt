@@ -22,6 +22,27 @@ import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.darkColorScheme
 
 /**
+ * TiviMate 风格「文字 + 台标」全局界面缩放档位（默认中，支持小/中/大实时切换）。
+ */
+enum class UiScalePreset(
+    val id: String,
+    val label: String,
+    val description: String,
+    val textScale: Float,
+    val logoScale: Float,
+) {
+    SMALL("small", "小", "紧凑排布，单屏展示更多频道与节目", 0.88f, 0.84f),
+    MEDIUM("medium", "中", "默认推荐，兼顾清晰度与信息密度", 1.00f, 1.00f),
+    LARGE("large", "大", "大字与大台标，客厅远距观看更省力", 1.15f, 1.18f);
+
+    companion object {
+        val DEFAULT = MEDIUM
+        fun parse(raw: String?): UiScalePreset =
+            entries.firstOrNull { it.id.equals(raw, ignoreCase = true) || it.name.equals(raw, ignoreCase = true) } ?: DEFAULT
+    }
+}
+
+/**
  * 统一极简高级 Android TV 视觉设计系统（对标 TiviMate 沉静暗色建筑感）：
  * - 深曜石面板底色（#0F131A），统一静默层叠透明度（主抽屉/信息卡 0.92，EPG 区分区 0.62，弹窗 0.96）；
  * - 清晰高对比度灰白磨砂焦点底（#24FFFFFF），零廉价外边框/阴影/外发光；

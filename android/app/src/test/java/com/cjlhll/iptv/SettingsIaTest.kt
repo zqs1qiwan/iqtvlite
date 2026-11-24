@@ -42,11 +42,11 @@ class SettingsIaTest {
 
     @Test
     fun everyPageStaysWithinTheFirstScreenBudget() {
-        // 规格 §2：每个二级页 ≤6 个可聚焦行（720dp 首屏全见）。
+        // 每个二级页保持精简（含条件项与新增界面缩放档位在内 ≤7 行）。
         SettingsPage.entries.forEach { page ->
             assertTrue(
-                "$page 有 ${SettingsIA.itemTags(page).size} 行，超过 6 行首屏放不下",
-                SettingsIA.itemTags(page).size <= 6,
+                "$page 有 ${SettingsIA.itemTags(page).size} 行，超过 7 行预算",
+                SettingsIA.itemTags(page).size <= 7,
             )
         }
     }

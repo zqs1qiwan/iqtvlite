@@ -126,9 +126,17 @@ object RemoteBindings {
         if (context == UiContext.MENU_OPEN || context == UiContext.EPG_VISIBLE) return null
         if (context == UiContext.CATCHUP) return resolveCatchup(keycode)
         for (binding in bindings) {
+            if (binding.action == RemoteAction.SEEK_BACK ||
+                binding.action == RemoteAction.SEEK_FORWARD ||
+                binding.action == RemoteAction.RETURN_LIVE
+            ) continue
             if (longPress && keycode in binding.longPressKeycodes) return binding.action
         }
         for (binding in bindings) {
+            if (binding.action == RemoteAction.SEEK_BACK ||
+                binding.action == RemoteAction.SEEK_FORWARD ||
+                binding.action == RemoteAction.RETURN_LIVE
+            ) continue
             if (!longPress && keycode in binding.shortPressKeycodes) return binding.action
         }
         // 兜底：若长按未绑定但短按绑定了，返回 null（不误触发短按）
@@ -413,6 +421,17 @@ object RemoteBindings {
             val cleaned = b.shortPressKeycodes - keycode
             if (b.action == action) b.copy(shortPressKeycodes = cleaned + keycode) else b.copy(shortPressKeycodes = cleaned)
         }
+    }
+
+    /** 清除某功能的短按或长按按键绑定。 */
+    fun clearBinding(
+        bindings: List<KeyBinding>,
+        action: RemoteAction,
+        longPress: Boolean,
+    ): List<KeyBinding> = bindings.map { b ->
+        if (b.action != action) b
+        else if (longPress) b.copy(longPressKeycodes = emptySet())
+        else b.copy(shortPressKeycodes = emptySet())
     }
 
     /** 按键的人类可读摘要（用于设置行显示），例如 `↑ / 166 / 92`。 */

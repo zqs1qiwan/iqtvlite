@@ -85,9 +85,12 @@ fun ChannelInfoBanner(
     onSwitchRecent: (Int) -> Unit = {},
     onExitFocus: () -> Unit = {},
     onFocusedChanged: (Boolean) -> Unit = {},
+    uiScale: UiScalePreset = UiScalePreset.DEFAULT,
     animate: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
+    val tScale = uiScale.textScale
+    val lScale = uiScale.logoScale
     val containerColor = TvDesignTokens.SurfaceObsidian.copy(alpha = TvDesignTokens.ALPHA_INFO_CARD)
     val visible = InfoCardPolicy.isVisible(state, seekOverlayVisible)
     val focused = state == InfoCardPolicy.State.FOCUSED
@@ -216,19 +219,21 @@ fun ChannelInfoBanner(
                     modifier = Modifier.weight(0.52f),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
+                    val mainLogoW = (160f * lScale).dp
+                    val mainLogoH = (98f * lScale).dp
                     Box(
                         modifier = Modifier
-                            .size(width = 164.dp, height = 104.dp),
+                            .size(width = mainLogoW + 4.dp, height = mainLogoH + 6.dp),
                         contentAlignment = Alignment.Center,
                     ) {
                         ChannelLogo(
                             logoUrl = channel?.logoUrl,
                             fallbackTitle = channel?.title ?: "",
                             modifier = Modifier
-                                .size(width = 160.dp, height = 98.dp)
+                                .size(width = mainLogoW, height = mainLogoH)
                                 .testTag("info_card_logo"),
-                            width = 160.dp,
-                            height = 98.dp,
+                            width = mainLogoW,
+                            height = mainLogoH,
                         )
                     }
 
@@ -245,8 +250,8 @@ fun ChannelInfoBanner(
                             Text(
                                 text = titleWithNumber,
                                 style = MaterialTheme.typography.headlineLarge.copy(
-                                    fontSize = 24.sp,
-                                    lineHeight = 28.sp,
+                                    fontSize = (24f * tScale).sp,
+                                    lineHeight = (28f * tScale).sp,
                                     fontWeight = FontWeight.SemiBold,
                                 ),
                                 color = TvDesignTokens.TextPrimary,
@@ -266,7 +271,7 @@ fun ChannelInfoBanner(
                                 ) {
                                     Text(
                                         text = smallMeta,
-                                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.5.sp),
+                                        style = MaterialTheme.typography.bodySmall.copy(fontSize = (12.5f * tScale).sp),
                                         color = TvDesignTokens.TextSecondary,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
@@ -285,8 +290,8 @@ fun ChannelInfoBanner(
                         Text(
                             text = programText,
                             style = MaterialTheme.typography.titleLarge.copy(
-                                fontSize = 18.5.sp,
-                                lineHeight = 22.sp,
+                                fontSize = (18.5f * tScale).sp,
+                                lineHeight = (22f * tScale).sp,
                                 fontWeight = FontWeight.Medium,
                             ),
                             color = if (programTitle.isNullOrBlank()) {
@@ -303,7 +308,7 @@ fun ChannelInfoBanner(
                             Spacer(modifier = Modifier.height(3.dp))
                             Text(
                                 text = programTime,
-                                style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.5.sp),
+                                style = MaterialTheme.typography.labelMedium.copy(fontSize = (12.5f * tScale).sp),
                                 color = TvDesignTokens.TextSecondary,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
@@ -327,7 +332,7 @@ fun ChannelInfoBanner(
                 Column(
                     modifier = Modifier
                         .weight(0.48f)
-                        .heightIn(min = 104.dp),
+                        .heightIn(min = (104f * lScale).dp),
                     verticalArrangement = Arrangement.SpaceBetween,
                 ) {
                     Row(
@@ -340,7 +345,7 @@ fun ChannelInfoBanner(
                         if (focused && showRecent) {
                             Text(
                                 text = "← → 选择 · OK 切台",
-                                style = MaterialTheme.typography.labelMedium.copy(fontSize = 11.5.sp),
+                                style = MaterialTheme.typography.labelMedium.copy(fontSize = (11.5f * tScale).sp),
                                 color = Color(0xFFB4C0D4),
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
@@ -354,7 +359,7 @@ fun ChannelInfoBanner(
                             Text(
                                 text = compactBadgeText,
                                 style = MaterialTheme.typography.labelMedium.copy(
-                                    fontSize = 12.5.sp,
+                                    fontSize = (12.5f * tScale).sp,
                                     fontWeight = FontWeight.Medium,
                                 ),
                                 color = Color(0xFFCBD4E3),
@@ -372,6 +377,7 @@ fun ChannelInfoBanner(
                             focused = focused,
                             logicalFocusIndex = focusIndex,
                             requesters = requesters,
+                            uiScale = uiScale,
                             onCardFocusChanged = { index, isFocused ->
                                 if (isFocused) stripFocusIndex = index
                                 else if (stripFocusIndex == index) stripFocusIndex = -1
@@ -410,15 +416,19 @@ private fun RecentStrip(
     focused: Boolean,
     logicalFocusIndex: Int,
     requesters: List<FocusRequester>,
+    uiScale: UiScalePreset,
     onCardFocusChanged: (Int, Boolean) -> Unit,
 ) {
     val cardShape = remember { RoundedCornerShape(6.dp) }
     val idlePlateColor = Color(0x14FFFFFF)
+    val stripHeight = (80f * uiScale.logoScale).dp
+    val logoW = (76f * uiScale.logoScale).dp
+    val logoH = (46f * uiScale.logoScale).dp
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(80.dp)
+            .height(stripHeight)
             .clipToBounds()
             .testTag("info_card_recent_row"),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -455,20 +465,23 @@ private fun RecentStrip(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(46.dp),
+                        .height(logoH),
                     contentAlignment = Alignment.Center,
                 ) {
                     if (hasLogo) {
                         ChannelLogo(
                             logoUrl = item.logoUrl,
                             fallbackTitle = "",
-                            width = 76.dp,
-                            height = 46.dp,
+                            width = logoW,
+                            height = logoH,
                         )
                     } else {
                         Text(
                             text = item.title.take(4),
-                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                            style = MaterialTheme.typography.titleSmall.copy(
+                                fontSize = (13f * uiScale.textScale).sp,
+                                fontWeight = FontWeight.SemiBold,
+                            ),
                             color = if (isHighlighted) TvDesignTokens.TextPrimary else TvDesignTokens.TextSecondary,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
@@ -480,8 +493,8 @@ private fun RecentStrip(
                 Text(
                     text = item.title,
                     style = MaterialTheme.typography.labelSmall.copy(
-                        fontSize = 11.5.sp,
-                        lineHeight = 14.sp,
+                        fontSize = (11.5f * uiScale.textScale).sp,
+                        lineHeight = (14f * uiScale.textScale).sp,
                         fontWeight = if (isHighlighted) FontWeight.SemiBold else FontWeight.Normal,
                     ),
                     color = if (isHighlighted) TvDesignTokens.TextPrimary else Color(0xFFB8C3D4),

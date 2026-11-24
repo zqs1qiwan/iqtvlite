@@ -163,4 +163,36 @@ class PlayerUiControllerTest {
         // 末台紧贴视口底部，绝不留下方一片空白
         assertEquals(viewportH - rowH, NativeChannelDrawerView.boundedCenterOffset(146, count, rowH, viewportH))
     }
+
+    @Test
+    fun settingsThreeLevelBackSteppingAndUiScalePresetWorkCleanly() {
+        val c = PlayerUiController()
+        c.openSettings()
+        c.openSettingsPage(SettingsPage.PLAYBACK)
+        c.openSettingsPicker("ui_scale")
+
+        // 三级 Picker 按 Back → 退回二级页（不关设置）
+        assertEquals(BackKeyPolicy.Action.SETTINGS_BACK_TO_ROOT, c.decideBack(false, false))
+        assertTrue(c.settingsBackToRoot())
+        val afterPicker = c.currentOverlay as PlayerOverlay.Settings
+        assertNull(afterPicker.picker)
+        assertEquals(SettingsPage.PLAYBACK, afterPicker.page)
+
+        // 二级页按 Back → 退回设置根页
+        assertTrue(c.settingsBackToRoot())
+        assertNull((c.currentOverlay as PlayerOverlay.Settings).page)
+
+        // UiScalePreset 解析与默认中档
+        assertEquals(UiScalePreset.MEDIUM, UiScalePreset.parse(null))
+        assertEquals(UiScalePreset.SMALL, UiScalePreset.parse("small"))
+        assertEquals(UiScalePreset.LARGE, UiScalePreset.parse("LARGE"))
+
+        // RemoteBindings.clearBinding 仅清空目标动作
+        val cleared = RemoteBindings.clearBinding(RemoteBindings.DEFAULT, RemoteAction.OPEN_DRAWER, longPress = false)
+        assertNull(RemoteBindings.resolveWith(cleared, RemoteBindings.KEY_DPAD_LEFT, false, UiContext.PLAYER_ONLY))
+        assertEquals(
+            RemoteAction.CHANNEL_UP,
+            RemoteBindings.resolveWith(cleared, RemoteBindings.KEY_DPAD_UP, false, UiContext.PLAYER_ONLY),
+        )
+    }
 }
