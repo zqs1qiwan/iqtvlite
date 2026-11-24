@@ -127,9 +127,6 @@ fun MainScreen() {
     var isLiveSourceEditing by remember { mutableStateOf(false) }
     var isEpgSourceEditing by remember { mutableStateOf(false) }
 
-    var updateInfo by remember { mutableStateOf<UpdateChecker.UpdateInfo?>(null) }
-    var showUpdateDialog by remember { mutableStateOf(false) }
-
     fun syncStateFromPrefs() {
         val freshLang = Prefs.getAppLanguage(context)
         AppStrings.set(freshLang)
@@ -144,21 +141,6 @@ fun MainScreen() {
         }
         globalUaSummary = Prefs.getGlobalUserAgent(context)
         customHeaderCount = PlaylistSources.parseCustomHeaders(Prefs.getGlobalCustomHeaders(context)).size
-    }
-
-    LaunchedEffect(Unit) {
-        val info = UpdateChecker.checkUpdate(context)
-        if (info != null && info.hasUpdate) {
-            updateInfo = info
-            showUpdateDialog = true
-        }
-    }
-
-    if (showUpdateDialog && updateInfo != null) {
-        UpdateDialog(
-            updateInfo = updateInfo!!,
-            onDismiss = { showUpdateDialog = false }
-        )
     }
 
     fun loadAndPlay(url: String, requestedEpg: String, sourceUa: String = "", save: Boolean = true) {

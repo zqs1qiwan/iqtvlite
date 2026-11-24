@@ -227,7 +227,7 @@ jobs:
               echo "Stable validation signing is **active**: this fingerprint must be identical in every run, so \`adb install -r\` keeps working without uninstalling."
             else
               echo ""
-              echo "Stable validation signing is **not configured**: the debug keystore is regenerated per run, so APKs from different runs cannot be installed over each other (see docs/CI_STABLE_SIGNING.md)."
+              echo "Stable release/validation signing is **not configured**: the debug keystore is regenerated per run, so APKs from different runs cannot be installed over each other (see docs/RELEASE_SIGNING.md)."
             fi
           } >> "$GITHUB_STEP_SUMMARY"
           mkdir -p android/app/build/reports

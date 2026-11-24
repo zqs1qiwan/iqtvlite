@@ -763,19 +763,47 @@ fun VideoPlayerScreen(
     var globalCustomHeaders by remember { mutableStateOf(Prefs.getGlobalCustomHeaders(context)) }
     val visibleSources = remember(sources) { PlaylistSources.visibleSources(sources) }
     var sourceSwitchJob by remember { mutableStateOf<Job?>(null) }
-    DisposableEffect(Unit) { onDispose { sourceSwitchJob?.cancel() } }
+    var updateJob by remember { mutableStateOf<Job?>(null) }
+    DisposableEffect(Unit) {
+        onDispose {
+            sourceSwitchJob?.cancel()
+            updateJob?.cancel()
+        }
+    }
 
     var catchupRequest by remember { mutableStateOf<CatchupPlayRequest?>(null) }
     var catchupPositionMs by remember { mutableLongStateOf(0L) }
     var isSeekOverlayVisible by remember { mutableStateOf(false) }
     var catchupSeekPingAt by remember { mutableLongStateOf(0L) }
-    var updateInfo by remember { mutableStateOf<UpdateChecker.UpdateInfo?>(null) }
+    var inlineUpdateState by remember { mutableStateOf<InlineUpdateState>(InlineUpdateState.Idle) }
+    var settingsNotice by remember { mutableStateOf<String?>(null) }
+    var settingsNoticeSeq by remember { mutableIntStateOf(0) }
+    fun notifySettings(text: String) {
+        settingsNotice = text
+        settingsNoticeSeq++
+    }
     var heavyWorkEnabled by remember { mutableStateOf(false) }
     var logoCacheTick by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(Unit) {
         delay(2500L)
         heavyWorkEnabled = true
+    }
+
+    LaunchedEffect(heavyWorkEnabled) {
+        if (heavyWorkEnabled && inlineUpdateState is InlineUpdateState.Idle) {
+            val info = runCatching { UpdateChecker.checkUpdateAndGetInfo(context) }.getOrNull()
+            if (info?.hasUpdate == true && inlineUpdateState is InlineUpdateState.Idle) {
+                inlineUpdateState = InlineUpdateState.Available(info)
+            }
+        }
+    }
+
+    LaunchedEffect(settingsNoticeSeq) {
+        if (settingsNotice != null) {
+            delay(3000L)
+            settingsNotice = null
+        }
     }
 
     LaunchedEffect(catchupRequest) {
@@ -1696,6 +1724,15 @@ fun VideoPlayerScreen(
         val audioSummaryText = remember(audioTracks, audioOverrideGroup, audioOverrideTrack, appLanguage) {
             AudioTrackUi.summary(audioTracks, audioOverrideGroup, audioOverrideTrack, appLanguage)
         }
+        LaunchedEffect(settingsDrawerOpen) {
+            if (!settingsDrawerOpen) {
+                settingsNotice = null
+                if (inlineUpdateState is InlineUpdateState.UpToDate || inlineUpdateState is InlineUpdateState.Failed) {
+                    inlineUpdateState = InlineUpdateState.Idle
+                }
+            }
+        }
+
         val lastUpdateSummary = remember(settingsDrawerOpen, autoUpdateTick, appLanguage) {
             if (!settingsDrawerOpen) "" else {
                 val now = System.currentTimeMillis()
@@ -1739,6 +1776,8 @@ fun VideoPlayerScreen(
             activeSourceId = activeSourceId,
             globalUserAgent = globalUserAgent,
             globalCustomHeaders = globalCustomHeaders,
+            updateState = inlineUpdateState,
+            notice = settingsNotice,
         )
 
         val settingsActions = remember(
@@ -1750,6 +1789,7 @@ fun VideoPlayerScreen(
             activeSourceId,
             globalUserAgent,
             globalCustomHeaders,
+            inlineUpdateState,
             playbackBufferMin,
             zapPreconnectEnabled,
             multicastPrewarmEnabled,
@@ -1772,20 +1812,14 @@ fun VideoPlayerScreen(
                     appLanguage = nextLang
                     Prefs.setAppLanguage(context, nextLang)
                     AppStrings.set(nextLang)
-                    Toast.makeText(
-                        context,
-                        AppStrings.tr(nextLang, "语言已切换为简体中文", "Language set to English"),
-                        Toast.LENGTH_SHORT,
-                    ).show()
+                    notifySettings(AppStrings.tr(nextLang, "语言已切换为简体中文", "Language set to English"))
                 },
                 onSelectUiScale = { preset ->
                     uiScale = preset
                     Prefs.setUiScale(context, preset)
-                    Toast.makeText(
-                        context,
+                    notifySettings(
                         AppStrings.tr(appLanguage, "界面大小已切换为「${preset.localizedLabel(appLanguage)}」", "UI size: ${preset.localizedLabel(appLanguage)}"),
-                        Toast.LENGTH_SHORT,
-                    ).show()
+                    )
                 },
                 onSelectInfoOkMode = { mode ->
                     Prefs.setInfoOkMode(context, mode)
@@ -1794,20 +1828,16 @@ fun VideoPlayerScreen(
                 onSelectPlaybackBuffer = { tier ->
                     Prefs.setPlaybackBufferMin(context, tier)
                     playbackBufferMin = tier
-                    Toast.makeText(
-                        context,
+                    notifySettings(
                         AppStrings.tr(appLanguage, "起播缓冲：${LoadControlTuning.tierLabel(tier, appLanguage)}（下次切台生效）", "Buffer: ${LoadControlTuning.tierLabel(tier, appLanguage)} (next tune)"),
-                        Toast.LENGTH_SHORT,
-                    ).show()
+                    )
                 },
                 onSelectJingcaiExperiment = { mode ->
                     Prefs.setJingcaiExperiment(context, mode.id)
                     jingcaiExperiment = mode
-                    Toast.makeText(
-                        context,
+                    notifySettings(
                         AppStrings.tr(appLanguage, "码流兼容模式：${mode.localizedLabel(appLanguage)}（重新选台生效）", "Stream mode: ${mode.localizedLabel(appLanguage)} (next tune)"),
-                        Toast.LENGTH_SHORT,
-                    ).show()
+                    )
                 },
                 onSelectPlaylistInterval = { iv ->
                     autoUpdatePlaylist = iv
@@ -1840,25 +1870,21 @@ fun VideoPlayerScreen(
                     if (target != null) {
                         val visibleCount = sources.count { it.enabled }
                         if (target.enabled && visibleCount <= 1) {
-                            Toast.makeText(
-                                context,
+                            notifySettings(
                                 AppStrings.tr(appLanguage, "至少保留 1 个在选台列表显示的播放源", "Keep at least 1 visible source"),
-                                Toast.LENGTH_SHORT,
-                            ).show()
+                            )
                         } else {
                             val updated = PlaylistSources.toggleEnabled(sources, id)
                             Prefs.saveSources(context, updated, activeSourceId)
                             sources = Prefs.getSources(context)
                             val nowEnabled = sources.firstOrNull { it.id == id }?.enabled == true
-                            Toast.makeText(
-                                context,
+                            notifySettings(
                                 if (nowEnabled) {
                                     AppStrings.tr(appLanguage, "已在选台列表显示「${target.name}」", "Showing \"${target.name}\" in drawer")
                                 } else {
                                     AppStrings.tr(appLanguage, "已在选台列表隐藏「${target.name}」", "Hidden \"${target.name}\" in drawer")
                                 },
-                                Toast.LENGTH_SHORT,
-                            ).show()
+                            )
                         }
                     }
                 },
@@ -1866,50 +1892,86 @@ fun VideoPlayerScreen(
                     Prefs.setGlobalUserAgent(context, ua)
                     globalUserAgent = ua
                     val label = ua.ifBlank { AppStrings.tr(appLanguage, "自动（默认 VLC）", "Auto (VLC)") }
-                    Toast.makeText(
-                        context,
+                    notifySettings(
                         AppStrings.tr(appLanguage, "全局 User-Agent：$label（下次切台生效）", "Global User-Agent: $label (next tune)"),
-                        Toast.LENGTH_SHORT,
-                    ).show()
+                    )
                 },
                 onClearGlobalCustomHeaders = {
                     Prefs.setGlobalCustomHeaders(context, "")
                     globalCustomHeaders = ""
-                    Toast.makeText(
-                        context,
-                        AppStrings.tr(appLanguage, "已清空全部全局自定义 Header", "Cleared global custom headers"),
-                        Toast.LENGTH_SHORT,
-                    ).show()
+                    notifySettings(AppStrings.tr(appLanguage, "已清空全部全局自定义 Header", "Cleared global custom headers"))
                 },
                 onQualityMenuClick = { uiController.openQualityDialog(playingGroupIndex) },
                 onCheckUpdateClick = {
-                    uiController.closeSettings()
-                    Toast.makeText(context, AppStrings.tr(appLanguage, "正在检查更新...", "Checking for updates..."), Toast.LENGTH_SHORT).show()
-                    scope.launch {
-                        val info = UpdateChecker.checkUpdateAndGetInfo(context)
-                        if (info != null && info.hasUpdate) {
-                            updateInfo = info
-                            uiController.openUpdateDialog()
-                        } else {
-                            Toast.makeText(context, AppStrings.tr(appLanguage, "已是最新版本", "Already up to date"), Toast.LENGTH_SHORT).show()
+                    val cur = inlineUpdateState
+                    if (cur !is InlineUpdateState.Checking && cur !is InlineUpdateState.Downloading) {
+                        updateJob?.cancel()
+                        inlineUpdateState = InlineUpdateState.Checking
+                        updateJob = scope.launch {
+                            val info = runCatching { UpdateChecker.checkUpdateAndGetInfo(context) }.getOrNull()
+                            inlineUpdateState = when {
+                                info == null -> InlineUpdateState.Failed(
+                                    messageZh = "检查更新失败，请检查网络连接",
+                                    messageEn = "Update check failed. Please check your network.",
+                                )
+                                info.hasUpdate -> InlineUpdateState.Available(info)
+                                else -> InlineUpdateState.UpToDate(info.latestTag)
+                            }
+                        }
+                    }
+                },
+                onDownloadUpdateClick = {
+                    val info = when (val cur = inlineUpdateState) {
+                        is InlineUpdateState.Available -> cur.info
+                        is InlineUpdateState.Failed -> cur.info
+                        else -> null
+                    }
+                    if (info != null && inlineUpdateState !is InlineUpdateState.Downloading) {
+                        updateJob?.cancel()
+                        inlineUpdateState = InlineUpdateState.Downloading(info, 0)
+                        updateJob = scope.launch {
+                            var lastPct = 0
+                            val file = runCatching {
+                                ApkDownloader.downloadWithProgress(context, info.downloadUrl) { progress ->
+                                    val pct = (progress.progress * 100f).toInt().coerceIn(0, 100)
+                                    if (pct != lastPct) {
+                                        lastPct = pct
+                                        scope.launch(Dispatchers.Main) {
+                                            if (inlineUpdateState is InlineUpdateState.Downloading) {
+                                                inlineUpdateState = InlineUpdateState.Downloading(info, pct)
+                                            }
+                                        }
+                                    }
+                                }
+                            }.getOrNull()
+                            if (file != null) {
+                                inlineUpdateState = InlineUpdateState.Available(info)
+                                ApkDownloader.installApk(context, file)
+                            } else {
+                                inlineUpdateState = InlineUpdateState.Failed(
+                                    messageZh = "安装包下载失败，请稍后重试",
+                                    messageEn = "Download failed. Please retry.",
+                                    info = info,
+                                )
+                            }
                         }
                     }
                 },
                 onOpenRecent = { uiController.openRecentDialog() },
                 onRefreshLogos = {
-                    Toast.makeText(context, AppStrings.tr(appLanguage, "正在刷新当前组台标…", "Refreshing logos…"), Toast.LENGTH_SHORT).show()
+                    notifySettings(AppStrings.tr(appLanguage, "正在刷新当前组台标…", "Refreshing logos…"))
                     scope.launch {
                         LogoLoader.refreshGroup(context, filteredChannels, LogoLoader.CANONICAL_WIDTH_PX, LogoLoader.CANONICAL_HEIGHT_PX)
                         logoCacheTick++
-                        Toast.makeText(context, AppStrings.tr(appLanguage, "已刷新当前组台标", "Logos refreshed"), Toast.LENGTH_SHORT).show()
+                        notifySettings(AppStrings.tr(appLanguage, "已刷新当前组台标", "Logos refreshed"))
                     }
                 },
                 onClearLogoCache = {
-                    Toast.makeText(context, AppStrings.tr(appLanguage, "正在清理台标缓存…", "Clearing logo cache…"), Toast.LENGTH_SHORT).show()
+                    notifySettings(AppStrings.tr(appLanguage, "正在清理台标缓存…", "Clearing logo cache…"))
                     scope.launch {
                         LogoLoader.clearAll(context)
                         logoCacheTick++
-                        Toast.makeText(context, AppStrings.tr(appLanguage, "台标缓存已清理", "Logo cache cleared"), Toast.LENGTH_SHORT).show()
+                        notifySettings(AppStrings.tr(appLanguage, "台标缓存已清理", "Logo cache cleared"))
                     }
                 },
                 onToggleLogoPrefetch = { enabled ->
@@ -1936,15 +1998,13 @@ fun VideoPlayerScreen(
                 },
                 onAudioTrackClick = {
                     if (!AudioTrackUi.canSelect(audioTracks)) {
-                        Toast.makeText(
-                            context,
+                        notifySettings(
                             if (audioTracks.isEmpty()) {
                                 AppStrings.tr(appLanguage, "当前频道没有音轨", "No audio tracks")
                             } else {
                                 AppStrings.tr(appLanguage, "当前频道只有 1 条音轨", "Only 1 audio track")
                             },
-                            Toast.LENGTH_SHORT,
-                        ).show()
+                        )
                     } else {
                         uiController.openAudioDialog()
                     }
@@ -1965,11 +2025,9 @@ fun VideoPlayerScreen(
                     } else {
                         AppStrings.tr(appLanguage, "短按", "short press")
                     }
-                    Toast.makeText(
-                        context,
+                    notifySettings(
                         AppStrings.tr(appLanguage, "已清除「${action.localizedLabel(appLanguage)}」$modeLabel 绑定", "Cleared \"${action.localizedLabel(appLanguage)}\" ($modeLabel)"),
-                        Toast.LENGTH_SHORT,
-                    ).show()
+                    )
                 },
                 onCancelCapture = { uiController.cancelCapture() },
                 onResetRemoteBindings = {
@@ -1978,18 +2036,14 @@ fun VideoPlayerScreen(
                     remoteCbs.onRemoteSettingsChanged(remoteHabits)
                     remoteCbs.onBindingsChanged(RemoteBindings.DEFAULT)
                     uiController.cancelCapture()
-                    Toast.makeText(
-                        context,
-                        AppStrings.tr(appLanguage, "已恢复默认遥控配置", "Restored default remote bindings"),
-                        Toast.LENGTH_SHORT,
-                    ).show()
+                    notifySettings(AppStrings.tr(appLanguage, "已恢复默认遥控配置", "Restored default remote bindings"))
                 },
                 onRefreshPlaylistNow = {
-                    Toast.makeText(context, AppStrings.tr(appLanguage, "正在刷新播放列表…", "Refreshing playlist…"), Toast.LENGTH_SHORT).show()
+                    notifySettings(AppStrings.tr(appLanguage, "正在刷新播放列表…", "Refreshing playlist…"))
                     AutoUpdateScheduler.refreshNow(context, playlist = true, epg = false)
                 },
                 onRefreshEpgNow = {
-                    Toast.makeText(context, AppStrings.tr(appLanguage, "正在刷新 EPG…", "Refreshing EPG…"), Toast.LENGTH_SHORT).show()
+                    notifySettings(AppStrings.tr(appLanguage, "正在刷新 EPG…", "Refreshing EPG…"))
                     requestManualEpg()
                 },
             )
@@ -2036,16 +2090,6 @@ fun VideoPlayerScreen(
             },
             onClose = { uiController.closeQualityDialog() },
         )
-
-        if (overlay is PlayerOverlay.UpdateDialog && updateInfo != null) {
-            UpdateDialog(
-                updateInfo = updateInfo!!,
-                onDismiss = {
-                    uiController.closeUpdateDialog()
-                    updateInfo = null
-                },
-            )
-        }
 
         // 底部信息卡
         val req = catchupRequest

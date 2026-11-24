@@ -7,6 +7,7 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
@@ -35,6 +36,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
@@ -69,6 +71,20 @@ data class SettingsPickerOption(
     val onSelect: () -> Unit,
 )
 
+/** 设置「关于」面板内联检查更新状态（无弹窗、无 Toast）。 */
+sealed interface InlineUpdateState {
+    data object Idle : InlineUpdateState
+    data object Checking : InlineUpdateState
+    data class UpToDate(val latestTag: String?) : InlineUpdateState
+    data class Available(val info: UpdateChecker.UpdateInfo) : InlineUpdateState
+    data class Downloading(val info: UpdateChecker.UpdateInfo, val progress: Int) : InlineUpdateState
+    data class Failed(
+        val messageZh: String,
+        val messageEn: String,
+        val info: UpdateChecker.UpdateInfo? = null,
+    ) : InlineUpdateState
+}
+
 /** 设置抽屉不可变展示状态。 */
 data class SettingsUiState(
     val visible: Boolean,
@@ -100,6 +116,8 @@ data class SettingsUiState(
     val activeSourceId: String? = null,
     val globalUserAgent: String = "",
     val globalCustomHeaders: String = "",
+    val updateState: InlineUpdateState = InlineUpdateState.Idle,
+    val notice: String? = null,
 )
 
 /** 设置抽屉动作集合。 */
@@ -127,6 +145,7 @@ data class SettingsActions(
     val onClearGlobalCustomHeaders: () -> Unit,
     val onQualityMenuClick: () -> Unit,
     val onCheckUpdateClick: () -> Unit,
+    val onDownloadUpdateClick: () -> Unit = {},
     val onOpenRecent: () -> Unit,
     val onRefreshLogos: () -> Unit,
     val onClearLogoCache: () -> Unit,
@@ -248,7 +267,13 @@ fun SettingsDrawer(
         state.autoUpdatePlaylist,
         state.autoUpdateEpg,
         state.logoCacheSummary,
+        state.updateState,
     ) {
+        val aboutSummary = when (val u = state.updateState) {
+            is InlineUpdateState.Available -> s("发现新版本 ${u.info.latestTag}", "Update ${u.info.latestTag} available")
+            is InlineUpdateState.Downloading -> s("正在下载 ${u.info.latestTag}… ${u.progress}%", "Downloading ${u.info.latestTag}… ${u.progress}%")
+            else -> SettingsSummary.about(BuildConfig.VERSION_CODE, lang)
+        }
         mapOf(
             SettingsPage.PLAYBACK to "${lang.nativeName} · ${SettingsSummary.playback(
                 bufferLabel = playbackBufferLabel,
@@ -259,9 +284,11 @@ fun SettingsDrawer(
             SettingsPage.AUDIO to SettingsSummary.audio(state.audioSummary, lang),
             SettingsPage.DATA to SettingsSummary.data(state.autoUpdatePlaylist.localizedLabel(lang), state.autoUpdateEpg.localizedLabel(lang), lang),
             SettingsPage.LOGO to SettingsSummary.logoFromCacheSummary(state.logoCacheSummary, lang),
-            SettingsPage.ABOUT to SettingsSummary.about(BuildConfig.VERSION_CODE, lang),
+            SettingsPage.ABOUT to aboutSummary,
         )
     }
+    val hasAvailableUpdate = state.updateState is InlineUpdateState.Available ||
+        state.updateState is InlineUpdateState.Downloading
     val rootEntries = remember(rootSummaries) { SettingsIA.rootEntries(rootSummaries) }
 
     val drawerWidth = when (state.uiScale) {
@@ -352,6 +379,7 @@ fun SettingsDrawer(
                         lang = lang,
                         entries = rootEntries,
                         focusedIndex = rootFocusIndex,
+                        hasAvailableUpdate = hasAvailableUpdate,
                         textScale = textScale,
                         scroll = rootScroll,
                         requesterOf = ::requesterOf,
@@ -449,12 +477,42 @@ fun SettingsDrawer(
                     )
                     page == SettingsPage.ABOUT -> SettingsAboutPage(
                         lang = lang,
+                        updateState = state.updateState,
                         onCheckUpdateClick = actions.onCheckUpdateClick,
+                        onDownloadUpdateClick = actions.onDownloadUpdateClick,
                         textScale = textScale,
                         scroll = scrollFor(SettingsPage.ABOUT),
                         requesterOf = ::requesterOf,
                         onFocused = { pageLastFocus[SettingsPage.ABOUT.id] = it },
                     )
+                }
+
+                // 面板内联操作提示气泡（非聚焦、不遮挡底部按键提示）
+                val noticeText = state.notice?.takeIf { it.isNotBlank() }
+                if (noticeText != null) {
+                    val noticeShape = remember { RoundedCornerShape(8.dp) }
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .fillMaxWidth()
+                            .padding(start = 2.dp, end = 2.dp, bottom = 54.dp)
+                            .testTag("settings_notice")
+                            .clip(noticeShape)
+                            .background(Color(0xFF1F2937).copy(alpha = 0.92f))
+                            .border(1.dp, Color.White.copy(alpha = 0.12f), noticeShape)
+                            .padding(horizontal = 14.dp, vertical = 9.dp)
+                    ) {
+                        Text(
+                            text = noticeText,
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                fontSize = (13f * textScale).sp,
+                                lineHeight = (18f * textScale).sp,
+                            ),
+                            color = TvDesignTokens.TextPrimary,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 }
             }
         }
@@ -1026,6 +1084,7 @@ private fun SettingsRootPage(
     lang: AppLang,
     entries: List<SettingsRootEntry>,
     focusedIndex: Int,
+    hasAvailableUpdate: Boolean,
     textScale: Float,
     scroll: ScrollState,
     requesterOf: (String) -> FocusRequester,
@@ -1049,6 +1108,7 @@ private fun SettingsRootPage(
                 SettingsRootItem(
                     lang = lang,
                     entry = entry,
+                    accentSummary = entry.page == SettingsPage.ABOUT && hasAvailableUpdate,
                     textScale = textScale,
                     focusRequester = requesterOf(entry.tag),
                     selected = index == focusedIndex,
@@ -1145,6 +1205,7 @@ private fun SettingsBottomKeyHint(lang: AppLang) {
 private fun SettingsRootItem(
     lang: AppLang,
     entry: SettingsRootEntry,
+    accentSummary: Boolean = false,
     textScale: Float,
     focusRequester: FocusRequester,
     selected: Boolean,
@@ -1195,7 +1256,11 @@ private fun SettingsRootItem(
             Text(
                 text = entry.summary,
                 style = MaterialTheme.typography.bodySmall.copy(fontSize = (12f * textScale).sp),
-                color = if (focused) TvDesignTokens.TextSecondary else TvDesignTokens.TextMuted,
+                color = when {
+                    accentSummary -> Color(0xFF93C5FD)
+                    focused -> TvDesignTokens.TextSecondary
+                    else -> TvDesignTokens.TextMuted
+                },
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -1681,7 +1746,9 @@ private fun SettingsLogoPage(
 @Composable
 private fun SettingsAboutPage(
     lang: AppLang,
+    updateState: InlineUpdateState,
     onCheckUpdateClick: () -> Unit,
+    onDownloadUpdateClick: () -> Unit,
     textScale: Float,
     scroll: ScrollState,
     requesterOf: (String) -> FocusRequester,
@@ -1718,13 +1785,161 @@ private fun SettingsAboutPage(
             color = TvDesignTokens.TextMuted,
             modifier = Modifier.padding(start = 12.dp, bottom = 14.dp)
         )
+
+        val primaryLabel: String
+        val primaryAction: () -> Unit
+        when (updateState) {
+            InlineUpdateState.Idle -> {
+                primaryLabel = t("检查更新", "Check for Updates")
+                primaryAction = onCheckUpdateClick
+            }
+            InlineUpdateState.Checking -> {
+                primaryLabel = t("正在检查更新…", "Checking for updates…")
+                primaryAction = {}
+            }
+            is InlineUpdateState.UpToDate -> {
+                primaryLabel = t("重新检查更新", "Check Again")
+                primaryAction = onCheckUpdateClick
+            }
+            is InlineUpdateState.Available -> {
+                primaryLabel = t("下载并安装 ${updateState.info.latestTag}", "Download & Install ${updateState.info.latestTag}")
+                primaryAction = onDownloadUpdateClick
+            }
+            is InlineUpdateState.Downloading -> {
+                primaryLabel = t(
+                    "正在下载 ${updateState.info.latestTag}… ${updateState.progress}%",
+                    "Downloading ${updateState.info.latestTag}… ${updateState.progress}%"
+                )
+                primaryAction = {}
+            }
+            is InlineUpdateState.Failed -> {
+                if (updateState.info != null) {
+                    primaryLabel = t("重试下载 ${updateState.info.latestTag}", "Retry Download ${updateState.info.latestTag}")
+                    primaryAction = onDownloadUpdateClick
+                } else {
+                    primaryLabel = t("重试检查更新", "Retry Update Check")
+                    primaryAction = onCheckUpdateClick
+                }
+            }
+        }
+
         SettingsItem(
-            text = t("检查更新", "Check for Updates"),
+            text = primaryLabel,
             textScale = textScale,
             focusRequester = requesterOf("settings_check_update"),
             tag = "settings_check_update",
             onFocused = onFocused,
-            onClick = onCheckUpdateClick
+            onClick = primaryAction,
+        )
+
+        val showRecheck = updateState is InlineUpdateState.Available ||
+            (updateState is InlineUpdateState.Failed && updateState.info != null)
+        if (showRecheck) {
+            RowGap()
+            SettingsItem(
+                text = t("重新检查", "Check Again"),
+                textScale = textScale,
+                focusRequester = requesterOf("settings_recheck_update"),
+                tag = "settings_recheck_update",
+                onFocused = onFocused,
+                onClick = onCheckUpdateClick,
+            )
+        }
+
+        when (updateState) {
+            InlineUpdateState.Idle -> Unit
+            InlineUpdateState.Checking -> {
+                HelpText(
+                    text = t("正在连接 GitHub Releases，请稍候…", "Contacting GitHub Releases…"),
+                    color = TvDesignTokens.TextSecondary,
+                    start = 14.dp,
+                )
+            }
+            is InlineUpdateState.UpToDate -> {
+                val suffix = updateState.latestTag?.takeIf { it.isNotBlank() }?.let { " ($it)" }.orEmpty()
+                InlineUpdateStatusBox(
+                    text = t("当前已是最新版本$suffix", "Already up to date$suffix"),
+                    bg = Color(0xFF16A34A).copy(alpha = 0.14f),
+                    fg = Color(0xFF86EFAC),
+                    textScale = textScale,
+                )
+            }
+            is InlineUpdateState.Available -> {
+                val info = updateState.info
+                InlineUpdateStatusBox(
+                    text = t(
+                        "发现新版本 ${info.latestTag}（当前 ${info.currentVersion}），按 OK 开始下载安装。",
+                        "Update ${info.latestTag} available (current ${info.currentVersion}). Press OK to download."
+                    ),
+                    bg = BrandFocus.BlueColor.copy(alpha = 0.16f),
+                    fg = Color(0xFF93C5FD),
+                    textScale = textScale,
+                )
+            }
+            is InlineUpdateState.Downloading -> {
+                val pct = updateState.progress.coerceIn(0, 100)
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 10.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(5.dp)
+                            .clip(RoundedCornerShape(999.dp))
+                            .background(Color.White.copy(alpha = 0.14f))
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth(pct / 100f)
+                                .fillMaxHeight()
+                                .clip(RoundedCornerShape(999.dp))
+                                .background(BrandFocus.BlueColor)
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = t("下载完成后将自动拉起系统安装界面", "System installer will open automatically after download"),
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = (11.5f * textScale).sp),
+                        color = TvDesignTokens.TextMuted,
+                    )
+                }
+            }
+            is InlineUpdateState.Failed -> {
+                InlineUpdateStatusBox(
+                    text = t(updateState.messageZh, updateState.messageEn),
+                    bg = Color(0xFFEF4444).copy(alpha = 0.14f),
+                    fg = Color(0xFFFCA5A5),
+                    textScale = textScale,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun InlineUpdateStatusBox(
+    text: String,
+    bg: Color,
+    fg: Color,
+    textScale: Float,
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 10.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(bg)
+            .padding(horizontal = 12.dp, vertical = 10.dp)
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodySmall.copy(
+                fontSize = (12.5f * textScale).sp,
+                lineHeight = (18f * textScale).sp,
+            ),
+            color = fg,
         )
     }
 }
