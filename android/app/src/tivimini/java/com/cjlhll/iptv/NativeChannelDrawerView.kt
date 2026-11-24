@@ -413,14 +413,8 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
         groupsAdapter.notifyDataSetChanged()
         channelsAdapter.notifyDataSetChanged()
         updateChannelCounter()
-
-        if (channelsRecycler.height > 0) {
-            scrollChannelBounded(focusedChannelIndex)
-        } else {
-            channelsRecycler.post {
-                if (isOpen) scrollChannelBounded(focusedChannelIndex)
-            }
-        }
+        // 首次冷开在首次 layout 前即写入目标位置与居中偏移，确保第 1 帧直接落位，零闪跳到第 1 台
+        scrollChannelBounded(focusedChannelIndex)
 
         currentFocusedChannel()?.let { listener?.onFocusedChannelChanged(it.url) }
         scheduleEpgLoad(immediate = true)
@@ -717,10 +711,14 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
         channelsCountView.text = if (total == 0) "0/0" else "${focusedChannelIndex + 1}/$total"
     }
 
+    private fun estimatedListViewportH(): Int =
+        (resources.displayMetrics.heightPixels - dp(52) - dp(12)).coerceAtLeast(channelRowHeightPx)
+
     private fun scrollGroupBounded(index: Int) {
         val count = snapshot.groups.size
         if (count == 0) return
-        val viewportH = (groupsRecycler.height - groupsRecycler.paddingTop - groupsRecycler.paddingBottom).coerceAtLeast(0)
+        val measured = groupsRecycler.height - groupsRecycler.paddingTop - groupsRecycler.paddingBottom
+        val viewportH = if (measured > 0) measured else estimatedListViewportH()
         val offset = boundedCenterOffset(index, count, groupRowHeightPx, viewportH)
         groupsLm.scrollToPositionWithOffset(index.coerceIn(0, count - 1), offset)
     }
@@ -728,8 +726,9 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
     private fun scrollChannelBounded(index: Int) {
         val count = snapshot.channels.size
         if (count == 0) return
-        val viewportH = (channelsRecycler.height - channelsRecycler.paddingTop - channelsRecycler.paddingBottom).coerceAtLeast(0)
-        if (viewportH <= 0 || count * channelRowHeightPx <= viewportH) {
+        val measured = channelsRecycler.height - channelsRecycler.paddingTop - channelsRecycler.paddingBottom
+        val viewportH = if (measured > 0) measured else estimatedListViewportH()
+        if (count * channelRowHeightPx <= viewportH) {
             channelsLm.scrollToPositionWithOffset(0, 0)
             return
         }
@@ -740,8 +739,9 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
     private fun scrollProgramBounded(index: Int) {
         val count = visibleDatePrograms.size
         if (count == 0) return
-        val viewportH = (programsRecycler.height - programsRecycler.paddingTop - programsRecycler.paddingBottom).coerceAtLeast(0)
-        if (viewportH <= 0 || count * programRowHeightPx <= viewportH) {
+        val measured = programsRecycler.height - programsRecycler.paddingTop - programsRecycler.paddingBottom
+        val viewportH = if (measured > 0) measured else estimatedListViewportH()
+        if (count * programRowHeightPx <= viewportH) {
             programsLm.scrollToPositionWithOffset(0, 0)
             return
         }
@@ -1081,12 +1081,13 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
                     topMargin = dp(4)
                 }
             }
+            val progressFillBg = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = dpF(1.5f)
+                setColor(COLOR_PROGRESS_FILL_IDLE)
+            }
             val progressFill = View(context).apply {
-                background = GradientDrawable().apply {
-                    shape = GradientDrawable.RECTANGLE
-                    cornerRadius = dpF(1.5f)
-                    setColor(COLOR_ACCENT_BLUE)
-                }
+                background = progressFillBg
                 pivotX = 0f
             }
             progressTrack.addView(
@@ -1101,7 +1102,7 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
             row.addView(numTv)
             row.addView(logoBox)
             row.addView(textCol)
-            return ChannelVH(row, rowBg, numTv, logoImg, logoFallback, titleTv, programTv, progressTrack, progressFill)
+            return ChannelVH(row, rowBg, numTv, logoImg, logoFallback, titleTv, programTv, progressTrack, progressFill, progressFillBg)
         }
 
         private fun dp(v: Float): Int = (v * density).roundToInt()
@@ -1210,6 +1211,8 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
             holder.titleTv.typeface = if (isPlaying || isActiveFocus) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
             holder.numTv.setTextColor(if (isPlaying) COLOR_ACCENT_BLUE else if (isActiveFocus) COLOR_TEXT_PRIMARY else COLOR_TEXT_MUTED)
             holder.programTv.setTextColor(if (isActiveFocus) COLOR_TEXT_SECONDARY else COLOR_TEXT_MUTED)
+            // 仅当前播放频道的进度条亮品牌蓝，其余频道保持低调灰白
+            holder.progressFillBg.setColor(if (isPlaying) COLOR_ACCENT_BLUE else COLOR_PROGRESS_FILL_IDLE)
             applyFocusedMarquee(holder.titleTv, isActiveFocus)
             applyFocusedMarquee(holder.programTv, isActiveFocus)
         }
@@ -1234,6 +1237,7 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
         val programTv: TextView,
         val progressTrack: FrameLayout,
         val progressFill: View,
+        val progressFillBg: GradientDrawable,
     ) : RecyclerView.ViewHolder(root) {
         var boundLogoUrl: String = ""
         var logoJob: Job? = null
@@ -1446,7 +1450,8 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
         private const val COLOR_INACTIVE_SELECTED_BG = 0x18FFFFFF
         private const val COLOR_PLAYING_BG = 0x222F6BFF                  // subtle playing tint
         private const val COLOR_LOGO_PLATE = 0x1AFFFFFF
-        private const val COLOR_PROGRESS_TRACK = 0x2EFFFFFF
+        private const val COLOR_PROGRESS_TRACK = 0x24FFFFFF
+        private const val COLOR_PROGRESS_FILL_IDLE = 0x7AC5CEDE          // 低调灰白进度填充（非当前播放台）
         private const val COLOR_ACCENT_BLUE = 0xFF5C98FF.toInt()         // #5C98FF playing accent
         private const val COLOR_ACCENT_SOFT = 0xFF94C2FF.toInt()         // #94C2FF live badge
         private const val COLOR_CATCHUP_MINT = 0xFF8AE6B8.toInt()        // #8AE6B8 catchup badge

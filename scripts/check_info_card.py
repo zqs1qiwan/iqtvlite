@@ -46,8 +46,6 @@ REQUIRED_TAGS = [
     "info_card_badges",
     "info_card_recent_row",
     "info_card_recent_$index",
-    "info_card_hint_left",
-    "info_card_hint_right",
 ]
 
 

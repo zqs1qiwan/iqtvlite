@@ -87,7 +87,7 @@ object InfoCardPolicy {
     enum class InfoOkMode { DIRECT, TWO_STEP }
 
     fun parseInfoOkMode(raw: String?): InfoOkMode =
-        InfoOkMode.entries.firstOrNull { it.name == raw } ?: InfoOkMode.DIRECT
+        InfoOkMode.entries.firstOrNull { it.name == raw } ?: InfoOkMode.TWO_STEP
 
     /** 主动 OK 出卡后是否直接进入可聚焦态：DIRECT=true；空/1张/回看/快进由调用方单独守卫。 */
     fun openCardFocusesDirectly(mode: InfoOkMode): Boolean = mode == InfoOkMode.DIRECT

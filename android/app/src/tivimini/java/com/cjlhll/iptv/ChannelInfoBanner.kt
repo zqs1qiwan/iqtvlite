@@ -209,38 +209,35 @@ fun ChannelInfoBanner(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(start = 36.dp, end = 36.dp, top = 14.dp, bottom = 14.dp),
-                verticalAlignment = Alignment.Top,
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                // 左列：当前台大台标 + 底部清晰无裁切的「← 频道列表」提示
-                Column(
-                    modifier = Modifier
-                        .width(140.dp)
-                        .height(142.dp),
-                    verticalArrangement = Arrangement.SpaceBetween,
-                    horizontalAlignment = Alignment.Start,
+                // 左区（52%）：当前播放完整展示区（垂直居中放大主台标 + 台名/分组 + 节目名 + 时间 + 进度条）
+                Row(
+                    modifier = Modifier.weight(0.52f),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    ChannelLogo(
-                        logoUrl = channel?.logoUrl,
-                        fallbackTitle = channel?.title ?: "",
+                    Box(
                         modifier = Modifier
-                            .size(width = 136.dp, height = 84.dp)
-                            .testTag("info_card_logo"),
-                        width = 136.dp,
-                        height = 84.dp,
-                    )
-                    EntryHintLeft()
-                }
+                            .size(width = 164.dp, height = 104.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        ChannelLogo(
+                            logoUrl = channel?.logoUrl,
+                            fallbackTitle = channel?.title ?: "",
+                            modifier = Modifier
+                                .size(width = 160.dp, height = 98.dp)
+                                .testTag("info_card_logo"),
+                            width = 160.dp,
+                            height = 98.dp,
+                        )
+                    }
 
-                Spacer(modifier = Modifier.width(20.dp))
+                    Spacer(modifier = Modifier.width(22.dp))
 
-                // 中列：频道标题与分组 + 最近观看操作提示 + 向下延展正好容纳 5 个台的大台标+台名卡片条
-                Column(
-                    modifier = Modifier
-                        .weight(0.56f)
-                        .heightIn(min = 142.dp),
-                    verticalArrangement = Arrangement.SpaceBetween,
-                ) {
-                    Column(modifier = Modifier.fillMaxWidth()) {
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.Center,
+                    ) {
                         Row(
                             verticalAlignment = Alignment.Bottom,
                             modifier = Modifier.fillMaxWidth(),
@@ -283,15 +280,87 @@ fun ChannelInfoBanner(
                             }
                         }
 
-                        if (showRecent) {
-                            Spacer(modifier = Modifier.height(6.dp))
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Text(
+                            text = programText,
+                            style = MaterialTheme.typography.titleLarge.copy(
+                                fontSize = 18.5.sp,
+                                lineHeight = 22.sp,
+                                fontWeight = FontWeight.Medium,
+                            ),
+                            color = if (programTitle.isNullOrBlank()) {
+                                TvDesignTokens.TextMuted
+                            } else {
+                                Color(0xFFE4EAF4)
+                            },
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.testTag("info_card_program"),
+                        )
+
+                        if (programTime.isNotEmpty()) {
+                            Spacer(modifier = Modifier.height(3.dp))
                             Text(
-                                text = if (focused) "最近观看 · ← → 选择 · OK 快速切台" else "最近观看 · 按 OK 选择快速切台",
+                                text = programTime,
+                                style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.5.sp),
+                                color = TvDesignTokens.TextSecondary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.testTag("info_card_program_time"),
+                            )
+                        }
+
+                        if (progressValue != null) {
+                            Spacer(modifier = Modifier.height(6.dp))
+                            BannerProgressBar(
+                                progress = progressValue,
+                                modifier = Modifier.testTag("info_card_progress"),
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.width(28.dp))
+
+                // 右区（48%）：顶部（聚焦时轻提示 + 右对齐实时技术参数）+ 底部 5 格大台标与台名最近观看快切
+                Column(
+                    modifier = Modifier
+                        .weight(0.48f)
+                        .heightIn(min = 104.dp),
+                    verticalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(20.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        if (focused && showRecent) {
+                            Text(
+                                text = "← → 选择 · OK 切台",
                                 style = MaterialTheme.typography.labelMedium.copy(fontSize = 11.5.sp),
-                                color = if (focused) Color(0xFFCBD4E3) else Color(0xFF94A1B5),
+                                color = Color(0xFFB4C0D4),
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                                 modifier = Modifier.testTag("info_card_recent_tip"),
+                            )
+                        } else {
+                            Spacer(modifier = Modifier.width(1.dp))
+                        }
+
+                        if (compactBadgeText.isNotEmpty()) {
+                            Text(
+                                text = compactBadgeText,
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    fontSize = 12.5.sp,
+                                    fontWeight = FontWeight.Medium,
+                                ),
+                                color = Color(0xFFCBD4E3),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.testTag("info_card_badges"),
                             )
                         }
                     }
@@ -309,71 +378,6 @@ fun ChannelInfoBanner(
                             },
                         )
                     }
-                }
-
-                Spacer(modifier = Modifier.width(24.dp))
-
-                // 右列：顶部技术参数徽标（含实时真帧率）+ 节目信息与进度条 + 底部清晰无裁切的「→ 设置」提示
-                Column(
-                    modifier = Modifier
-                        .weight(0.44f)
-                        .height(142.dp),
-                    verticalArrangement = Arrangement.SpaceBetween,
-                    horizontalAlignment = Alignment.End,
-                ) {
-                    if (compactBadgeText.isNotEmpty()) {
-                        Text(
-                            text = compactBadgeText,
-                            style = MaterialTheme.typography.labelMedium.copy(
-                                fontSize = 12.5.sp,
-                                fontWeight = FontWeight.Medium,
-                            ),
-                            color = Color(0xFFCBD4E3),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.testTag("info_card_badges"),
-                        )
-                    } else {
-                        Spacer(modifier = Modifier.height(16.dp))
-                    }
-
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        Text(
-                            text = programText,
-                            style = MaterialTheme.typography.titleLarge.copy(
-                                fontSize = 20.sp,
-                                fontWeight = FontWeight.Medium,
-                            ),
-                            color = if (programTitle.isNullOrBlank()) {
-                                TvDesignTokens.TextMuted
-                            } else {
-                                TvDesignTokens.TextPrimary
-                            },
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.testTag("info_card_program"),
-                        )
-                        if (programTime.isNotEmpty()) {
-                            Spacer(modifier = Modifier.height(3.dp))
-                            Text(
-                                text = programTime,
-                                style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.5.sp),
-                                color = TvDesignTokens.TextSecondary,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.testTag("info_card_program_time"),
-                            )
-                        }
-                        if (progressValue != null) {
-                            Spacer(modifier = Modifier.height(6.dp))
-                            BannerProgressBar(
-                                progress = progressValue,
-                                modifier = Modifier.testTag("info_card_progress"),
-                            )
-                        }
-                    }
-
-                    EntryHintRight()
                 }
             }
         }
@@ -396,39 +400,9 @@ fun ChannelInfoBanner(
     }
 }
 
-@Composable
-private fun EntryHintLeft() {
-    Text(
-        text = InfoCardPolicy.ENTRY_HINT_LEFT,
-        style = MaterialTheme.typography.labelLarge.copy(
-            fontSize = 13.sp,
-            lineHeight = 18.sp,
-            fontWeight = FontWeight.Medium,
-        ),
-        color = Color(0xFFCBD4E3),
-        maxLines = 1,
-        modifier = Modifier.testTag("info_card_hint_left"),
-    )
-}
-
-@Composable
-private fun EntryHintRight() {
-    Text(
-        text = InfoCardPolicy.ENTRY_HINT_RIGHT,
-        style = MaterialTheme.typography.labelLarge.copy(
-            fontSize = 13.sp,
-            lineHeight = 18.sp,
-            fontWeight = FontWeight.Medium,
-        ),
-        color = Color(0xFFCBD4E3),
-        maxLines = 1,
-        modifier = Modifier.testTag("info_card_hint_right"),
-    )
-}
-
 /**
- * 底部扩展最近观看条：充分利用信息卡底部空间，固定 5 槽等宽排布（正好放下 5 个台）；
- * 每张卡片展示放大版横幅台标（68×42dp）+ 下方清晰台名（不显示台号），对称磨砂高亮识别焦点。
+ * 右下角 5 格最近观看快切条：固定 5 槽等宽排布（正好容纳 5 个台）；
+ * 每张卡片展示大号横幅台标（76×46dp）+ 下方清晰台名（无台号），对称磨砂高亮识别焦点。
  */
 @Composable
 private fun RecentStrip(
@@ -444,7 +418,7 @@ private fun RecentStrip(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(82.dp)
+            .height(80.dp)
             .clipToBounds()
             .testTag("info_card_recent_row"),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -481,15 +455,15 @@ private fun RecentStrip(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(44.dp),
+                        .height(46.dp),
                     contentAlignment = Alignment.Center,
                 ) {
                     if (hasLogo) {
                         ChannelLogo(
                             logoUrl = item.logoUrl,
                             fallbackTitle = "",
-                            width = 72.dp,
-                            height = 44.dp,
+                            width = 76.dp,
+                            height = 46.dp,
                         )
                     } else {
                         Text(

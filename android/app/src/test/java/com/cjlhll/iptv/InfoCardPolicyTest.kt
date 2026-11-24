@@ -23,10 +23,10 @@ class InfoCardPolicyTest {
     }
 
     @Test
-    fun infoOkModeDefaultsToDirectRequiringTwoStepOptIn() {
-        // t32 Bug1：默认 DIRECT（一次 OK 即可选最近观看），可切 TWO_STEP。
-        assertEquals(InfoCardPolicy.InfoOkMode.DIRECT, InfoCardPolicy.parseInfoOkMode(null))
-        assertEquals(InfoCardPolicy.InfoOkMode.DIRECT, InfoCardPolicy.parseInfoOkMode("garbage"))
+    fun infoOkModeDefaultsToTwoStepRequiringDirectOptIn() {
+        // 默认两段式（第一次 OK 展示信息卡，第二次 OK 才进入最近观看快切），可手动切 DIRECT。
+        assertEquals(InfoCardPolicy.InfoOkMode.TWO_STEP, InfoCardPolicy.parseInfoOkMode(null))
+        assertEquals(InfoCardPolicy.InfoOkMode.TWO_STEP, InfoCardPolicy.parseInfoOkMode("garbage"))
         assertEquals(InfoCardPolicy.InfoOkMode.DIRECT, InfoCardPolicy.parseInfoOkMode("DIRECT"))
         assertEquals(InfoCardPolicy.InfoOkMode.TWO_STEP, InfoCardPolicy.parseInfoOkMode("TWO_STEP"))
         assertTrue(InfoCardPolicy.openCardFocusesDirectly(InfoCardPolicy.InfoOkMode.DIRECT))
