@@ -138,7 +138,7 @@ class InfoCardPolicyTest {
         assertEquals(InfoCardPolicy.MAX_RECENT, card.size)
         assertFalse("current channel must not appear", card.contains("ch3"))
         assertEquals("order is preserved (newest first)", "ch1", card.first())
-        assertEquals(5, InfoCardPolicy.MAX_RECENT) // t69 ③：底部最近观看 5 个 logo
+        assertEquals(6, InfoCardPolicy.MAX_RECENT) // 底部最近观看 6 个频道
     }
 
     @Test
@@ -180,7 +180,8 @@ class InfoCardPolicyTest {
         assertEquals("AAC", InfoCardPolicy.audioCodecLabel("aac · 2ch"))
         assertEquals("AC-3", InfoCardPolicy.audioCodecLabel("ac-3 · 6ch"))
         assertNull(InfoCardPolicy.audioCodecLabel(null))
-        assertEquals("SDR", InfoCardPolicy.dynamicRangeLabel(-1, false))
+        assertNull(InfoCardPolicy.dynamicRangeLabel(-1, false))
+        assertEquals("SDR", InfoCardPolicy.dynamicRangeLabel(3, false))
         assertEquals("HDR10", InfoCardPolicy.dynamicRangeLabel(6, true))
         assertEquals("HLG", InfoCardPolicy.dynamicRangeLabel(7, false))
     }

@@ -84,6 +84,7 @@ object SettingsIA {
             "settings_logo_clear",
         ),
         SettingsPage.ABOUT to listOf(
+            "settings_auto_check_update",
             "settings_check_update",
         ),
     )
@@ -277,8 +278,13 @@ object SettingsSummary {
         return logo(memory, disk, lang)
     }
 
-    fun about(versionCode: Int, lang: AppLang = AppLang.ZH): String =
-        if (lang == AppLang.EN) clamp("Build $versionCode") else clamp("版本 $versionCode")
+    fun about(versionName: String, lang: AppLang = AppLang.ZH): String {
+        val trimmed = versionName.trim()
+        val label = if (trimmed.isEmpty()) EMPTY
+        else if (trimmed.startsWith("v", ignoreCase = true)) trimmed
+        else "v$trimmed"
+        return clamp(label)
+    }
 
     private val MEMORY_DISK_REGEX = Regex("""内存\s*(\d+)\s*条\s*·\s*磁盘\s*(\d+)\s*个""")
 

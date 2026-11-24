@@ -77,7 +77,7 @@ class InfoCardRecentTest {
         val all = ui(entries, currentKey = "g3")
         val card = InfoCardPolicy.cardRecentItems(all) { it.selected }
 
-        assertEquals("最多 MAX_RECENT(=4 V4) 张", InfoCardPolicy.MAX_RECENT, card.size)
+        assertEquals("最多 MAX_RECENT(=6) 张", InfoCardPolicy.MAX_RECENT, card.size)
         assertEquals("当前台只出现 0 次", 0, card.count { it.title == "CCTV-3" })
         assertEquals("顺序 = 最近优先（剔除当前台后第一条是 g1）", "CCTV-1", card.first().title)
         assertTrue("每条都带可切台索引", card.all { it.groupIndex >= 0 })

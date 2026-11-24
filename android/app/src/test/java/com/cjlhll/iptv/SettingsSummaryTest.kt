@@ -19,13 +19,14 @@ class SettingsSummaryTest {
         assertTrue(SettingsSummary.audio("mpeg-L2 · 2ch").isNotBlank())
         assertTrue(SettingsSummary.data("启动时", "启动时").isNotBlank())
         assertTrue(SettingsSummary.logo(96, 120).isNotBlank())
-        assertTrue(SettingsSummary.about(10145).isNotBlank())
+        assertTrue(SettingsSummary.about("0.1.2").isNotBlank())
     }
 
     @Test
     fun exactFormatsMatchTheSpecExamples() {
         assertEquals("96 条 / 120 个", SettingsSummary.logo(96, 120))
-        assertEquals("版本 10145", SettingsSummary.about(10145))
+        assertEquals("v0.1.2", SettingsSummary.about("0.1.2"))
+        assertEquals("v1.0.1", SettingsSummary.about("v1.0.1"))
         assertEquals("—", SettingsSummary.audio(null))
         assertEquals("—", SettingsSummary.audio("   "))
         assertEquals("起播缓冲 稳(500ms)", SettingsSummary.playback("稳(500ms)", anyExperimentOn = false))
@@ -43,7 +44,7 @@ class SettingsSummaryTest {
             SettingsSummary.audio("mpeg-L2 · 2ch · 1920x1080"),
             SettingsSummary.data("6h", "12h"),
             SettingsSummary.logo(1234, 5678),
-            SettingsSummary.about(999999),
+            SettingsSummary.about("0.1.2-long-release-tag-example"),
         )
         samples.forEach { text ->
             assertTrue("摘要超宽：$text = ${SettingsSummary.fullWidthLength(text)} 全角", SettingsSummary.fullWidthLength(text) <= 22)

@@ -346,7 +346,11 @@ class PlayerUiController(
 
     // ── Back 统一无副作用裁决 ────────────────────────────────────────────────
 
-    fun decideBack(catchup: Boolean, lastBackWithin2s: Boolean): BackKeyPolicy.Action {
+    fun decideBack(
+        catchup: Boolean,
+        lastBackWithin2s: Boolean,
+        inAppPipActive: Boolean = false,
+    ): BackKeyPolicy.Action {
         val cur = _overlay.value
         return BackKeyPolicy.decide(
             audioDialogOpen = cur is PlayerOverlay.AudioDialog,
@@ -360,6 +364,7 @@ class PlayerUiController(
             catchup = catchup,
             lastBackWithin2s = lastBackWithin2s,
             updateDialogOpen = cur is PlayerOverlay.UpdateDialog,
+            inAppPipActive = inAppPipActive,
         )
     }
 }

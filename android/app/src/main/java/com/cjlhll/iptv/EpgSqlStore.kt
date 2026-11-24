@@ -221,18 +221,34 @@ object EpgSqlStore {
                     }
                 }
             }
+            val nextByChannelId = HashMap<String, Pair<String, Long>>(256)
+            val windowEnd = nowMillis + 12L * 3600_000L
+            d.rawQuery(
+                "SELECT channel_id, start_ms, title FROM programs WHERE start_ms > ? AND start_ms <= ? ORDER BY start_ms ASC",
+                arrayOf(nowMillis.toString(), windowEnd.toString())
+            ).use { c ->
+                while (c.moveToNext()) {
+                    val chId = c.getString(0)
+                    if (!nextByChannelId.containsKey(chId)) {
+                        nextByChannelId[chId] = c.getString(2) to c.getLong(1)
+                    }
+                }
+            }
             buildMap {
                 for (group in groups) {
                     val chId = resolveChannelId(group.defaultChannel) ?: continue
                     val cur = nowByChannelId[chId] ?: continue
+                    val next = nextByChannelId[chId]
                     val duration = (cur.endMillis - cur.startMillis).toFloat()
                     val progress = if (duration <= 0f) null
                     else ((nowMillis - cur.startMillis).toFloat() / duration).coerceIn(0f, 1f)
                     val ui = NowProgramUi(
                         title = cur.title,
                         progress = progress,
+                        nextTitle = next?.first,
                         startMillis = cur.startMillis,
                         endMillis = cur.endMillis,
+                        nextStartMillis = next?.second ?: 0L,
                     )
                     for (v in group.variants) {
                         put(v.channel.url, ui)

@@ -9,12 +9,18 @@ import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
 import android.os.SystemClock
+import android.text.TextUtils
 import android.util.Log
+import android.view.Gravity
 import android.view.KeyEvent
+import android.view.LayoutInflater
+import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.FrameLayout
+import android.widget.TextView
 import android.widget.Toast
+import tv.iqtvlite.app.R
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -109,11 +115,15 @@ class PlayerActivity : ComponentActivity() {
     private var onExtraBack: (() -> Boolean)? = null
     private var subtitleDialogOpenFlag: Boolean = false
     private var isInPipMode by mutableStateOf(false)
+    private var isInAppPipActive by mutableStateOf(false)
+    private var onSwapPip: (() -> Boolean)? = null
+    private var onExitPip: (() -> Unit)? = null
     private lateinit var nativeDrawer: NativeChannelDrawerView
 
     private var isCatchupPlayback: Boolean = false
     private var lastBackPressTime: Long = 0L
     private var lastBackPressTimeCatchup: Long = 0L
+    private var lastBackPressTimePip: Long = 0L
 
     private var digitsMode: RemoteHabits.Digits = RemoteHabits.DEFAULT.digits
     private var remoteBindings by mutableStateOf(RemoteBindings.DEFAULT)
@@ -204,6 +214,51 @@ class PlayerActivity : ComponentActivity() {
             videoView,
             FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
         )
+        // 应用内双台画中画小窗（TextureView，居中在主画面之上、抽屉与 Compose 之下，零 Z-order 穿透）
+        val density = resources.displayMetrics.density
+        val pipPad = (2 * density).toInt()
+        val pipContainer = FrameLayout(this).apply {
+            setBackgroundColor(0xD90A0F18.toInt())
+            setPadding(pipPad, pipPad, pipPad, pipPad)
+            visibility = View.GONE
+            isFocusable = false
+            isFocusableInTouchMode = false
+        }
+        val pipVideoView = (LayoutInflater.from(this).inflate(R.layout.view_pip_player, pipContainer, false) as PlayerView).apply {
+            setKeepContentOnPlayerReset(true)
+            setShutterBackgroundColor(Color.BLACK)
+            isFocusable = false
+            isFocusableInTouchMode = false
+            descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
+        }
+        val pipLabelView = TextView(this).apply {
+            setTextColor(0xFFF0F4FA.toInt())
+            setBackgroundColor(0x99000000.toInt())
+            textSize = 11f
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
+            setPadding((6 * density).toInt(), (2 * density).toInt(), (6 * density).toInt(), (2 * density).toInt())
+        }
+        pipContainer.addView(
+            pipVideoView,
+            FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+        )
+        pipContainer.addView(
+            pipLabelView,
+            FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                gravity = Gravity.BOTTOM or Gravity.START
+                val m = (6 * density).toInt()
+                setMargins(m, m, m, m)
+            }
+        )
+        rootLayout.addView(
+            pipContainer,
+            FrameLayout.LayoutParams((304 * density).toInt(), (171 * density).toInt()).apply {
+                gravity = Gravity.TOP or Gravity.END
+                topMargin = (20 * density).toInt()
+                marginEnd = (24 * density).toInt()
+            }
+        )
         // 原生 RecyclerView 60fps 选台抽屉：直接挂在 rootLayout（PlayerView 之上、ComposeView 之下），
         // 零 Compose diff / 零重组 / 0px 焦点恒定居中。
         nativeDrawer = NativeChannelDrawerView(this)
@@ -280,6 +335,12 @@ class PlayerActivity : ComponentActivity() {
                             isPipSupported = isPipSupportedOnDevice(),
                             isInPipMode = isInPipMode,
                             onEnterPip = { enterPipMode() },
+                            pipPlayerView = pipVideoView,
+                            pipContainerView = pipContainer,
+                            pipLabelView = pipLabelView,
+                            onInAppPipActiveChanged = { isInAppPipActive = it },
+                            setOnSwapPip = { onSwapPip = it },
+                            setOnExitPip = { onExitPip = it },
                             setOnExtraBack = { onExtraBack = it },
                             onSubtitleDialogOpenChanged = { subtitleDialogOpenFlag = it },
                         ),
@@ -304,7 +365,7 @@ class PlayerActivity : ComponentActivity() {
                         Box(
                             modifier = Modifier
                                 .align(Alignment.TopEnd)
-                                .padding(top = 28.dp, end = 36.dp)
+                                .padding(top = 28.dp, end = if (isInAppPipActive) 340.dp else 36.dp)
                                 .testTag("digit_osd")
                                 .clip(badgeShape)
                                 .background(ComposeColor(0xFF0A0D12).copy(alpha = 0.62f))
@@ -463,12 +524,12 @@ class PlayerActivity : ComponentActivity() {
             return true
         }
         val nowMs = System.currentTimeMillis()
-        val within2s = if (isCatchupPlayback) {
-            nowMs - lastBackPressTimeCatchup <= 2000L
-        } else {
-            nowMs - lastBackPressTime <= 2000L
+        val within2s = when {
+            isInAppPipActive -> nowMs - lastBackPressTimePip <= 2000L
+            isCatchupPlayback -> nowMs - lastBackPressTimeCatchup <= 2000L
+            else -> nowMs - lastBackPressTime <= 2000L
         }
-        when (uiController.decideBack(catchup = isCatchupPlayback, lastBackWithin2s = within2s)) {
+        when (uiController.decideBack(catchup = isCatchupPlayback, lastBackWithin2s = within2s, inAppPipActive = isInAppPipActive)) {
             BackKeyPolicy.Action.CLOSE_UPDATE_DIALOG -> uiController.closeUpdateDialog()
             BackKeyPolicy.Action.CLOSE_AUDIO_DIALOG -> uiController.closeAudioDialog()
             BackKeyPolicy.Action.CLOSE_RECENT -> uiController.closeRecentDialog()
@@ -478,6 +539,14 @@ class PlayerActivity : ComponentActivity() {
             BackKeyPolicy.Action.CLOSE_SETTINGS -> uiController.closeSettings()
             BackKeyPolicy.Action.INFO_CARD_UNFOCUS -> uiController.unfocusInfoCard()
             BackKeyPolicy.Action.INFO_CARD_CLOSE -> uiController.hideInfoCard()
+            BackKeyPolicy.Action.TOAST_EXIT_PIP -> {
+                lastBackPressTimePip = nowMs
+                Toast.makeText(this, AppStrings.tr("再按一次返回退出画中画", "Press Back again to exit PiP"), Toast.LENGTH_SHORT).show()
+            }
+            BackKeyPolicy.Action.EXIT_PIP -> {
+                onExitPip?.invoke()
+                lastBackPressTimePip = 0L
+            }
             BackKeyPolicy.Action.TOAST_RETURN_LIVE -> {
                 lastBackPressTimeCatchup = nowMs
                 Toast.makeText(this, AppStrings.tr("再按一次返回直播", "Press Back again to return live"), Toast.LENGTH_SHORT).show()
@@ -605,11 +674,26 @@ class PlayerActivity : ComponentActivity() {
             }
         }
 
+        // 8b. 主动呼出的控制台空闲态下：按 DOWN 直接进入底部选区，不触发换台
+        val curCard = uiController.currentOverlay as? PlayerOverlay.InfoCard
+        if (curCard != null && curCard.manual && !curCard.focused && !isCatchupPlayback && keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
+            cancelLongPress()
+            onOpenInfoCardFromOk?.invoke()
+            return true
+        }
+
         // 9. 遥控上一台专用键（MEDIA_PREVIOUS / LAST_CHANNEL）
         if (keyCode == KeyEvent.KEYCODE_LAST_CHANNEL || keyCode == KeyEvent.KEYCODE_MEDIA_PREVIOUS) {
             val bound = RemoteBindings.resolveWith(remoteBindings, keyCode, false, playerContext())
             val action = bound ?: RemoteAction.LAST_CHANNEL
             if (executePlayerAction(action, event.repeatCount)) return true
+        }
+
+        // 9b. 应用内画中画态：右键切换主副两个频道，禁开设置快捷键
+        if (isInAppPipActive && keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
+            cancelLongPress()
+            if (event.repeatCount == 0) onSwapPip?.invoke()
+            return true
         }
 
         // 10. 全屏统一中央键位路由（正确支持短按与长按分离）
@@ -716,6 +800,24 @@ fun VideoPlayerScreen(
     // 播放器状态 + 软解粘滞标志（修复 P0-8：切离软解频道自动恢复 MediaCodec 硬解）
     var player by remember { mutableStateOf<ExoPlayer?>(null) }
     var playerUsesSoftVideo by remember { mutableStateOf(false) }
+    var pipPlayer by remember { mutableStateOf<ExoPlayer?>(null) }
+    var pipGroupIndex by remember { mutableIntStateOf(-1) }
+    var pipVariantIndex by remember { mutableIntStateOf(0) }
+    var pipChannel by remember { mutableStateOf<Channel?>(null) }
+    val inAppPipActive = pipChannel != null
+    LaunchedEffect(inAppPipActive) { playback.onInAppPipActiveChanged(inAppPipActive) }
+
+    fun exitInAppPip() {
+        val old = pipPlayer
+        pipPlayer = null
+        playback.pipPlayerView?.player = null
+        playback.pipContainerView?.visibility = View.GONE
+        playback.pipLabelView?.text = ""
+        pipGroupIndex = -1
+        pipVariantIndex = 0
+        pipChannel = null
+        runCatching { old?.release() }
+    }
     val rebuildState = remember { arrayOfNulls<MediaPlaybackRequest>(1) }
     val rebuildBusy = remember { booleanArrayOf(false) }
 
@@ -804,6 +906,7 @@ fun VideoPlayerScreen(
     var autoUpdatePlaylist by remember { mutableStateOf(Prefs.getAutoUpdatePlaylist(context)) }
     var autoUpdateEpg by remember { mutableStateOf(Prefs.getAutoUpdateEpg(context)) }
     var autoUpdateTick by remember { mutableIntStateOf(0) }
+    var autoCheckUpdate by remember { mutableStateOf(Prefs.isAutoCheckUpdateEnabled(context)) }
     var remoteHabits by remember { mutableStateOf(Prefs.getRemoteSettings(context)) }
     var playbackBufferMin by remember { mutableStateOf(Prefs.getPlaybackBufferMin(context)) }
     var zapPreconnectEnabled by remember { mutableStateOf(Prefs.getZapPreconnectEnabled(context)) }
@@ -847,7 +950,7 @@ fun VideoPlayerScreen(
     }
 
     LaunchedEffect(heavyWorkEnabled) {
-        if (heavyWorkEnabled && inlineUpdateState is InlineUpdateState.Idle) {
+        if (heavyWorkEnabled && autoCheckUpdate && inlineUpdateState is InlineUpdateState.Idle) {
             val info = runCatching { UpdateChecker.checkUpdateAndGetInfo(context) }.getOrNull()
             if (info?.hasUpdate == true && inlineUpdateState is InlineUpdateState.Idle) {
                 inlineUpdateState = InlineUpdateState.Available(info)
@@ -1028,6 +1131,7 @@ fun VideoPlayerScreen(
                     playbackBufferMin = Prefs.getPlaybackBufferMin(context)
                     autoUpdatePlaylist = Prefs.getAutoUpdatePlaylist(context)
                     autoUpdateEpg = Prefs.getAutoUpdateEpg(context)
+                    autoCheckUpdate = Prefs.isAutoCheckUpdateEnabled(context)
                     logoPrefetchEnabled = Prefs.isLogoPrefetchEnabled(context)
                     logoLoadEnabled = Prefs.isLogoLoadEnabled(context)
                     LogoLoader.setLogoLoadEnabledRuntime(logoLoadEnabled)
@@ -1035,7 +1139,10 @@ fun VideoPlayerScreen(
                     remoteCbs.onRemoteSettingsChanged(remoteHabits)
                     remoteCbs.onBindingsChanged(Prefs.getRemoteBindings(context))
                 }
-                Lifecycle.Event.ON_STOP -> releasePlayer()
+                Lifecycle.Event.ON_STOP -> {
+                    releasePlayer()
+                    exitInAppPip()
+                }
                 else -> Unit
             }
         }
@@ -1043,6 +1150,7 @@ fun VideoPlayerScreen(
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
             releasePlayer()
+            exitInAppPip()
         }
     }
 
@@ -1298,11 +1406,19 @@ fun VideoPlayerScreen(
                         val t = data.nowProgramTitle(displayChannel, queryNow)
                         if (!t.isNullOrBlank()) {
                             val current = data.nowProgram(displayChannel, queryNow)
+                            val next = data.nextProgram(displayChannel, queryNow)
                             val progress = current?.let {
                                 val d = (it.endMillis - it.startMillis).toFloat()
                                 if (d <= 0f) null else ((queryNow - it.startMillis).toFloat() / d).coerceIn(0f, 1f)
                             }
-                            val ui = NowProgramUi(t, progress, startMillis = current?.startMillis ?: 0L, endMillis = current?.endMillis ?: 0L)
+                            val ui = NowProgramUi(
+                                title = t,
+                                progress = progress,
+                                nextTitle = next?.title,
+                                startMillis = current?.startMillis ?: 0L,
+                                endMillis = current?.endMillis ?: 0L,
+                                nextStartMillis = next?.startMillis ?: 0L,
+                            )
                             for (variant in group.variants) put(variant.channel.url, ui)
                         }
                     }
@@ -1440,7 +1556,87 @@ fun VideoPlayerScreen(
         p.trackSelectionParameters = builder.build()
     }
 
-    val bannerQuickActions = remember(playingGroup, playingVariantIndex, videoAspectMode, appLanguage, playback.isPipSupported) {
+    fun formatPipLabel(ch: Channel): String =
+        "${ch.title} · ${AppStrings.tr(appLanguage, "→ 切换", "→ Swap")}"
+
+    fun enterInAppPip() {
+        val gs = channelGroups
+        val live = playbackIntent.liveOwner(gs, currentGroupIndex, currentVariantIndex)
+        val gIdx = live.groupIndex
+        val vIdx = live.variantIndex.coerceAtLeast(0)
+        val ch = live.channel ?: return
+        if (gIdx !in gs.indices) return
+        val pipView = playback.pipPlayerView ?: return
+        val prev = pipPlayer
+        pipPlayer = null
+        runCatching { prev?.release() }
+
+        val loadControl = DefaultLoadControl.Builder()
+            .setBufferDurationsMs(1500, 6000, 500, 1000)
+            .build()
+        val p = ExoPlayer.Builder(context, DefaultRenderersFactory(context).setEnableDecoderFallback(true))
+            .setLoadControl(loadControl)
+            .setAudioAttributes(AudioAttributes.DEFAULT, false)
+            .build()
+        p.addListener(object : Player.Listener {
+            override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                if (pipPlayer === p) {
+                    exitInAppPip()
+                    Toast.makeText(
+                        context,
+                        AppStrings.tr(appLanguage, "设备解码通道不足或流异常，已退出画中画", "Decoder busy or stream failed, exited PiP"),
+                        Toast.LENGTH_SHORT,
+                    ).show()
+                }
+            }
+        })
+        pipPlayer = p
+        pipGroupIndex = gIdx
+        pipVariantIndex = vIdx
+        pipChannel = ch
+        pipView.player = p
+        playback.pipLabelView?.text = formatPipLabel(ch)
+        playback.pipContainerView?.visibility = View.VISIBLE
+        StreamPlayback.prepareAuxiliaryMutedPlayer(p, context, ch)
+        uiController.hideInfoCard()
+        Toast.makeText(
+            context,
+            AppStrings.tr(appLanguage, "画中画已开启：可换台双看，右键互换，双击返回退出", "PiP active: zap to second channel, Right to swap, 2x Back to exit"),
+            Toast.LENGTH_SHORT,
+        ).show()
+    }
+
+    fun swapInAppPip(): Boolean {
+        val p = pipPlayer ?: return false
+        val gs = channelGroups
+        val oldPipG = pipGroupIndex
+        val oldPipV = pipVariantIndex
+        val oldPipCh = pipChannel ?: return false
+        val live = playbackIntent.liveOwner(gs, currentGroupIndex, currentVariantIndex)
+        val oldMainG = live.groupIndex
+        val oldMainV = live.variantIndex.coerceAtLeast(0)
+        val oldMainCh = live.channel ?: return false
+        if (oldPipG !in gs.indices || oldMainG !in gs.indices) return false
+        if (oldMainG == oldPipG && oldMainCh.url == oldPipCh.url) {
+            Toast.makeText(
+                context,
+                AppStrings.tr(appLanguage, "请先换台到第二个频道后再按右键切换", "Zap to another channel before swapping"),
+                Toast.LENGTH_SHORT,
+            ).show()
+            return true
+        }
+        p.stop()
+        pipGroupIndex = oldMainG
+        pipVariantIndex = oldMainV
+        pipChannel = oldMainCh
+        playback.pipLabelView?.text = formatPipLabel(oldMainCh)
+        playGroupVariant(oldPipG, oldPipV, armZap = true)
+        uiController.showInfoCard(focused = false)
+        StreamPlayback.prepareAuxiliaryMutedPlayer(p, context, oldMainCh)
+        return true
+    }
+
+    val bannerQuickActions = remember(playingGroup, playingVariantIndex, videoAspectMode, appLanguage, inAppPipActive) {
         buildList {
             val variantCount = playingGroup?.variants?.size ?: 0
             if (variantCount > 1) {
@@ -1472,14 +1668,18 @@ fun VideoPlayerScreen(
                     label = AppStrings.tr(appLanguage, "字幕", "Subtitles"),
                 )
             )
-            if (playback.isPipSupported) {
-                add(
-                    InfoCardQuickAction(
-                        id = InfoCardQuickActionId.PIP,
-                        label = AppStrings.tr(appLanguage, "画中画", "PiP"),
-                    )
+            add(
+                InfoCardQuickAction(
+                    id = InfoCardQuickActionId.PIP,
+                    label = if (inAppPipActive) {
+                        AppStrings.tr(appLanguage, "退出画中画", "Exit PiP")
+                    } else {
+                        AppStrings.tr(appLanguage, "画中画", "PiP")
+                    },
+                    description = AppStrings.tr(appLanguage, "应用内双台画中画", "In-app dual-channel PiP"),
+                    active = inAppPipActive,
                 )
-            }
+            )
             add(
                 InfoCardQuickAction(
                     id = InfoCardQuickActionId.SETTINGS,
@@ -1491,7 +1691,7 @@ fun VideoPlayerScreen(
 
     fun triggerQuickAction(actionId: InfoCardQuickActionId) {
         when (actionId) {
-            InfoCardQuickActionId.SOURCE -> uiController.openQualityDialog(playingGroupIndex)
+            InfoCardQuickActionId.SOURCE -> uiController.openQualityDialog(currentGroupIndex)
             InfoCardQuickActionId.ASPECT -> {
                 val next = videoAspectMode.next()
                 videoAspectMode = next
@@ -1503,7 +1703,7 @@ fun VideoPlayerScreen(
                 uiController.hideInfoCard()
                 subtitleDialogOpen = true
             }
-            InfoCardQuickActionId.PIP -> playback.onEnterPip()
+            InfoCardQuickActionId.PIP -> if (pipChannel != null) exitInAppPip() else enterInAppPip()
             InfoCardQuickActionId.SETTINGS -> uiController.openSettings()
         }
     }
@@ -1570,12 +1770,16 @@ fun VideoPlayerScreen(
     val latestCatchupReq = rememberUpdatedState(catchupRequest)
     val latestCardRecent = rememberUpdatedState(cardRecentItems)
     val latestQuickActions = rememberUpdatedState(bannerQuickActions)
-    val latestTriggerQuickAction = rememberUpdatedState(::triggerQuickAction)
+    val latestTriggerQuickAction = rememberUpdatedState<(InfoCardQuickActionId) -> Unit> { triggerQuickAction(it) }
+    val latestSwapPip = rememberUpdatedState<() -> Boolean> { swapInAppPip() }
+    val latestExitPip = rememberUpdatedState<() -> Unit> { exitInAppPip() }
     val latestSubtitleDialogOpen = rememberUpdatedState(subtitleDialogOpen)
     val latestInfoOkMode = rememberUpdatedState(infoOkMode)
     val latestSeekOverlay = rememberUpdatedState(isSeekOverlayVisible)
 
     DisposableEffect(Unit) {
+        playback.setOnSwapPip { latestSwapPip.value() }
+        playback.setOnExitPip { latestExitPip.value() }
         playback.setOnExtraBack {
             if (latestSubtitleDialogOpen.value) {
                 subtitleDialogOpen = false
@@ -1670,6 +1874,8 @@ fun VideoPlayerScreen(
             true
         }
         onDispose {
+            playback.setOnSwapPip(null)
+            playback.setOnExitPip(null)
             playback.setOnExtraBack(null)
             playback.setOnNumberJump(null)
             playback.setOnChannelStep(null)
@@ -1965,6 +2171,7 @@ fun VideoPlayerScreen(
             activeSourceId = activeSourceId,
             globalUserAgent = globalUserAgent,
             globalCustomHeaders = globalCustomHeaders,
+            autoCheckUpdate = autoCheckUpdate,
             updateState = inlineUpdateState,
             notice = settingsNotice,
         )
@@ -1978,6 +2185,7 @@ fun VideoPlayerScreen(
             activeSourceId,
             globalUserAgent,
             globalCustomHeaders,
+            autoCheckUpdate,
             inlineUpdateState,
             playbackBufferMin,
             zapPreconnectEnabled,
@@ -2091,6 +2299,14 @@ fun VideoPlayerScreen(
                     notifySettings(AppStrings.tr(appLanguage, "已清空全部全局自定义 Header", "Cleared global custom headers"))
                 },
                 onQualityMenuClick = { uiController.openQualityDialog(playingGroupIndex) },
+                onToggleAutoCheckUpdate = { enabled ->
+                    autoCheckUpdate = enabled
+                    Prefs.setAutoCheckUpdateEnabled(context, enabled)
+                    notifySettings(
+                        if (enabled) AppStrings.tr(appLanguage, "已开启启动时自动检查更新", "Auto-check updates enabled")
+                        else AppStrings.tr(appLanguage, "已关闭启动时自动检查更新", "Auto-check updates disabled")
+                    )
+                },
                 onCheckUpdateClick = {
                     val cur = inlineUpdateState
                     if (cur !is InlineUpdateState.Checking && cur !is InlineUpdateState.Downloading) {
@@ -2325,7 +2541,7 @@ fun VideoPlayerScreen(
                 channelGroups.firstOrNull { g -> g.variants.any { it.channel.url == req.liveUrl } }
             } else playingGroup
 
-            val fpsResolution = FrameRateEstimator.resolve(videoFormat?.frameRate ?: -1f, inferredFrameRate)
+            val fpsResolution = FrameRateEstimator.resolve(videoFormat?.frameRate ?: -1f, inferredFrameRate, fallback = -1f)
 
             ChannelInfoBanner(
                 state = if (playback.isInPipMode) InfoCardPolicy.State.HIDDEN else infoCardState,
@@ -2333,6 +2549,8 @@ fun VideoPlayerScreen(
                 seekOverlayVisible = isSeekOverlayVisible && !playback.isInPipMode,
                 channel = bannerChannel,
                 programTitle = displayTitle,
+                nextProgramTitle = bannerProgram?.nextTitle,
+                nextProgramStartMs = bannerProgram?.nextStartMillis ?: 0L,
                 programProgress = displayProgress,
                 channelNumber = displayNumber,
                 videoFormat = videoFormat,

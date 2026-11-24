@@ -18,6 +18,12 @@ data class PlaybackCallbacks(
     val isPipSupported: Boolean = false,
     val isInPipMode: Boolean = false,
     val onEnterPip: () -> Unit = {},
+    val pipPlayerView: androidx.media3.ui.PlayerView? = null,
+    val pipContainerView: android.view.View? = null,
+    val pipLabelView: android.widget.TextView? = null,
+    val onInAppPipActiveChanged: (Boolean) -> Unit = {},
+    val setOnSwapPip: ((() -> Boolean)?) -> Unit = {},
+    val setOnExitPip: ((() -> Unit)?) -> Unit = {},
     val setOnExtraBack: (((() -> Boolean)?) -> Unit) = {},
     val onSubtitleDialogOpenChanged: (Boolean) -> Unit = {},
 )

@@ -19,6 +19,8 @@ object BackKeyPolicy {
         CLOSE_SETTINGS,
         INFO_CARD_UNFOCUS,
         INFO_CARD_CLOSE,
+        TOAST_EXIT_PIP,
+        EXIT_PIP,
         TOAST_RETURN_LIVE,
         RETURN_LIVE,
         TOAST_EXIT,
@@ -46,6 +48,7 @@ object BackKeyPolicy {
         catchup: Boolean,
         lastBackWithin2s: Boolean,
         updateDialogOpen: Boolean = false,
+        inAppPipActive: Boolean = false,
     ): Action = when {
         updateDialogOpen -> Action.CLOSE_UPDATE_DIALOG
         audioDialogOpen -> Action.CLOSE_AUDIO_DIALOG
@@ -56,6 +59,8 @@ object BackKeyPolicy {
         settingsOpen -> Action.CLOSE_SETTINGS
         infoCardFocused -> Action.INFO_CARD_UNFOCUS // FOCUSED 先退聚焦，卡片仍在
         infoCardVisible -> Action.INFO_CARD_CLOSE   // IDLE 关卡到 HIDDEN
+        inAppPipActive && lastBackWithin2s -> Action.EXIT_PIP
+        inAppPipActive -> Action.TOAST_EXIT_PIP
         catchup && lastBackWithin2s -> Action.RETURN_LIVE
         catchup -> Action.TOAST_RETURN_LIVE
         lastBackWithin2s -> Action.EXIT_APP

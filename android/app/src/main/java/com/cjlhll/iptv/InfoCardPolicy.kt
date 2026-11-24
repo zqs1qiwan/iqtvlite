@@ -9,8 +9,8 @@ package com.cjlhll.iptv
  */
 object InfoCardPolicy {
 
-    /** V4 §6：卡片底部「最近观看」最多 4 个 logo（v3 是 6）。 */
-    const val MAX_RECENT = 5
+    /** V4 §6：卡片底部「最近观看」最多 6 个频道。 */
+    const val MAX_RECENT = 6
 
     /** 静默自动隐藏：手动 OK / 聚焦态为 7s；换台触发较短为 4s。 */
     const val AUTO_HIDE_MS = 7000L
@@ -185,16 +185,10 @@ object InfoCardPolicy {
         }
     }
 
-    /** t38：直播兜底帧率（中国 PAL 主流 25fps）；组播源 Format 无 frameRate 时用它。 */
-    const val FALLBACK_FRAME_RATE = 25f
-
-    /**
-     * 帧率标签：>0 取整 + "fps"（29.97→30、59.94→60）；<=0/NaN → 兜底 [FALLBACK_FRAME_RATE]="25fps"。
-     * t38：徽标必须显示帧数，组播源无真实帧率时用 25fps 兜底（不再隐藏）。
-     */
+    /** 帧率标签：仅真实帧率 > 0 时返回整值 + "fps"（29.97→30、59.94→60）；未知返回 null（不占位）。 */
     fun frameRateLabel(frameRate: Float): String? {
-        val value = if (frameRate.isNaN() || frameRate <= 0f) FALLBACK_FRAME_RATE else frameRate
-        return "${Math.round(value)}fps"
+        if (frameRate.isNaN() || frameRate <= 0f) return null
+        return "${Math.round(frameRate)}fps"
     }
 
     /**
@@ -223,13 +217,15 @@ object InfoCardPolicy {
         else -> "${channelCount}.0"
     }
 
-    /** t32 Bug2：视频编码短标（H.264→264、H.265→265、AV1→AV1）；未知 null。 */
+    /** 视频编码标签（H.264 / H.265 / AV1 / VP9 / MPEG2）；未知 null。 */
     fun videoCodecShort(mime: String?, codecs: String?): String? {
         val s = "${mime.orEmpty()} ${codecs.orEmpty()}".lowercase()
         return when {
-            s.contains("avc") || s.contains("h264") -> "264"
-            s.contains("hevc") || s.contains("hvc1") || s.contains("hev1") || s.contains("h265") -> "265"
+            s.contains("avc") || s.contains("h264") -> "H.264"
+            s.contains("hevc") || s.contains("hvc1") || s.contains("hev1") || s.contains("h265") -> "H.265"
             s.contains("av01") || s.contains("av1") -> "AV1"
+            s.contains("vp9") -> "VP9"
+            s.contains("mpeg2") || s.contains("mp2v") -> "MPEG2"
             else -> null
         }
     }
@@ -245,8 +241,8 @@ object InfoCardPolicy {
     }
 
     /**
-     * t32 Bug2：右上角紧凑徽标（分辨率 > 帧数 > 声道数字 > 动态范围 > 编码），全部一排。
-     * 只有实际可得项才加入，未知即隐藏、不补 `—`。单声道示例：HD · 50fps · 2.0 · SDR · 264。
+     * 右上角信息 Tag：分辨率、真实帧率、声道数字、真实动态范围、视频编码。
+     * 只有真实获取到该维度数据时才加入，未知项直接省略、不填占位符。
      */
     fun compactBadges(
         width: Int,
@@ -262,7 +258,7 @@ object InfoCardPolicy {
         resolutionTier(width, height)?.label?.let(out::add)
         frameRateLabel(frameRate)?.let(out::add)
         channelNumberLabel(channelCount)?.let(out::add)
-        dynamicRangeLabel(colorTransfer, hasHdrStaticInfo).let(out::add) // 总有值（默认 SDR）
+        dynamicRangeLabel(colorTransfer, hasHdrStaticInfo)?.let(out::add)
         videoCodecShort(mime, codecs)?.let(out::add)
         return out
     }
@@ -343,11 +339,12 @@ object InfoCardPolicy {
     fun infoCardHeightV4(showRecent: Boolean): Int =
         32 + 12 + (if (showRecent) 64 else 0) + 4 + 4 + 12
 
-    /** 动态范围：colorInfo 缺失或非 HDR → SDR；ST2084(6)→HDR10、HLG(7)→HLG。 */
-    fun dynamicRangeLabel(colorTransfer: Int, hasHdrStaticInfo: Boolean): String = when (colorTransfer) {
+    /** 动态范围：仅在真实 ColorTransfer 可得时返回；未知返回 null（不占位）。 */
+    fun dynamicRangeLabel(colorTransfer: Int, hasHdrStaticInfo: Boolean): String? = when (colorTransfer) {
         6 -> "HDR10"
         7 -> "HLG"
-        else -> "SDR"
+        2, 3, 10 -> "SDR"
+        else -> if (hasHdrStaticInfo) "HDR" else null
     }
 
     /** 技术行：视频编码 · 音频编码 · 动态范围 (+ 溢出徽标)，空项省略。 */
@@ -391,6 +388,9 @@ object InfoCardPolicy {
 
     private val cardClockFormatter: java.time.format.DateTimeFormatter =
         java.time.format.DateTimeFormatter.ofPattern("HH:mm")
+
+    fun formatClockTime(millis: Long): String =
+        if (millis <= 0L) "" else clockHm(millis)
 
     private fun clockHm(millis: Long): String =
         java.time.Instant.ofEpochMilli(millis).atZone(java.time.ZoneId.systemDefault()).toLocalTime()

@@ -75,6 +75,36 @@ object StreamPlayback {
     fun prepare(player: ExoPlayer, context: Context, channel: Channel, streamUrl: String = channel.url): PreparedPlayback =
         prepare(player, context, MediaPlaybackRequest(channel, streamUrl), PlaybackIntent())
 
+    /** 应用内画中画辅助播放器准备：共享 UA / Header 规则，静音且跳过主路径探针与看门狗。 */
+    fun prepareAuxiliaryMutedPlayer(player: ExoPlayer, context: Context, channel: Channel) {
+        val req = MediaPlaybackRequest(channel)
+        val activeSrcUa = Prefs.getActiveSource(context)?.userAgent?.takeIf { it.isNotBlank() }
+        val globalUa = activeSrcUa ?: Prefs.getGlobalUserAgent(context).takeIf { it.isNotBlank() }
+        val globalHeaders = PlaylistSources.parseCustomHeaders(Prefs.getGlobalCustomHeaders(context))
+        val headers = req.httpHeaders(globalUserAgent = globalUa, globalCustomHeaders = globalHeaders)
+        val experiment = JingcaiExperiment.parse(Prefs.getJingcaiExperiment(context))
+        val http: androidx.media3.datasource.DataSource.Factory =
+            if (JingcaiExperiment.usePlatformHttpDataSource(experiment)) {
+                androidx.media3.datasource.DefaultHttpDataSource.Factory()
+                    .setUserAgent(headers.getValue("User-Agent"))
+                    .setDefaultRequestProperties(headers)
+            } else {
+                OkHttpDataSource.Factory(NetUtil.ipv4OkHttpClient)
+                    .setUserAgent(headers.getValue("User-Agent"))
+                    .setDefaultRequestProperties(headers)
+            }
+        val factory = DefaultMediaSourceFactory(DefaultDataSource.Factory(context, http))
+        player.volume = 0f
+        player.trackSelectionParameters = player.trackSelectionParameters
+            .buildUpon()
+            .setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_AUDIO, true)
+            .setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_TEXT, true)
+            .build()
+        player.setMediaSource(factory.createMediaSource(MediaItem.Builder().setUri(req.streamUrl).build()))
+        player.prepare()
+        player.playWhenReady = true
+    }
+
     /** t234: the 睛彩 rebuild path must replay without re-arming the zap stopwatch. */
     fun prepareForRebuild(
         player: ExoPlayer,

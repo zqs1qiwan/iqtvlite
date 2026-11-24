@@ -2,7 +2,7 @@
 """Static guard for the refactored ChannelInfoBanner & InfoCardPolicy contract.
 
 Asserts from real sources that:
-  1. InfoCardPolicy stays Android/Compose-free with MAX_RECENT=5, AUTO_HIDE_MS=7000L and pure helpers;
+  1. InfoCardPolicy stays Android/Compose-free with MAX_RECENT=6, AUTO_HIDE_MS=7000L and pure helpers;
   2. ChannelInfoBanner carries all required test tags, compact badges, no border/shadow/blur/LazyRow,
      and correct relative catchup progress calculation (positionMs / duration);
   3. PlayerActivity routes InfoCard through PlayerUiController (single source of truth),
@@ -65,8 +65,8 @@ def main() -> int:
     controller = CONTROLLER.read_text(encoding="utf-8")
     habits = HABITS.read_text(encoding="utf-8")
 
-    if not re.search(r"const val MAX_RECENT = 5\b", policy):
-        problems.append("InfoCardPolicy.kt: MAX_RECENT must be 5")
+    if not re.search(r"const val MAX_RECENT = 6\b", policy):
+        problems.append("InfoCardPolicy.kt: MAX_RECENT must be 6")
     if not re.search(r"const val AUTO_HIDE_MS = 7000L", policy):
         problems.append("InfoCardPolicy.kt: AUTO_HIDE_MS must be 7000L")
     if "import androidx." in policy or "import android." in policy:

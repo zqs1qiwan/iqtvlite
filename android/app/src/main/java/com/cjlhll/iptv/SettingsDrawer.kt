@@ -116,6 +116,7 @@ data class SettingsUiState(
     val activeSourceId: String? = null,
     val globalUserAgent: String = "",
     val globalCustomHeaders: String = "",
+    val autoCheckUpdate: Boolean = true,
     val updateState: InlineUpdateState = InlineUpdateState.Idle,
     val notice: String? = null,
 )
@@ -144,6 +145,7 @@ data class SettingsActions(
     val onSelectGlobalUserAgent: (String) -> Unit,
     val onClearGlobalCustomHeaders: () -> Unit,
     val onQualityMenuClick: () -> Unit,
+    val onToggleAutoCheckUpdate: (Boolean) -> Unit = {},
     val onCheckUpdateClick: () -> Unit,
     val onDownloadUpdateClick: () -> Unit = {},
     val onOpenRecent: () -> Unit,
@@ -272,7 +274,7 @@ fun SettingsDrawer(
         val aboutSummary = when (val u = state.updateState) {
             is InlineUpdateState.Available -> s("发现新版本 ${u.info.latestTag}", "Update ${u.info.latestTag} available")
             is InlineUpdateState.Downloading -> s("正在下载 ${u.info.latestTag}… ${u.progress}%", "Downloading ${u.info.latestTag}… ${u.progress}%")
-            else -> SettingsSummary.about(BuildConfig.VERSION_CODE, lang)
+            else -> SettingsSummary.about(BuildConfig.VERSION_NAME, lang)
         }
         mapOf(
             SettingsPage.PLAYBACK to "${lang.nativeName} · ${SettingsSummary.playback(
@@ -477,7 +479,9 @@ fun SettingsDrawer(
                     )
                     page == SettingsPage.ABOUT -> SettingsAboutPage(
                         lang = lang,
+                        autoCheckUpdate = state.autoCheckUpdate,
                         updateState = state.updateState,
+                        onToggleAutoCheckUpdate = actions.onToggleAutoCheckUpdate,
                         onCheckUpdateClick = actions.onCheckUpdateClick,
                         onDownloadUpdateClick = actions.onDownloadUpdateClick,
                         textScale = textScale,
@@ -1746,7 +1750,9 @@ private fun SettingsLogoPage(
 @Composable
 private fun SettingsAboutPage(
     lang: AppLang,
+    autoCheckUpdate: Boolean,
     updateState: InlineUpdateState,
+    onToggleAutoCheckUpdate: (Boolean) -> Unit,
     onCheckUpdateClick: () -> Unit,
     onDownloadUpdateClick: () -> Unit,
     textScale: Float,
@@ -1755,6 +1761,11 @@ private fun SettingsAboutPage(
     onFocused: (String) -> Unit,
 ) {
     fun t(zh: String, en: String) = if (lang == AppLang.EN) en else zh
+    val versionDisplay = if (BuildConfig.VERSION_NAME.startsWith("v", ignoreCase = true)) {
+        BuildConfig.VERSION_NAME
+    } else {
+        "v${BuildConfig.VERSION_NAME}"
+    }
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -1772,19 +1783,25 @@ private fun SettingsAboutPage(
             modifier = Modifier.padding(start = 12.dp, bottom = 4.dp)
         )
         Text(
-            text = t("版本 ${BuildConfig.VERSION_NAME}", "Version ${BuildConfig.VERSION_NAME}"),
-            style = MaterialTheme.typography.bodySmall.copy(fontSize = (12.5f * textScale).sp),
+            text = t("版本 $versionDisplay", "Version $versionDisplay"),
+            style = MaterialTheme.typography.bodySmall.copy(fontSize = (13f * textScale).sp),
             color = TvDesignTokens.TextSecondary,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(start = 12.dp, bottom = 2.dp)
-        )
-        Text(
-            text = "Build ${BuildConfig.VERSION_CODE} · ${BuildConfig.APPLICATION_ID}",
-            style = MaterialTheme.typography.bodySmall.copy(fontSize = (12f * textScale).sp),
-            color = TvDesignTokens.TextMuted,
             modifier = Modifier.padding(start = 12.dp, bottom = 14.dp)
         )
+
+        SettingsChoiceRow(
+            title = t("启动时自动检查更新", "Auto-check Updates"),
+            value = if (autoCheckUpdate) t("开启", "On") else t("关闭", "Off"),
+            textScale = textScale,
+            focusRequester = requesterOf("settings_auto_check_update"),
+            tag = "settings_auto_check_update",
+            onFocused = onFocused,
+            onClick = { onToggleAutoCheckUpdate(!autoCheckUpdate) },
+        )
+        HelpText(t("开启后每次打开应用会自动在后台检查 GitHub 新版本。", "Checks GitHub Releases automatically when launching the app."))
+        RowGap()
 
         val primaryLabel: String
         val primaryAction: () -> Unit

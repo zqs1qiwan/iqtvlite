@@ -27,14 +27,13 @@ class InfoCardBadgeTest {
         assertEquals("1920x1080 → FHD", "FHD", InfoCardPolicy.resolutionTier(1920, 1080)?.label)
     }
 
-    // ── 帧率（t38：无真实帧率兜底 25fps） ──────────────────────────────────
+    // ── 帧率（仅真实值 >0 时显示，无占位 25fps） ─────────────────────────────
     @Test
-    fun frameRateLabelFallsBackTo25WhenInvalid() {
-        assertEquals("25fps", InfoCardPolicy.frameRateLabel(0f))
-        assertEquals("25fps", InfoCardPolicy.frameRateLabel(-1f))
-        assertEquals("25fps", InfoCardPolicy.frameRateLabel(Float.NaN))
-        assertEquals(25f, InfoCardPolicy.FALLBACK_FRAME_RATE)
-        // 有真实值仍用真实值（29.97→30、59.94→60、23.976→24）。
+    fun frameRateLabelReturnsNullWhenInvalid() {
+        assertNull(InfoCardPolicy.frameRateLabel(0f))
+        assertNull(InfoCardPolicy.frameRateLabel(-1f))
+        assertNull(InfoCardPolicy.frameRateLabel(Float.NaN))
+        // 有真实值才显示（29.97→30、59.94→60、23.976→24）。
         assertEquals("25fps", InfoCardPolicy.frameRateLabel(25f))
         assertEquals("30fps", InfoCardPolicy.frameRateLabel(29.97f))
         assertEquals("60fps", InfoCardPolicy.frameRateLabel(59.94f))
@@ -69,9 +68,9 @@ class InfoCardBadgeTest {
         assertEquals("V4：三项无码率", listOf("FHD", "60fps", "2ch"), full.map { it.label })
         assertEquals(listOf("resolution", "fps", "channels"), full.map { it.key })
         assertFalse("码率项不进候选", full.any { it.key == "bitrate" })
-        // t38：帧数兜底 25fps 始终显示（组播源无 frameRate），不再"全未知隐藏"。
-        assertEquals(listOf("25fps"), InfoCardPolicy.badgeCandidates(0, 0, 0f, 0, 0).map { it.label })
-        assertEquals(listOf("FHD", "25fps"), InfoCardPolicy.badgeCandidates(1920, 1080, 0f, 0, 0).map { it.label })
+        // 无真实数据时不填 25fps 默认占位，仅真实值出现。
+        assertTrue(InfoCardPolicy.badgeCandidates(0, 0, 0f, 0, 0).isEmpty())
+        assertEquals(listOf("FHD"), InfoCardPolicy.badgeCandidates(1920, 1080, 0f, 0, 0).map { it.label })
     }
 
     @Test
@@ -151,10 +150,10 @@ class InfoCardBadgeTest {
         assertFalse("未知码率隐藏、不占位", cand.any { it.key == "bitrate" })
     }
 
-    // ── V4 §6：最近观看 4 个 + 分组小字 ────────────────────────────────────
+    // ── 最近观看 6 个 + 分组小字 ───────────────────────────────────────────
     @Test
     fun v4RecentCountAndGroupLine() {
-        assertEquals("t69 ③：最近观看最多 5 个", 5, InfoCardPolicy.MAX_RECENT)
+        assertEquals("最近观看最多 6 个", 6, InfoCardPolicy.MAX_RECENT)
         assertEquals("央视频道", InfoCardPolicy.groupLine("央视频道"))
         assertEquals("央视频道", InfoCardPolicy.groupLine("  央视频道  "))
         assertEquals("", InfoCardPolicy.groupLine(null))
@@ -174,25 +173,24 @@ class InfoCardBadgeTest {
     }
 
     @Test
-    fun videoCodecShortMaps264265() {
-        assertEquals("264", InfoCardPolicy.videoCodecShort("video/avc", "avc1.42E01E"))
-        assertEquals("264", InfoCardPolicy.videoCodecShort(null, "h264"))
-        assertEquals("265", InfoCardPolicy.videoCodecShort("video/hevc", "hvc1"))
+    fun videoCodecShortMapsH264H265() {
+        assertEquals("H.264", InfoCardPolicy.videoCodecShort("video/avc", "avc1.42E01E"))
+        assertEquals("H.264", InfoCardPolicy.videoCodecShort(null, "h264"))
+        assertEquals("H.265", InfoCardPolicy.videoCodecShort("video/hevc", "hvc1"))
         assertEquals("AV1", InfoCardPolicy.videoCodecShort("video/av01", null))
         assertNull(InfoCardPolicy.videoCodecShort(null, null))
     }
 
     @Test
-    fun compactBadgesIncludeAllKnownInfoInOneRow() {
-        // 分辨率/帧数/声道数字/动态范围(SDR)/编码(264) 全部一排、未知隐藏。
+    fun compactBadgesIncludeOnlyRealKnownInfoInOneRow() {
         val badges = InfoCardPolicy.compactBadges(
             width = 1920, height = 1080, frameRate = 50f, channelCount = 2,
             colorTransfer = 6 /* HDR10 */, hasHdrStaticInfo = true,
             mime = "video/avc", codecs = "avc1",
         )
-        assertEquals(listOf("FHD", "50fps", "2.0", "HDR10", "264"), badges)
-        // t38：帧数兜底 25fps 仍显示；其它未知项隐藏、动态范围默认 SDR 仍在。
+        assertEquals(listOf("FHD", "50fps", "2.0", "HDR10", "H.264"), badges)
+        // 无任何真实参数时不输出 25fps / SDR 默认占位。
         val minimal = InfoCardPolicy.compactBadges(0, 0, -1f, 0, -1, false, null, null)
-        assertEquals(listOf("25fps", "SDR"), minimal)
+        assertTrue(minimal.isEmpty())
     }
 }

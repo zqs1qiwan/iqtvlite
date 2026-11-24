@@ -64,6 +64,15 @@ class BackKeyPolicyTest {
             BackKeyPolicy.Action.RETURN_LIVE,
             p.decide(false, false, false, false, false, false, false, false, true, true),
         )
+        // 应用内画中画双按是"退出画中画"，不退出应用。
+        assertEquals(
+            BackKeyPolicy.Action.TOAST_EXIT_PIP,
+            p.decide(false, false, false, false, false, false, false, false, false, false, inAppPipActive = true),
+        )
+        assertEquals(
+            BackKeyPolicy.Action.EXIT_PIP,
+            p.decide(false, false, false, false, false, false, false, false, false, true, inAppPipActive = true),
+        )
     }
 
     @Test

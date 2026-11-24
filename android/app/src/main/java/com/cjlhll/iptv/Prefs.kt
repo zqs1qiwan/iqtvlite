@@ -52,6 +52,7 @@ object Prefs {
     private const val KEY_GLOBAL_USER_AGENT = "pref_global_user_agent"
     private const val KEY_GLOBAL_CUSTOM_HEADERS = "pref_global_custom_headers"
     private const val KEY_VIDEO_ASPECT_MODE = "pref_video_aspect_mode"
+    private const val KEY_AUTO_CHECK_UPDATE = "pref_auto_check_update"
 
     private fun getPrefs(context: Context): SharedPreferences {
         return context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
@@ -438,5 +439,12 @@ object Prefs {
 
     fun setVideoAspectMode(context: Context, mode: VideoAspectMode) {
         getPrefs(context).edit().putString(KEY_VIDEO_ASPECT_MODE, mode.id).apply()
+    }
+
+    fun isAutoCheckUpdateEnabled(context: Context): Boolean =
+        getPrefs(context).getBoolean(KEY_AUTO_CHECK_UPDATE, true)
+
+    fun setAutoCheckUpdateEnabled(context: Context, enabled: Boolean) {
+        getPrefs(context).edit().putBoolean(KEY_AUTO_CHECK_UPDATE, enabled).apply()
     }
 }

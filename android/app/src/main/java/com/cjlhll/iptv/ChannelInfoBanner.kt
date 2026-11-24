@@ -77,13 +77,14 @@ data class InfoCardQuickAction(
     val id: InfoCardQuickActionId,
     val label: String,
     val description: String = label,
+    val active: Boolean = false,
 )
 
 /**
  * 双层式播放器底部信息卡：
  * 1. **换台轻量通透态**（`!manual && !focused`）：更通透深色底（0.64），整行铺满当前频道与节目进度，不展示最近观看与按钮；
- * 2. **确认主动控制台**（`manual || focused`）：稳定沉静不透明度（0.92），上方保持当前频道展示条，
- *    下方铺满一整行：左侧最近观看 5 个频道（Logo + 台名）+ 右侧快速设置（线路/画面比例/音轨/字幕/画中画/设置）。
+ * 2. **确认主动控制台**（`manual || focused`）：稳定沉静不透明度（0.92），上方保持当前/下一节目双栏展示条，
+ *    下方铺满一整行：最左竖排「最近观看」标签 + 6 个最近频道 + 右侧本台快捷控制（线路/画面比例/音轨/字幕/画中画/设置）。
  */
 @Composable
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
@@ -94,6 +95,8 @@ fun ChannelInfoBanner(
     seekOverlayVisible: Boolean,
     channel: Channel?,
     programTitle: String?,
+    nextProgramTitle: String? = null,
+    nextProgramStartMs: Long = 0L,
     channelNumber: Int = -1,
     programProgress: Float? = null,
     videoFormat: Format?,
@@ -192,7 +195,7 @@ fun ChannelInfoBanner(
     val vf = videoFormat
     val frameRate = InfoCardPolicy.takePositive(vf?.frameRate ?: -1f, frameRateFallback)
     val colorInfo = vf?.colorInfo
-    val compactBadgeText = InfoCardPolicy.compactBadges(
+    val compactBadgeList = InfoCardPolicy.compactBadges(
         width = vf?.width ?: 0,
         height = vf?.height ?: 0,
         frameRate = frameRate ?: -1f,
@@ -201,7 +204,7 @@ fun ChannelInfoBanner(
         hasHdrStaticInfo = colorInfo?.hdrStaticInfo != null,
         mime = vf?.sampleMimeType,
         codecs = vf?.codecs,
-    ).joinToString(" · ")
+    )
 
     val programText = InfoCardPolicy.programTitleOrPlaceholder(programTitle, lang)
     val programTime = InfoCardPolicy.programTimeLine(
@@ -257,20 +260,20 @@ fun ChannelInfoBanner(
                     }
                 }
         ) {
-            // ── 第一层（通用，铺满下方）：大台标 + 频道名/分组 + 节目名/时间/进度 + 右侧实时参数 ──
+            // ── 第一层（通用，铺满下方）：大台标 + 频道名/分组 + 当前/下一节目双栏 + 右侧独立 Tag ──
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(
-                        start = 36.dp,
-                        end = 36.dp,
-                        top = 13.dp,
-                        bottom = if (showBottomRow) 11.dp else 14.dp,
+                        start = 28.dp,
+                        end = 28.dp,
+                        top = 12.dp,
+                        bottom = if (showBottomRow) 10.dp else 13.dp,
                     ),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                val mainLogoW = (146f * lScale).dp
-                val mainLogoH = (84f * lScale).dp
+                val mainLogoW = (138f * lScale).dp
+                val mainLogoH = (80f * lScale).dp
                 Box(
                     modifier = Modifier.size(width = mainLogoW, height = mainLogoH),
                     contentAlignment = Alignment.Center,
@@ -286,7 +289,7 @@ fun ChannelInfoBanner(
                     )
                 }
 
-                Spacer(modifier = Modifier.width(20.dp))
+                Spacer(modifier = Modifier.width(18.dp))
 
                 Column(
                     modifier = Modifier.weight(1f),
@@ -304,8 +307,8 @@ fun ChannelInfoBanner(
                             Text(
                                 text = titleWithNumber,
                                 style = MaterialTheme.typography.headlineLarge.copy(
-                                    fontSize = (23f * tScale).sp,
-                                    lineHeight = (27f * tScale).sp,
+                                    fontSize = (22f * tScale).sp,
+                                    lineHeight = (26f * tScale).sp,
                                     fontWeight = FontWeight.SemiBold,
                                 ),
                                 color = TvDesignTokens.TextPrimary,
@@ -339,82 +342,166 @@ fun ChannelInfoBanner(
                             }
                         }
 
-                        if (compactBadgeText.isNotEmpty()) {
-                            Spacer(modifier = Modifier.width(16.dp))
-                            Text(
-                                text = compactBadgeText,
-                                style = MaterialTheme.typography.labelMedium.copy(
-                                    fontSize = (12.5f * tScale).sp,
-                                    fontWeight = FontWeight.Medium,
-                                ),
-                                color = Color(0xFFCBD4E3),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
+                        if (compactBadgeList.isNotEmpty()) {
+                            Spacer(modifier = Modifier.width(14.dp))
+                            val tagShape = remember { RoundedCornerShape(4.dp) }
+                            val tagBg = Color.White.copy(alpha = 0.16f)
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
                                 modifier = Modifier.testTag("info_card_badges"),
-                            )
+                            ) {
+                                compactBadgeList.forEach { badge ->
+                                    Box(
+                                        modifier = Modifier
+                                            .background(tagBg, tagShape)
+                                            .padding(horizontal = 7.dp, vertical = 2.dp),
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        Text(
+                                            text = badge,
+                                            style = MaterialTheme.typography.labelMedium.copy(
+                                                fontSize = (11.5f * tScale).sp,
+                                                lineHeight = (14f * tScale).sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                            ),
+                                            color = Color(0xFFEAF0FA),
+                                            maxLines = 1,
+                                        )
+                                    }
+                                }
+                            }
                         } else {
                             Box(modifier = Modifier.testTag("info_card_badges"))
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(6.dp))
+                    Spacer(modifier = Modifier.height(7.dp))
+
+                    val nextText = nextProgramTitle?.trim().takeIf { !it.isNullOrBlank() && catchupConfiguration == null }
+                    val nextTimeText = InfoCardPolicy.formatClockTime(nextProgramStartMs)
+                    val hasNextColumn = nextText != null
 
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween,
                         modifier = Modifier.fillMaxWidth(),
                     ) {
-                        Text(
-                            text = programText,
-                            style = MaterialTheme.typography.titleLarge.copy(
-                                fontSize = (17.5f * tScale).sp,
-                                lineHeight = (21f * tScale).sp,
-                                fontWeight = FontWeight.Medium,
-                            ),
-                            color = if (programTitle.isNullOrBlank()) {
-                                TvDesignTokens.TextMuted
-                            } else {
-                                Color(0xFFE4EAF4)
-                            },
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier
-                                .weight(1f, fill = false)
-                                .testTag("info_card_program"),
-                        )
-                        if (programTime.isNotEmpty()) {
-                            Spacer(modifier = Modifier.width(14.dp))
-                            Text(
-                                text = programTime,
-                                style = MaterialTheme.typography.labelMedium.copy(fontSize = (12f * tScale).sp),
-                                color = TvDesignTokens.TextSecondary,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.testTag("info_card_program_time"),
-                            )
-                        } else {
-                            Box(modifier = Modifier.testTag("info_card_program_time"))
+                        val currentColModifier = when {
+                            hasNextColumn -> Modifier.weight(0.56f)
+                            catchupConfiguration != null -> Modifier.fillMaxWidth()
+                            else -> Modifier.fillMaxWidth(0.68f)
                         }
-                    }
+                        Column(modifier = currentColModifier) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text(
+                                    text = programText,
+                                    style = MaterialTheme.typography.titleLarge.copy(
+                                        fontSize = (16.5f * tScale).sp,
+                                        lineHeight = (20f * tScale).sp,
+                                        fontWeight = FontWeight.Medium,
+                                    ),
+                                    color = if (programTitle.isNullOrBlank()) {
+                                        TvDesignTokens.TextMuted
+                                    } else {
+                                        Color(0xFFE4EAF4)
+                                    },
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier
+                                        .weight(1f, fill = false)
+                                        .testTag("info_card_program"),
+                                )
+                                if (programTime.isNotEmpty()) {
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Text(
+                                        text = programTime,
+                                        style = MaterialTheme.typography.labelMedium.copy(fontSize = (11.5f * tScale).sp),
+                                        color = TvDesignTokens.TextSecondary,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.testTag("info_card_program_time"),
+                                    )
+                                } else {
+                                    Box(modifier = Modifier.testTag("info_card_program_time"))
+                                }
+                            }
 
-                    if (progressValue != null) {
-                        Spacer(modifier = Modifier.height(6.dp))
-                        BannerProgressBar(
-                            progress = progressValue,
-                            modifier = Modifier.testTag("info_card_progress"),
-                        )
-                    } else {
-                        Box(modifier = Modifier.testTag("info_card_progress"))
+                            if (progressValue != null) {
+                                Spacer(modifier = Modifier.height(5.dp))
+                                BannerProgressBar(
+                                    progress = progressValue,
+                                    modifier = Modifier.testTag("info_card_progress"),
+                                )
+                            } else {
+                                Box(modifier = Modifier.testTag("info_card_progress"))
+                            }
+                        }
+
+                        if (nextText != null) {
+                            Spacer(modifier = Modifier.width(14.dp))
+                            Box(
+                                modifier = Modifier
+                                    .width(1.dp)
+                                    .height(26.dp)
+                                    .background(Color.White.copy(alpha = 0.12f))
+                            )
+                            Spacer(modifier = Modifier.width(14.dp))
+                            Column(modifier = Modifier.weight(0.44f)) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    Text(
+                                        text = if (lang == AppLang.EN) "NEXT" else "下一节目",
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            fontSize = (11f * tScale).sp,
+                                            lineHeight = (13f * tScale).sp,
+                                            fontWeight = FontWeight.Medium,
+                                        ),
+                                        color = Color(0xFF8C9BB0),
+                                        maxLines = 1,
+                                    )
+                                    if (nextTimeText.isNotEmpty()) {
+                                        Text(
+                                            text = nextTimeText,
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                fontSize = (11f * tScale).sp,
+                                                lineHeight = (13f * tScale).sp,
+                                            ),
+                                            color = TvDesignTokens.TextSecondary,
+                                            maxLines = 1,
+                                        )
+                                    }
+                                }
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = nextText,
+                                    style = MaterialTheme.typography.bodyMedium.copy(
+                                        fontSize = (14.5f * tScale).sp,
+                                        lineHeight = (18f * tScale).sp,
+                                        fontWeight = FontWeight.Normal,
+                                    ),
+                                    color = Color(0xFFC5D0E0),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                        }
                     }
                 }
             }
 
-            // ── 第二层（仅 OK 主动呼出时显示）：整行左侧 5 个最近观看 + 右侧本台快捷控制 ──
+            // ── 第二层（仅 OK 主动呼出时显示）：最左竖排最近观看 + 6 个最近频道 + 右侧本台快捷控制 ──
             if (showBottomRow) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 36.dp)
+                        .padding(horizontal = 28.dp)
                         .height(1.dp)
                         .background(Color.White.copy(alpha = 0.08f))
                 )
@@ -423,12 +510,13 @@ fun ChannelInfoBanner(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(start = 36.dp, end = 36.dp, top = 10.dp, bottom = 13.dp),
+                        .padding(start = 28.dp, end = 28.dp, top = 10.dp, bottom = 12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     if (showRecent) {
                         RecentStrip(
                             items = recentCards,
+                            lang = lang,
                             rowHeight = rowHeight,
                             focused = focused,
                             logicalFocusIndex = focusIndex,
@@ -446,7 +534,7 @@ fun ChannelInfoBanner(
                     }
 
                     if (visibleQuickActions.isNotEmpty()) {
-                        Spacer(modifier = Modifier.width(16.dp))
+                        Spacer(modifier = Modifier.width(12.dp))
                         QuickActionsStrip(
                             actions = visibleQuickActions,
                             rowHeight = rowHeight,
@@ -487,6 +575,7 @@ fun ChannelInfoBanner(
 @Composable
 private fun RecentStrip(
     items: List<RecentChannelUi>,
+    lang: AppLang,
     rowHeight: androidx.compose.ui.unit.Dp,
     focused: Boolean,
     logicalFocusIndex: Int,
@@ -497,18 +586,40 @@ private fun RecentStrip(
     modifier: Modifier = Modifier,
 ) {
     val cardShape = remember { RoundedCornerShape(6.dp) }
+    val labelShape = remember { RoundedCornerShape(5.dp) }
     val idlePlateColor = Color(0x14FFFFFF)
-    val logoW = (68f * uiScale.logoScale).dp
-    val logoH = (38f * uiScale.logoScale).dp
+    val logoW = (54f * uiScale.logoScale).dp
+    val logoH = (34f * uiScale.logoScale).dp
 
     Row(
         modifier = modifier
             .height(rowHeight)
             .clipToBounds()
             .testTag("info_card_recent_row"),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        // 最左竖排「最近观看」导视标识，不占用横向选台空间
+        Box(
+            modifier = Modifier
+                .width(22.dp)
+                .fillMaxHeight()
+                .background(Color(0x10FFFFFF), labelShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            val isEn = lang == AppLang.EN
+            Text(
+                text = if (isEn) "R\nE\nC\nE\nN\nT" else "最\n近\n观\n看",
+                style = MaterialTheme.typography.labelSmall.copy(
+                    fontSize = if (isEn) 8.5.sp else 10.sp,
+                    lineHeight = if (isEn) 9.5.sp else 12.sp,
+                    fontWeight = FontWeight.Medium,
+                ),
+                color = Color(0xFF9AA8BC),
+                textAlign = TextAlign.Center,
+            )
+        }
+
         for (slot in 0 until InfoCardPolicy.MAX_RECENT) {
             val item = items.getOrNull(slot)
             if (item == null) {
@@ -534,7 +645,7 @@ private fun RecentStrip(
                     .focusable()
                     .background(if (isHighlighted) BrandFocus.FocusBgColor else idlePlateColor, cardShape)
                     .clickable { onClick(index) }
-                    .padding(horizontal = 6.dp, vertical = 5.dp),
+                    .padding(horizontal = 4.dp, vertical = 5.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center,
             ) {
@@ -555,7 +666,7 @@ private fun RecentStrip(
                         Text(
                             text = item.title.take(4),
                             style = MaterialTheme.typography.titleSmall.copy(
-                                fontSize = (12.5f * uiScale.textScale).sp,
+                                fontSize = (12f * uiScale.textScale).sp,
                                 fontWeight = FontWeight.SemiBold,
                             ),
                             color = if (isHighlighted) TvDesignTokens.TextPrimary else TvDesignTokens.TextSecondary,
@@ -569,8 +680,8 @@ private fun RecentStrip(
                 Text(
                     text = item.title,
                     style = MaterialTheme.typography.labelSmall.copy(
-                        fontSize = (11f * uiScale.textScale).sp,
-                        lineHeight = (13f * uiScale.textScale).sp,
+                        fontSize = (10.5f * uiScale.textScale).sp,
+                        lineHeight = (12.5f * uiScale.textScale).sp,
                         fontWeight = if (isHighlighted) FontWeight.SemiBold else FontWeight.Normal,
                     ),
                     color = if (isHighlighted) TvDesignTokens.TextPrimary else Color(0xFFB8C3D4),
@@ -598,20 +709,30 @@ private fun QuickActionsStrip(
 ) {
     val tileShape = remember { RoundedCornerShape(6.dp) }
     val idlePlateColor = Color(0x14FFFFFF)
-    val tileWidth = (66f * textScale.coerceIn(0.92f, 1.12f)).dp
+    val activePlateColor = BrandFocus.BlueColor.copy(alpha = 0.28f)
+    val tileWidth = (58f * textScale.coerceIn(0.92f, 1.10f)).dp
 
     Row(
         modifier = Modifier
             .height(rowHeight)
             .testTag("info_card_actions_row"),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         actions.forEachIndexed { idx, action ->
             val slotIndex = slotOffset + idx
             var nodeFocused by remember(action.id) { mutableStateOf(false) }
             val isHighlighted = focused && (nodeFocused || slotIndex == logicalFocusIndex)
-            val iconColor = if (isHighlighted) TvDesignTokens.TextPrimary else Color(0xFFD6DEEC)
+            val iconColor = when {
+                isHighlighted -> TvDesignTokens.TextPrimary
+                action.active -> Color(0xFF9AC2FF)
+                else -> Color(0xFFD6DEEC)
+            }
+            val tileBg = when {
+                isHighlighted -> BrandFocus.FocusBgColor
+                action.active -> activePlateColor
+                else -> idlePlateColor
+            }
 
             Column(
                 modifier = Modifier
@@ -625,26 +746,30 @@ private fun QuickActionsStrip(
                         onFocusChanged(slotIndex, it.isFocused)
                     }
                     .focusable()
-                    .background(if (isHighlighted) BrandFocus.FocusBgColor else idlePlateColor, tileShape)
+                    .background(tileBg, tileShape)
                     .clickable { onTrigger(action.id) }
-                    .padding(horizontal = 4.dp, vertical = 6.dp),
+                    .padding(horizontal = 3.dp, vertical = 6.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center,
             ) {
                 QuickActionGlyph(
                     id = action.id,
                     tint = iconColor,
-                    modifier = Modifier.size(20.dp),
+                    modifier = Modifier.size(19.dp),
                 )
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(
                     text = action.label,
                     style = MaterialTheme.typography.labelSmall.copy(
-                        fontSize = (11f * textScale.coerceAtMost(1.06f)).sp,
-                        lineHeight = (13f * textScale).sp,
-                        fontWeight = if (isHighlighted) FontWeight.SemiBold else FontWeight.Medium,
+                        fontSize = (10.5f * textScale.coerceAtMost(1.06f)).sp,
+                        lineHeight = (12.5f * textScale).sp,
+                        fontWeight = if (isHighlighted || action.active) FontWeight.SemiBold else FontWeight.Medium,
                     ),
-                    color = if (isHighlighted) TvDesignTokens.TextPrimary else Color(0xFFB8C3D4),
+                    color = when {
+                        isHighlighted -> TvDesignTokens.TextPrimary
+                        action.active -> Color(0xFFB5D2FF)
+                        else -> Color(0xFFB8C3D4)
+                    },
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     textAlign = TextAlign.Center,
