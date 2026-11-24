@@ -74,4 +74,35 @@ class FrameRateEstimatorTest {
             FrameRateEstimator.resolve(Float.NaN, 24f).source,
         )
     }
+
+    @Test
+    fun ptsFrameRateTrackerMeasuresExact50And25And5994Fps() {
+        val tracker = FrameRateEstimator.PtsFrameRateTracker()
+        // 50fps 流（每帧 20_000us），前 6 帧（5 个 delta）尚不足 minSamples=6，第 7 帧出精确 50.0fps
+        var pts = 1_000_000L
+        var last: Float? = null
+        repeat(10) {
+            last = tracker.onFramePtsUs(pts)
+            pts += 20_000L
+        }
+        assertEquals(50f, last!!, 0.05f)
+
+        // 切台重置后，25fps 流（每帧 40_000us），掺杂 1 次异常跳变仍稳定 25.0fps
+        tracker.reset()
+        pts = 0L
+        repeat(8) { idx ->
+            last = tracker.onFramePtsUs(pts)
+            pts += if (idx == 3) 500_000L else 40_000L // 1 次异常跳变自动忽略
+        }
+        assertEquals(25f, last!!, 0.05f)
+
+        // 59.94fps 流（每帧 16_683us）
+        tracker.reset()
+        pts = 0L
+        repeat(10) {
+            last = tracker.onFramePtsUs(pts)
+            pts += 16_683L
+        }
+        assertEquals(59.94f, last!!, 0.2f)
+    }
 }

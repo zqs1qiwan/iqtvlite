@@ -99,4 +99,49 @@ object FrameRateEstimator {
 
         fun reset() { windowStart = -1L; frames = 0 }
     }
+
+    /**
+     * 对齐 TiviMate 的真实帧率测量器（供 ExoPlayer `VideoFrameMetadataListener.onVideoFrameAboutToBeRendered` 使用）：
+     * - 直接读取每一帧的精确解码时间戳 `presentationTimeUs`（微秒），计算相邻帧间隔滑动中位数；
+     * - 零集合分配（固定 LongArray 环形缓冲），彻底免疫主线程抖动与系统时钟漂移；
+     * - 6 帧内（50fps 约 0.12s，25fps 约 0.24s）即可输出精确真实帧率（24 / 25 / 30 / 50 / 60fps）。
+     */
+    class PtsFrameRateTracker(
+        private val windowSize: Int = 16,
+        private val minSamples: Int = 6,
+    ) {
+        private val deltasUs = LongArray(windowSize)
+        private val scratch = LongArray(windowSize)
+        private var lastPtsUs = Long.MIN_VALUE
+        private var count = 0
+        private var writePos = 0
+
+        fun onFramePtsUs(ptsUs: Long): Float? {
+            val prev = lastPtsUs
+            lastPtsUs = ptsUs
+            if (prev == Long.MIN_VALUE) return null
+            val delta = ptsUs - prev
+            // 有效帧间隔：6ms (166fps) .. 100ms (10fps)，自动过滤切流跳变/重复帧/seek
+            if (delta !in 6_000L..100_000L) return null
+            deltasUs[writePos] = delta
+            writePos = (writePos + 1) % windowSize
+            if (count < windowSize) count++
+            if (count < minSamples) return null
+            for (i in 0 until count) scratch[i] = deltasUs[i]
+            java.util.Arrays.sort(scratch, 0, count)
+            val medianUs = if (count % 2 == 1) {
+                scratch[count / 2].toDouble()
+            } else {
+                (scratch[count / 2 - 1] + scratch[count / 2]) / 2.0
+            }
+            if (medianUs <= 0.0) return null
+            return (1_000_000.0 / medianUs).toFloat().coerceIn(MIN_FPS, MAX_FPS)
+        }
+
+        fun reset() {
+            lastPtsUs = Long.MIN_VALUE
+            count = 0
+            writePos = 0
+        }
+    }
 }

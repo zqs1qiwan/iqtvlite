@@ -1,8 +1,10 @@
 package com.cjlhll.iptv
 
 import android.content.Context
+import android.media.MediaFormat
 import android.os.SystemClock
 import android.util.Log
+import androidx.media3.common.Format
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.datasource.DefaultDataSource
@@ -10,6 +12,7 @@ import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.video.VideoFrameMetadataListener
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -64,6 +67,7 @@ object StreamPlayback {
         sessions.remove(player)?.let {
             it.cancelSummary()
             PlaybackSession.clear(it.mediaIdForSession())
+            player.clearVideoFrameMetadataListener(it)
             player.removeAnalyticsListener(it)
         }
         player.release()
@@ -87,7 +91,12 @@ object StreamPlayback {
         val streamUrl = request.streamUrl
         context.getSharedPreferences("iptv_stream", Context.MODE_PRIVATE).edit().putString("url", channel.url)
             .putLong("id", channel.id).putString("ua", channel.userAgent).putString("referrer", channel.referrer).apply()
-        val metrics = sessions.getOrPut(player) { Metrics(player).also { player.addAnalyticsListener(it) } }
+        val metrics = sessions.getOrPut(player) {
+            Metrics(player).also {
+                player.addAnalyticsListener(it)
+                player.setVideoFrameMetadataListener(it)
+            }
+        }
         val channelId = channel.id.takeIf { it != 0L } ?: RustBridge.stableId(RustBridge.stableId(0, Prefs.getLiveSource(context)), channel.tvgId ?: channel.url)
         val id = "c${channelId}-l${channel.url.hashCode().toUInt()}-s${sequence.incrementAndGet()}"
         val headers = request.httpHeaders()
@@ -254,7 +263,7 @@ object StreamPlayback {
         watchdogs[player]?.onFirstFrame()
     }
 
-    private class Metrics(private val player: ExoPlayer) : AnalyticsListener {
+    private class Metrics(private val player: ExoPlayer) : AnalyticsListener, VideoFrameMetadataListener {
 
         fun cancelSummary() { audioSummaryJob?.cancel(); audioSummaryJob = null }
 
@@ -277,22 +286,57 @@ object StreamPlayback {
         // t231 diagnosis state
         private var loaderBytes = 0L
         private var downstream = "none"
-        // t40：真实帧率推断 state。Media3 1.11.1 无 onVideoFrameRendered；用
-        // onVideoFrameProcessingOffset 的 frameCount 增量 + 时间窗（~1s）算实际渲染 fps。
-        // 只有几个 long 变量，帧回调里无分配、无主线程负担。
+        // 真实帧率双轨测量：首选 VideoFrameMetadataListener 逐帧 PTS 间隔中位数（对齐 TiviMate），
+        // 次选 MediaFormat.KEY_FRAME_RATE 首帧提示，兜底 onVideoFrameProcessingOffset。
+        private val ptsTracker = FrameRateEstimator.PtsFrameRateTracker()
         private val fpsWindow = FrameRateEstimator.FrameRateWindow()
+        @Volatile private var ptsMeasuredFps: Float? = null
         @Volatile private var inferredFps: Float? = null
-        fun inferredFrameRate(): Float? = inferredFps
+        @Volatile private var fpsLogged = false
+        fun inferredFrameRate(): Float? = ptsMeasuredFps ?: inferredFps
+
+        override fun onVideoFrameAboutToBeRendered(
+            presentationTimeUs: Long,
+            releaseTimeNs: Long,
+            format: Format,
+            mediaFormat: MediaFormat?,
+        ) {
+            val measured = ptsTracker.onFramePtsUs(presentationTimeUs)
+            if (measured != null) {
+                ptsMeasuredFps = measured
+                inferredFps = measured
+                if (!fpsLogged) {
+                    fpsLogged = true
+                    Log.i("IQTV-FPS", "pts_fps=${"%.2f".format(measured)} format_fps=${format.frameRate} size=${format.width}x${format.height}")
+                }
+                return
+            }
+            if (inferredFps == null) {
+                val mfFps = mediaFormat?.let { mf ->
+                    if (mf.containsKey(MediaFormat.KEY_FRAME_RATE)) {
+                        runCatching { mf.getFloat(MediaFormat.KEY_FRAME_RATE) }
+                            .getOrElse { runCatching { mf.getInteger(MediaFormat.KEY_FRAME_RATE).toFloat() }.getOrNull() }
+                    } else null
+                }
+                val hint = when {
+                    mfFps != null && mfFps > 0f && !mfFps.isNaN() -> mfFps
+                    format.frameRate > 0f && !format.frameRate.isNaN() -> format.frameRate
+                    else -> null
+                }
+                if (hint != null) inferredFps = hint.coerceIn(FrameRateEstimator.MIN_FPS, FrameRateEstimator.MAX_FPS)
+            }
+        }
 
         override fun onVideoFrameProcessingOffset(
             eventTime: AnalyticsListener.EventTime,
             totalProcessingOffsetUs: Long,
             frameCount: Int,
         ) {
-            // 只在匹配当前 session 时统计；暂停/后台无帧回调，自然不更新。
             if (!matches(eventTime)) return
             val nowMs = android.os.SystemClock.elapsedRealtime()
-            fpsWindow.onFrameBatch(nowMs, frameCount)?.let { inferredFps = it }
+            fpsWindow.onFrameBatch(nowMs, frameCount)?.let {
+                if (ptsMeasuredFps == null) inferredFps = it
+            }
         }
 
         fun diagnosticLine(mode: JingcaiExperiment.Mode): String {
@@ -344,8 +388,8 @@ object StreamPlayback {
                 }
             }
             firstFrame = false
-            // t40：切台清空帧率推断窗口，避免旧流帧率污染新流。
-            fpsWindow.reset(); inferredFps = null
+            // 切台清空帧率测量器，避免旧流帧率污染新流。
+            ptsTracker.reset(); ptsMeasuredFps = null; fpsLogged = false; fpsWindow.reset(); inferredFps = null
             bufferStart = 0L; bufferingMs = 0L; rebufferCount = 0; droppedFrames = 0
             emit("prepare", "at=$preparedAt")
         }

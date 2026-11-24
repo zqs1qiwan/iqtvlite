@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -44,6 +45,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -203,134 +205,174 @@ fun ChannelInfoBanner(
                     }
                 }
         ) {
-            Column(
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = 36.dp, end = 36.dp, top = 10.dp, bottom = 8.dp)
+                    .padding(start = 36.dp, end = 36.dp, top = 14.dp, bottom = 14.dp),
+                verticalAlignment = Alignment.Top,
             ) {
-                Box(modifier = Modifier.fillMaxWidth()) {
-                    Row(
+                // 左列：当前台大台标 + 底部清晰无裁切的「← 频道列表」提示
+                Column(
+                    modifier = Modifier
+                        .width(140.dp)
+                        .height(142.dp),
+                    verticalArrangement = Arrangement.SpaceBetween,
+                    horizontalAlignment = Alignment.Start,
+                ) {
+                    ChannelLogo(
+                        logoUrl = channel?.logoUrl,
+                        fallbackTitle = channel?.title ?: "",
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(min = 96.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        ChannelLogo(
-                            logoUrl = channel?.logoUrl,
-                            fallbackTitle = channel?.title ?: "",
-                            modifier = Modifier
-                                .size(width = 144.dp, height = 90.dp)
-                                .testTag("info_card_logo"),
-                            width = 144.dp,
-                            height = 90.dp
-                        )
+                            .size(width = 136.dp, height = 84.dp)
+                            .testTag("info_card_logo"),
+                        width = 136.dp,
+                        height = 84.dp,
+                    )
+                    EntryHintLeft()
+                }
 
-                        Spacer(modifier = Modifier.width(24.dp))
+                Spacer(modifier = Modifier.width(20.dp))
 
-                        Column(modifier = Modifier.weight(0.46f)) {
+                // 中列：频道标题与分组 + 最近观看操作提示 + 向下延展正好容纳 5 个台的大台标+台名卡片条
+                Column(
+                    modifier = Modifier
+                        .weight(0.56f)
+                        .heightIn(min = 142.dp),
+                    verticalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Row(
+                            verticalAlignment = Alignment.Bottom,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
                             Text(
                                 text = titleWithNumber,
                                 style = MaterialTheme.typography.headlineLarge.copy(
-                                    fontSize = 26.sp,
-                                    lineHeight = 30.sp,
+                                    fontSize = 24.sp,
+                                    lineHeight = 28.sp,
                                     fontWeight = FontWeight.SemiBold,
                                 ),
                                 color = TvDesignTokens.TextPrimary,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.testTag("info_card_title")
+                                modifier = Modifier
+                                    .weight(1f, fill = false)
+                                    .testTag("info_card_title"),
                             )
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.height(16.dp).testTag("info_card_group")
-                            ) {
-                                Text(
-                                    text = smallMeta,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = TvDesignTokens.TextSecondary,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.testTag("info_card_number")
-                                )
-                            }
-                            if (showRecent) {
-                                Spacer(modifier = Modifier.height(4.dp))
-                                RecentStrip(
-                                    items = recentCards,
-                                    focused = focused,
-                                    logicalFocusIndex = focusIndex,
-                                    requesters = requesters,
-                                    onCardFocusChanged = { index, isFocused ->
-                                        if (isFocused) stripFocusIndex = index
-                                        else if (stripFocusIndex == index) stripFocusIndex = -1
-                                    },
-                                )
+                            if (smallMeta.isNotEmpty()) {
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier
+                                        .padding(bottom = 2.dp)
+                                        .testTag("info_card_group"),
+                                ) {
+                                    Text(
+                                        text = smallMeta,
+                                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.5.sp),
+                                        color = TvDesignTokens.TextSecondary,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.testTag("info_card_number"),
+                                    )
+                                }
+                            } else {
+                                Box(modifier = Modifier.testTag("info_card_group")) {
+                                    Box(modifier = Modifier.testTag("info_card_number"))
+                                }
                             }
                         }
 
-                        Spacer(modifier = Modifier.width(24.dp))
-
-                        Column(modifier = Modifier.weight(0.54f).padding(top = 20.dp)) {
+                        if (showRecent) {
+                            Spacer(modifier = Modifier.height(6.dp))
                             Text(
-                                text = programText,
-                                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Medium),
-                                color = if (programTitle.isNullOrBlank()) {
-                                    TvDesignTokens.TextMuted
-                                } else {
-                                    TvDesignTokens.TextPrimary
-                                },
+                                text = if (focused) "最近观看 · ← → 选择 · OK 快速切台" else "最近观看 · 按 OK 选择快速切台",
+                                style = MaterialTheme.typography.labelMedium.copy(fontSize = 11.5.sp),
+                                color = if (focused) Color(0xFFCBD4E3) else Color(0xFF94A1B5),
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.testTag("info_card_program")
+                                modifier = Modifier.testTag("info_card_recent_tip"),
                             )
-                            if (programTime.isNotEmpty()) {
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Text(
-                                    text = programTime,
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = TvDesignTokens.TextSecondary,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier
-                                        .height(16.dp)
-                                        .testTag("info_card_program_time")
-                                )
-                            }
-                            if (progressValue != null) {
-                                Spacer(modifier = Modifier.height(4.dp))
-                                BannerProgressBar(
-                                    progress = progressValue,
-                                    modifier = Modifier.testTag("info_card_progress")
-                                )
-                            }
                         }
                     }
 
-                    // 右上角紧凑技术参数徽标（分辨率 · 帧率 · 声道 · 动态范围 · 编码）
-                    if (compactBadgeText.isNotEmpty()) {
-                        Text(
-                            text = compactBadgeText,
-                            style = MaterialTheme.typography.labelMedium.copy(
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Medium,
-                            ),
-                            color = TvDesignTokens.TextSecondary,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier
-                                .align(Alignment.TopEnd)
-                                .testTag("info_card_badges")
+                    if (showRecent) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        RecentStrip(
+                            items = recentCards,
+                            focused = focused,
+                            logicalFocusIndex = focusIndex,
+                            requesters = requesters,
+                            onCardFocusChanged = { index, isFocused ->
+                                if (isFocused) stripFocusIndex = index
+                                else if (stripFocusIndex == index) stripFocusIndex = -1
+                            },
                         )
                     }
                 }
 
-                Spacer(modifier = Modifier.height(4.dp))
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    modifier = Modifier.height(14.dp).fillMaxWidth()
+                Spacer(modifier = Modifier.width(24.dp))
+
+                // 右列：顶部技术参数徽标（含实时真帧率）+ 节目信息与进度条 + 底部清晰无裁切的「→ 设置」提示
+                Column(
+                    modifier = Modifier
+                        .weight(0.44f)
+                        .height(142.dp),
+                    verticalArrangement = Arrangement.SpaceBetween,
+                    horizontalAlignment = Alignment.End,
                 ) {
-                    EntryHintLeft()
+                    if (compactBadgeText.isNotEmpty()) {
+                        Text(
+                            text = compactBadgeText,
+                            style = MaterialTheme.typography.labelMedium.copy(
+                                fontSize = 12.5.sp,
+                                fontWeight = FontWeight.Medium,
+                            ),
+                            color = Color(0xFFCBD4E3),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.testTag("info_card_badges"),
+                        )
+                    } else {
+                        Spacer(modifier = Modifier.height(16.dp))
+                    }
+
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            text = programText,
+                            style = MaterialTheme.typography.titleLarge.copy(
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.Medium,
+                            ),
+                            color = if (programTitle.isNullOrBlank()) {
+                                TvDesignTokens.TextMuted
+                            } else {
+                                TvDesignTokens.TextPrimary
+                            },
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.testTag("info_card_program"),
+                        )
+                        if (programTime.isNotEmpty()) {
+                            Spacer(modifier = Modifier.height(3.dp))
+                            Text(
+                                text = programTime,
+                                style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.5.sp),
+                                color = TvDesignTokens.TextSecondary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.testTag("info_card_program_time"),
+                            )
+                        }
+                        if (progressValue != null) {
+                            Spacer(modifier = Modifier.height(6.dp))
+                            BannerProgressBar(
+                                progress = progressValue,
+                                modifier = Modifier.testTag("info_card_progress"),
+                            )
+                        }
+                    }
+
                     EntryHintRight()
                 }
             }
@@ -358,10 +400,14 @@ fun ChannelInfoBanner(
 private fun EntryHintLeft() {
     Text(
         text = InfoCardPolicy.ENTRY_HINT_LEFT,
-        style = MaterialTheme.typography.labelMedium,
-        color = TvDesignTokens.TextMuted,
+        style = MaterialTheme.typography.labelLarge.copy(
+            fontSize = 13.sp,
+            lineHeight = 18.sp,
+            fontWeight = FontWeight.Medium,
+        ),
+        color = Color(0xFFCBD4E3),
         maxLines = 1,
-        modifier = Modifier.testTag("info_card_hint_left")
+        modifier = Modifier.testTag("info_card_hint_left"),
     )
 }
 
@@ -369,16 +415,20 @@ private fun EntryHintLeft() {
 private fun EntryHintRight() {
     Text(
         text = InfoCardPolicy.ENTRY_HINT_RIGHT,
-        style = MaterialTheme.typography.labelMedium,
-        color = TvDesignTokens.TextMuted,
+        style = MaterialTheme.typography.labelLarge.copy(
+            fontSize = 13.sp,
+            lineHeight = 18.sp,
+            fontWeight = FontWeight.Medium,
+        ),
+        color = Color(0xFFCBD4E3),
         maxLines = 1,
-        modifier = Modifier.testTag("info_card_hint_right")
+        modifier = Modifier.testTag("info_card_hint_right"),
     )
 }
 
 /**
- * 底部最近观看条：5 张 52dp 台标 + 8dp 间距 = 292dp，在 960dp/1280dp 电视均完整展示零裁剪；
- * 聚焦态 = 清晰磨砂底 + 底部 2dp 品牌蓝指示条，逻辑焦点与真实焦点统一。
+ * 底部扩展最近观看条：充分利用信息卡底部空间，固定 5 槽等宽排布（正好放下 5 个台）；
+ * 每张卡片展示放大版横幅台标（68×42dp）+ 下方清晰台名（不显示台号），对称磨砂高亮识别焦点。
  */
 @Composable
 private fun RecentStrip(
@@ -388,50 +438,85 @@ private fun RecentStrip(
     requesters: List<FocusRequester>,
     onCardFocusChanged: (Int, Boolean) -> Unit,
 ) {
+    val cardShape = remember { RoundedCornerShape(6.dp) }
+    val idlePlateColor = Color(0x14FFFFFF)
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(54.dp)
+            .height(82.dp)
             .clipToBounds()
             .testTag("info_card_recent_row"),
-        horizontalArrangement = Arrangement.Start,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        items.forEachIndexed { index, item ->
+        for (slot in 0 until InfoCardPolicy.MAX_RECENT) {
+            val item = items.getOrNull(slot)
+            if (item == null) {
+                Spacer(modifier = Modifier.weight(1f))
+                continue
+            }
+            val index = slot
             var nodeFocused by remember(item.title, index) { mutableStateOf(false) }
             val isHighlighted = focused && (nodeFocused || index == logicalFocusIndex)
             val hasLogo = item.logoUrl?.isNotBlank() == true
-            Box(
+
+            Column(
                 modifier = Modifier
-                    .size(52.dp)
+                    .weight(1f)
+                    .fillMaxHeight()
                     .testTag("info_card_recent_$index")
-                    .semantics { contentDescription = "最近观看第${index + 1}个 ${item.number}. ${item.title}" }
+                    .semantics { contentDescription = "最近观看第${index + 1}个 ${item.title}" }
                     .focusRequester(requesters[index])
                     .onFocusChanged {
                         nodeFocused = it.isFocused
                         onCardFocusChanged(index, it.isFocused)
                     }
                     .focusable()
-                    .background(if (isHighlighted) BrandFocus.FocusBgColor else Color.Transparent),
-                contentAlignment = Alignment.Center
+                    .background(if (isHighlighted) BrandFocus.FocusBgColor else idlePlateColor, cardShape)
+                    .padding(horizontal = 6.dp, vertical = 6.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
             ) {
-                if (hasLogo) {
-                    ChannelLogo(
-                        logoUrl = item.logoUrl,
-                        fallbackTitle = "",
-                        width = 44.dp,
-                        height = 44.dp
-                    )
-                } else {
-                    Text(
-                        text = item.number.takeIf { it > 0 }?.toString() ?: item.title.take(1),
-                        style = MaterialTheme.typography.titleMedium,
-                        color = if (isHighlighted) TvDesignTokens.TextPrimary else TvDesignTokens.TextSecondary,
-                        fontWeight = if (isHighlighted) FontWeight.Bold else FontWeight.Medium
-                    )
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(44.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    if (hasLogo) {
+                        ChannelLogo(
+                            logoUrl = item.logoUrl,
+                            fallbackTitle = "",
+                            width = 72.dp,
+                            height = 44.dp,
+                        )
+                    } else {
+                        Text(
+                            text = item.title.take(4),
+                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                            color = if (isHighlighted) TvDesignTokens.TextPrimary else TvDesignTokens.TextSecondary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            textAlign = TextAlign.Center,
+                        )
+                    }
                 }
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = item.title,
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontSize = 11.5.sp,
+                        lineHeight = 14.sp,
+                        fontWeight = if (isHighlighted) FontWeight.SemiBold else FontWeight.Normal,
+                    ),
+                    color = if (isHighlighted) TvDesignTokens.TextPrimary else Color(0xFFB8C3D4),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth(),
+                )
             }
-            if (index != items.lastIndex) Spacer(modifier = Modifier.width(8.dp))
         }
     }
 }

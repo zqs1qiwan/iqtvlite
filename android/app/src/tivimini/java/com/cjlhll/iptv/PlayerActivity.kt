@@ -677,12 +677,12 @@ fun VideoPlayerScreen(
 
     var firstFrameRendered by remember { mutableStateOf(false) }
     var inferredFrameRate by remember { mutableStateOf<Float?>(null) }
-    val needsFpsPoll = firstFrameRendered && infoCardOverlay != null
-    LaunchedEffect(player, needsFpsPoll) {
+    val needsFpsPoll = infoCardOverlay != null
+    LaunchedEffect(player, needsFpsPoll, currentGroupIndex, currentVariantIndex) {
         if (!needsFpsPoll) return@LaunchedEffect
         while (true) {
             inferredFrameRate = StreamPlayback.inferredFrameRate(player)
-            delay(1_000L)
+            delay(400L)
         }
     }
 
