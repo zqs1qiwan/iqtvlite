@@ -98,7 +98,7 @@ object AutoUpdateScheduler {
                         }
                     }
                     val epg = Prefs.getEpgSource(appContext)
-                    if (epg.isNotBlank()) {
+                    if (epg.isNotBlank() && Prefs.isEpgUpdateOnPlaylistChange(appContext)) {
                         attempted = true
                         val data = runCatching { BackgroundSourceUpdater.refreshEpg(appContext, epg) }.getOrNull()
                         onEpgResult(appContext, data != null)

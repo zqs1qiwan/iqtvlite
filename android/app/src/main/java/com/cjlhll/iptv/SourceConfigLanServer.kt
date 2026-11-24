@@ -253,6 +253,25 @@ class SourceConfigLanServer(
                     jsonOk(JSONObject().put("ok", true).toString())
                 }
 
+                session.method == Method.GET && path == "/api/backup" -> {
+                    val backup = Prefs.exportBackupJson(appContext)
+                    cors(newFixedLengthResponse(Response.Status.OK, "application/json; charset=utf-8", backup).apply {
+                        addHeader("Content-Disposition", "attachment; filename=\"iqtvlite-backup.json\"")
+                    })
+                }
+
+                session.method == Method.POST && path == "/api/restore" -> {
+                    val payload = parsePayload(session)
+                    val raw = payload.optString("backupJson", "").ifBlank { payload.toString() }
+                    val ok = Prefs.importBackupJson(appContext, raw)
+                    if (!ok) {
+                        jsonError("无效的备份 JSON 格式")
+                    } else {
+                        onStateChanged()
+                        jsonOk(JSONObject().put("ok", true).put("state", buildStateJson()).toString())
+                    }
+                }
+
                 else -> cors(newFixedLengthResponse(Response.Status.NOT_FOUND, "text/plain; charset=utf-8", "Not Found"))
             }
         }

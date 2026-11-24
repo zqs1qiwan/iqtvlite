@@ -35,7 +35,8 @@ data class SidebarState(
     val epgVersion: Int = 0,
 ) {
     companion object {
-        const val ALL_GROUP = "全部"
+        const val ALL_GROUP = ChannelGrouper.ALL_GROUP
+        const val FAVORITES_GROUP = ChannelGrouper.FAVORITES_GROUP
     }
 }
 

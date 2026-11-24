@@ -168,18 +168,53 @@ object ChannelGrouper {
         return groupIndex to group.defaultVariantIndex
     }
 
+    const val ALL_GROUP = "全部"
+    const val FAVORITES_GROUP = "收藏夹"
+
     fun displayGroupName(group: ChannelGroup): String {
         return group.group?.takeIf { it.isNotBlank() } ?: "未分组"
     }
 
-    fun sortedDrawerGroups(channelGroups: List<ChannelGroup>): List<String> {
+    fun allRawGroupNames(channelGroups: List<ChannelGroup>): List<String> {
         val names = LinkedHashSet<String>()
         for (group in channelGroups) {
             names.add(displayGroupName(group))
         }
         val ordered = groupSortOrder.filter { it in names }
         val rest = names.filter { it !in groupSortOrder }.sorted()
-        return listOf("全部") + ordered + rest
+        return ordered + rest
+    }
+
+    fun sortedDrawerGroups(
+        channelGroups: List<ChannelGroup>,
+        favoriteUrls: Set<String> = emptySet(),
+        showFavorites: Boolean = true,
+        showAll: Boolean = true,
+        groupConfig: Prefs.SourceGroupConfig = Prefs.SourceGroupConfig(),
+    ): List<String> {
+        val rawNames = LinkedHashSet<String>()
+        for (group in channelGroups) {
+            rawNames.add(displayGroupName(group))
+        }
+        val visible = rawNames.filter { it !in groupConfig.hiddenGroups }
+        val sorted = when (groupConfig.sortMode) {
+            "NAME" -> visible.sorted()
+            "MANUAL" -> {
+                val ordered = groupConfig.manualOrder.filter { it in visible }
+                val remaining = visible.filter { it !in ordered }
+                ordered + remaining
+            }
+            else -> {
+                val ordered = groupSortOrder.filter { it in visible }
+                val rest = visible.filter { it !in groupSortOrder }.sorted()
+                ordered + rest
+            }
+        }
+        val result = ArrayList<String>(sorted.size + 2)
+        if (showAll) result.add(ALL_GROUP)
+        if (showFavorites && favoriteUrls.isNotEmpty()) result.add(FAVORITES_GROUP)
+        result.addAll(sorted)
+        return result.ifEmpty { listOf(ALL_GROUP) }
     }
 
     internal fun resolveGroup(channel: Channel): String? {
@@ -223,13 +258,19 @@ object ChannelGrouper {
         return map
     }
 
-    /** 按分组名过滤后的展示频道，保留全局编号；"全部" 返回全部。 */
+    /** 按分组名过滤后的展示频道，保留全局编号；"全部" 返回全部，"收藏夹" 返回已收藏频道。 */
     fun numberedDisplayChannelsForGroup(
         groups: List<ChannelGroup>,
         groupName: String,
+        favoriteUrls: Set<String> = emptySet(),
     ): List<NumberedChannel> {
         val all = numberedDisplayChannels(groups)
-        if (groupName == "全部") return all
+        if (groupName == ALL_GROUP) return all
+        if (groupName == FAVORITES_GROUP) {
+            return groups.mapIndexedNotNull { index, group ->
+                if (group.variants.any { it.channel.url in favoriteUrls }) all.getOrNull(index) else null
+            }
+        }
         return groups.mapIndexedNotNull { index, group ->
             if (displayGroupName(group) == groupName) all.getOrNull(index) else null
         }

@@ -119,6 +119,26 @@ data class SettingsUiState(
     val autoCheckUpdate: Boolean = true,
     val updateState: InlineUpdateState = InlineUpdateState.Idle,
     val notice: String? = null,
+    // v0.2.0 7-category settings state
+    val autoStartOnBoot: Boolean = false,
+    val resumeLastChannel: Boolean = true,
+    val homePipEnabled: Boolean = true,
+    val doubleBackExitEnabled: Boolean = true,
+    val epgRetentionDays: Int = 7,
+    val epgUpdateOnPlaylistChange: Boolean = true,
+    val uiTransparencyPct: Int = 18,
+    val infoPanelTimeoutSec: Int = 5,
+    val showInfoOnZap: Boolean = true,
+    val showClockInPlayer: Boolean = true,
+    val showExactResolution: Boolean = false,
+    val showFavoritesGroup: Boolean = true,
+    val showAllChannelsGroup: Boolean = true,
+    val videoDecoderMode: String = "HARDWARE",
+    val rebuildOn4kZap: Boolean = true,
+    val defaultSubtitlesEnabled: Boolean = true,
+    val subtitlePreferredLang: String = "auto",
+    val allGroupNames: List<String> = emptyList(),
+    val activeGroupConfig: Prefs.SourceGroupConfig = Prefs.SourceGroupConfig(),
 )
 
 /** 设置抽屉动作集合。 */
@@ -163,6 +183,25 @@ data class SettingsActions(
     val onResetRemoteBindings: () -> Unit,
     val onRefreshPlaylistNow: () -> Unit,
     val onRefreshEpgNow: () -> Unit,
+    // v0.2.0 7-category actions
+    val onToggleAutoStart: (Boolean) -> Unit = {},
+    val onToggleResumeLast: (Boolean) -> Unit = {},
+    val onToggleHomePip: (Boolean) -> Unit = {},
+    val onToggleDoubleBackExit: (Boolean) -> Unit = {},
+    val onSelectEpgRetentionDays: (Int) -> Unit = {},
+    val onToggleEpgOnPlaylistChange: (Boolean) -> Unit = {},
+    val onSelectUiTransparencyPct: (Int) -> Unit = {},
+    val onSelectInfoPanelTimeoutSec: (Int) -> Unit = {},
+    val onToggleShowInfoOnZap: (Boolean) -> Unit = {},
+    val onToggleShowClock: (Boolean) -> Unit = {},
+    val onToggleShowExactResolution: (Boolean) -> Unit = {},
+    val onToggleShowFavoritesGroup: (Boolean) -> Unit = {},
+    val onToggleShowAllGroup: (Boolean) -> Unit = {},
+    val onSelectVideoDecoderMode: (String) -> Unit = {},
+    val onToggleRebuild4kZap: (Boolean) -> Unit = {},
+    val onToggleDefaultSubtitles: (Boolean) -> Unit = {},
+    val onSelectSubtitlePreferredLang: (String) -> Unit = {},
+    val onUpdateSourceGroupConfig: (String, Prefs.SourceGroupConfig) -> Unit = { _, _ -> },
 )
 
 /**
@@ -191,20 +230,22 @@ fun SettingsDrawer(
     val requesters = remember { mutableMapOf<String, FocusRequester>() }
 
     val rootScroll = rememberScrollState()
+    val generalScroll = rememberScrollState()
+    val playlistsScroll = rememberScrollState()
+    val epgScroll = rememberScrollState()
+    val appearanceScroll = rememberScrollState()
     val playbackScroll = rememberScrollState()
     val remoteScroll = rememberScrollState()
-    val audioScroll = rememberScrollState()
-    val dataScroll = rememberScrollState()
-    val logoScroll = rememberScrollState()
     val aboutScroll = rememberScrollState()
     val pickerScroll = rememberScrollState()
 
     fun scrollFor(target: SettingsPage): ScrollState = when (target) {
+        SettingsPage.GENERAL -> generalScroll
+        SettingsPage.PLAYLISTS -> playlistsScroll
+        SettingsPage.EPG -> epgScroll
+        SettingsPage.APPEARANCE -> appearanceScroll
         SettingsPage.PLAYBACK -> playbackScroll
         SettingsPage.REMOTE -> remoteScroll
-        SettingsPage.AUDIO -> audioScroll
-        SettingsPage.DATA -> dataScroll
-        SettingsPage.LOGO -> logoScroll
         SettingsPage.ABOUT -> aboutScroll
     }
 
@@ -277,15 +318,25 @@ fun SettingsDrawer(
             else -> SettingsSummary.about(BuildConfig.VERSION_NAME, lang)
         }
         mapOf(
-            SettingsPage.PLAYBACK to "${lang.nativeName} · ${SettingsSummary.playback(
+            SettingsPage.GENERAL to SettingsSummary.clamp(
+                if (state.homePipEnabled) s("主页画中画 · WebUI 备份", "Home PiP · WebUI Backup")
+                else s("启动与请求头", "Startup & Headers")
+            ),
+            SettingsPage.PLAYLISTS to SettingsSummary.clamp(
+                "${state.sources.count { it.enabled }}/${state.sources.size} · ${state.autoUpdatePlaylist.localizedLabel(lang)}"
+            ),
+            SettingsPage.EPG to SettingsSummary.clamp(
+                s("保留 ${state.epgRetentionDays} 天 · ${state.autoUpdateEpg.localizedLabel(lang)}", "Keep ${state.epgRetentionDays}d · ${state.autoUpdateEpg.localizedLabel(lang)}")
+            ),
+            SettingsPage.APPEARANCE to SettingsSummary.clamp(
+                "${lang.nativeName} · ${state.uiScale.localizedLabel(lang)} · ${state.uiTransparencyPct}%"
+            ),
+            SettingsPage.PLAYBACK to SettingsSummary.playback(
                 bufferLabel = playbackBufferLabel,
-                anyExperimentOn = state.zapPreconnectEnabled || state.multicastPrewarmEnabled || state.jingcaiExperiment != JingcaiExperiment.Mode.OFF,
+                anyExperimentOn = state.rebuildOn4kZap || state.zapPreconnectEnabled || state.multicastPrewarmEnabled || state.jingcaiExperiment != JingcaiExperiment.Mode.OFF,
                 lang = lang,
-            )}",
+            ),
             SettingsPage.REMOTE to SettingsSummary.remote(remoteUpDownHabit.localizedLabel(lang), remoteOkHabit.localizedLabel(lang)),
-            SettingsPage.AUDIO to SettingsSummary.audio(state.audioSummary, lang),
-            SettingsPage.DATA to SettingsSummary.data(state.autoUpdatePlaylist.localizedLabel(lang), state.autoUpdateEpg.localizedLabel(lang), lang),
-            SettingsPage.LOGO to SettingsSummary.logoFromCacheSummary(state.logoCacheSummary, lang),
             SettingsPage.ABOUT to aboutSummary,
         )
     }
@@ -388,23 +439,114 @@ fun SettingsDrawer(
                         onFocusIndex = actions.onRootFocusChanged,
                         onOpenPage = actions.onOpenPage,
                     )
+                    page == SettingsPage.GENERAL -> SettingsGeneralPage(
+                        lang = lang,
+                        autoStartOnBoot = state.autoStartOnBoot,
+                        resumeLastChannel = state.resumeLastChannel,
+                        homePipEnabled = state.homePipEnabled,
+                        doubleBackExitEnabled = state.doubleBackExitEnabled,
+                        globalUserAgent = state.globalUserAgent,
+                        globalCustomHeaders = state.globalCustomHeaders,
+                        onToggleAutoStart = actions.onToggleAutoStart,
+                        onToggleResumeLast = actions.onToggleResumeLast,
+                        onToggleHomePip = actions.onToggleHomePip,
+                        onToggleDoubleBackExit = actions.onToggleDoubleBackExit,
+                        onOpenGlobalUaPicker = { actions.onOpenPicker(PICKER_GLOBAL_UA) },
+                        onOpenGlobalHeadersPicker = { actions.onOpenPicker(PICKER_GLOBAL_HEADERS) },
+                        onSourceConfigClick = actions.onSourceConfigClick,
+                        textScale = textScale,
+                        scroll = scrollFor(SettingsPage.GENERAL),
+                        requesterOf = ::requesterOf,
+                        onFocused = { pageLastFocus[SettingsPage.GENERAL.id] = it },
+                    )
+                    page == SettingsPage.PLAYLISTS -> SettingsPlaylistsPage(
+                        lang = lang,
+                        sources = state.sources,
+                        activeSourceId = state.activeSourceId,
+                        autoUpdatePlaylistLabel = state.autoUpdatePlaylist.localizedLabel(lang),
+                        recentCount = state.recentCount,
+                        onOpenSourceManage = { actions.onOpenPicker(PICKER_SOURCES_MANAGE) },
+                        onOpenGroupManage = { actions.onOpenPicker(PICKER_GROUP_MANAGE) },
+                        onRefreshPlaylistNow = actions.onRefreshPlaylistNow,
+                        onOpenPlaylistIntervalPicker = { actions.onOpenPicker(PICKER_AUTO_PLAYLIST) },
+                        onOpenRecent = actions.onOpenRecent,
+                        textScale = textScale,
+                        scroll = scrollFor(SettingsPage.PLAYLISTS),
+                        requesterOf = ::requesterOf,
+                        onFocused = { pageLastFocus[SettingsPage.PLAYLISTS.id] = it },
+                    )
+                    page == SettingsPage.EPG -> SettingsEpgPage(
+                        lang = lang,
+                        epgRetentionDays = state.epgRetentionDays,
+                        autoUpdateEpgLabel = state.autoUpdateEpg.localizedLabel(lang),
+                        epgUpdateOnPlaylistChange = state.epgUpdateOnPlaylistChange,
+                        lastUpdateSummary = state.lastUpdateSummary,
+                        onOpenRetentionPicker = { actions.onOpenPicker(PICKER_EPG_RETENTION) },
+                        onOpenEpgIntervalPicker = { actions.onOpenPicker(PICKER_AUTO_EPG) },
+                        onToggleEpgOnPlaylistChange = actions.onToggleEpgOnPlaylistChange,
+                        onRefreshEpgNow = actions.onRefreshEpgNow,
+                        textScale = textScale,
+                        scroll = scrollFor(SettingsPage.EPG),
+                        requesterOf = ::requesterOf,
+                        onFocused = { pageLastFocus[SettingsPage.EPG.id] = it },
+                    )
+                    page == SettingsPage.APPEARANCE -> SettingsAppearancePage(
+                        lang = lang,
+                        uiScaleLabel = state.uiScale.localizedLabel(lang),
+                        uiTransparencyPct = state.uiTransparencyPct,
+                        infoPanelTimeoutSec = state.infoPanelTimeoutSec,
+                        showInfoOnZap = state.showInfoOnZap,
+                        showClockInPlayer = state.showClockInPlayer,
+                        showExactResolution = state.showExactResolution,
+                        showFavoritesGroup = state.showFavoritesGroup,
+                        showAllChannelsGroup = state.showAllChannelsGroup,
+                        infoOkModeLabel = infoOkModeLabel,
+                        logoCacheSummary = state.logoCacheSummary,
+                        logoPrefetchEnabled = state.logoPrefetchEnabled,
+                        logoLoadEnabled = state.logoLoadEnabled,
+                        onOpenLanguagePicker = { actions.onOpenPicker(PICKER_LANGUAGE) },
+                        onOpenUiScalePicker = { actions.onOpenPicker(PICKER_UI_SCALE) },
+                        onOpenTransparencyPicker = { actions.onOpenPicker(PICKER_UI_TRANSPARENCY) },
+                        onOpenInfoTimeoutPicker = { actions.onOpenPicker(PICKER_INFO_TIMEOUT) },
+                        onToggleShowInfoOnZap = actions.onToggleShowInfoOnZap,
+                        onToggleShowClock = actions.onToggleShowClock,
+                        onToggleShowExactResolution = actions.onToggleShowExactResolution,
+                        onToggleShowFavoritesGroup = actions.onToggleShowFavoritesGroup,
+                        onToggleShowAllGroup = actions.onToggleShowAllGroup,
+                        onOpenInfoOkPicker = { actions.onOpenPicker(PICKER_INFO_OK_MODE) },
+                        onToggleLogoPrefetch = actions.onToggleLogoPrefetch,
+                        onToggleLogoLoad = actions.onToggleLogoLoad,
+                        onRefreshLogos = actions.onRefreshLogos,
+                        onClearLogoCache = actions.onClearLogoCache,
+                        textScale = textScale,
+                        scroll = scrollFor(SettingsPage.APPEARANCE),
+                        requesterOf = ::requesterOf,
+                        onFocused = { pageLastFocus[SettingsPage.APPEARANCE.id] = it },
+                    )
                     page == SettingsPage.PLAYBACK -> SettingsPlaybackPage(
                         lang = lang,
-                        onOpenLanguagePicker = { actions.onOpenPicker(PICKER_LANGUAGE) },
-                        uiScaleLabel = state.uiScale.localizedLabel(lang),
-                        onOpenUiScalePicker = { actions.onOpenPicker(PICKER_UI_SCALE) },
                         bufferLabel = playbackBufferLabel,
-                        onOpenBufferPicker = { actions.onOpenPicker(PICKER_PLAYBACK_BUFFER) },
+                        videoDecoderMode = state.videoDecoderMode,
+                        rebuildOn4kZap = state.rebuildOn4kZap,
+                        defaultSubtitlesEnabled = state.defaultSubtitlesEnabled,
+                        subtitlePreferredLang = state.subtitlePreferredLang,
+                        audioSummary = state.audioSummary,
+                        audioEntryLabel = state.audioEntryLabel,
+                        audioSelectable = state.audioSelectable,
                         qualityMenuEnabled = state.qualityMenuEnabled,
-                        onQualityMenuClick = actions.onQualityMenuClick,
                         zapPreconnectEnabled = state.zapPreconnectEnabled,
-                        onToggleZapPreconnect = actions.onToggleZapPreconnect,
                         multicastPrewarmEnabled = state.multicastPrewarmEnabled,
-                        onToggleMulticastPrewarm = actions.onToggleMulticastPrewarm,
                         jingcaiLabel = state.jingcaiExperiment.localizedLabel(lang),
+                        onOpenBufferPicker = { actions.onOpenPicker(PICKER_PLAYBACK_BUFFER) },
+                        onOpenVideoDecoderPicker = { actions.onOpenPicker(PICKER_VIDEO_DECODER) },
+                        onToggleRebuild4kZap = actions.onToggleRebuild4kZap,
+                        onToggleDefaultSubtitles = actions.onToggleDefaultSubtitles,
+                        onOpenSubtitleLangPicker = { actions.onOpenPicker(PICKER_SUBTITLE_LANG) },
+                        onAudioTrackClick = actions.onAudioTrackClick,
+                        onQualityMenuClick = actions.onQualityMenuClick,
+                        onToggleZapPreconnect = actions.onToggleZapPreconnect,
+                        onToggleMulticastPrewarm = actions.onToggleMulticastPrewarm,
                         onOpenJingcaiPicker = { actions.onOpenPicker(PICKER_JINGCAI) },
-                        infoOkModeLabel = infoOkModeLabel,
-                        onOpenInfoOkPicker = { actions.onOpenPicker(PICKER_INFO_OK_MODE) },
                         textScale = textScale,
                         scroll = scrollFor(SettingsPage.PLAYBACK),
                         requesterOf = ::requesterOf,
@@ -427,55 +569,6 @@ fun SettingsDrawer(
                         scroll = scrollFor(SettingsPage.REMOTE),
                         requesterOf = ::requesterOf,
                         onFocused = { pageLastFocus[SettingsPage.REMOTE.id] = it },
-                    )
-                    page == SettingsPage.AUDIO -> SettingsAudioPage(
-                        lang = lang,
-                        summary = state.audioSummary,
-                        entryLabel = state.audioEntryLabel,
-                        selectable = state.audioSelectable,
-                        onAudioTrackClick = actions.onAudioTrackClick,
-                        textScale = textScale,
-                        scroll = scrollFor(SettingsPage.AUDIO),
-                        requesterOf = ::requesterOf,
-                        onFocused = { pageLastFocus[SettingsPage.AUDIO.id] = it },
-                    )
-                    page == SettingsPage.DATA -> SettingsDataPage(
-                        lang = lang,
-                        sources = state.sources,
-                        activeSourceId = state.activeSourceId,
-                        globalUserAgent = state.globalUserAgent,
-                        globalCustomHeaders = state.globalCustomHeaders,
-                        onOpenSourceManage = { actions.onOpenPicker(PICKER_SOURCES_MANAGE) },
-                        onSourceConfigClick = actions.onSourceConfigClick,
-                        onOpenGlobalUaPicker = { actions.onOpenPicker(PICKER_GLOBAL_UA) },
-                        onOpenGlobalHeadersPicker = { actions.onOpenPicker(PICKER_GLOBAL_HEADERS) },
-                        autoUpdatePlaylistLabel = state.autoUpdatePlaylist.localizedLabel(lang),
-                        autoUpdateEpgLabel = state.autoUpdateEpg.localizedLabel(lang),
-                        lastUpdateSummary = state.lastUpdateSummary,
-                        recentCount = state.recentCount,
-                        onOpenPlaylistIntervalPicker = { actions.onOpenPicker(PICKER_AUTO_PLAYLIST) },
-                        onOpenEpgIntervalPicker = { actions.onOpenPicker(PICKER_AUTO_EPG) },
-                        onRefreshPlaylistNow = actions.onRefreshPlaylistNow,
-                        onRefreshEpgNow = actions.onRefreshEpgNow,
-                        onOpenRecent = actions.onOpenRecent,
-                        textScale = textScale,
-                        scroll = scrollFor(SettingsPage.DATA),
-                        requesterOf = ::requesterOf,
-                        onFocused = { pageLastFocus[SettingsPage.DATA.id] = it },
-                    )
-                    page == SettingsPage.LOGO -> SettingsLogoPage(
-                        lang = lang,
-                        logoCacheSummary = state.logoCacheSummary,
-                        logoPrefetchEnabled = state.logoPrefetchEnabled,
-                        logoLoadEnabled = state.logoLoadEnabled,
-                        onToggleLogoPrefetch = actions.onToggleLogoPrefetch,
-                        onToggleLogoLoad = actions.onToggleLogoLoad,
-                        onRefreshLogos = actions.onRefreshLogos,
-                        onClearLogoCache = actions.onClearLogoCache,
-                        textScale = textScale,
-                        scroll = scrollFor(SettingsPage.LOGO),
-                        requesterOf = ::requesterOf,
-                        onFocused = { pageLastFocus[SettingsPage.LOGO.id] = it },
                     )
                     page == SettingsPage.ABOUT -> SettingsAboutPage(
                         lang = lang,
@@ -540,6 +633,13 @@ private const val PICKER_SOURCES_MANAGE = "sources_manage"
 private const val PICKER_SOURCE_DETAIL_PREFIX = "source_detail:"
 private const val PICKER_GLOBAL_UA = "global_ua"
 private const val PICKER_GLOBAL_HEADERS = "global_headers"
+private const val PICKER_EPG_RETENTION = "epg_retention"
+private const val PICKER_UI_TRANSPARENCY = "ui_transparency"
+private const val PICKER_INFO_TIMEOUT = "info_timeout"
+private const val PICKER_VIDEO_DECODER = "video_decoder"
+private const val PICKER_SUBTITLE_LANG = "subtitle_lang"
+private const val PICKER_GROUP_MANAGE = "group_manage"
+private const val PICKER_GROUP_SORT = "group_sort"
 
 private data class UaPreset(
     val value: String,
@@ -727,7 +827,7 @@ private fun SettingsPickerRouter(
                 },
             )
         }
-        PICKER_AUTO_EPG -> t("自动更新 EPG", "Auto-update EPG") to AutoUpdateConfig.Interval.entries.map { iv ->
+        PICKER_AUTO_EPG -> t("更新频率", "Update Frequency") to AutoUpdateConfig.EPG_HOURS_ORDER.map { iv ->
             SettingsPickerOption(
                 id = iv.name,
                 title = iv.localizedLabel(lang),
@@ -737,6 +837,154 @@ private fun SettingsPickerRouter(
                     actions.onClosePicker()
                 },
             )
+        }
+        PICKER_EPG_RETENTION -> t("保存节目预告天数", "EPG Retention Days") to listOf(1, 3, 5, 7, 14, 21).map { d ->
+            SettingsPickerOption(
+                id = "epg_days_$d",
+                title = t("$d 天", "$d days"),
+                selected = state.epgRetentionDays == d,
+                onSelect = {
+                    actions.onSelectEpgRetentionDays(d)
+                    actions.onClosePicker()
+                },
+            )
+        }
+        PICKER_UI_TRANSPARENCY -> t("用户界面透明度", "UI Transparency") to listOf(0, 10, 18, 30, 45, 60).map { pct ->
+            SettingsPickerOption(
+                id = "alpha_$pct",
+                title = "$pct%",
+                description = if (pct == 18) t("默认通透质感", "Default balanced opacity") else "",
+                selected = state.uiTransparencyPct == pct,
+                onSelect = {
+                    actions.onSelectUiTransparencyPct(pct)
+                    actions.onClosePicker()
+                },
+            )
+        }
+        PICKER_INFO_TIMEOUT -> t("信息面板消失时间", "Info Panel Timeout") to listOf(3, 5, 8, 12, 15).map { sec ->
+            SettingsPickerOption(
+                id = "timeout_$sec",
+                title = t("${sec} 秒", "${sec}s"),
+                selected = state.infoPanelTimeoutSec == sec,
+                onSelect = {
+                    actions.onSelectInfoPanelTimeoutSec(sec)
+                    actions.onClosePicker()
+                },
+            )
+        }
+        PICKER_VIDEO_DECODER -> t("视频解码器", "Video Decoder") to listOf(
+            SettingsPickerOption(
+                id = "HARDWARE",
+                title = t("硬件解码（推荐）", "Hardware (Recommended)"),
+                description = t("低功耗流畅硬解，4K 自动防花屏重建", "Low-power hardware decode with 4K anti-artifacting"),
+                selected = state.videoDecoderMode != "SOFTWARE",
+                onSelect = {
+                    actions.onSelectVideoDecoderMode("HARDWARE")
+                    actions.onClosePicker()
+                },
+            ),
+            SettingsPickerOption(
+                id = "SOFTWARE",
+                title = t("软件解码（FFmpeg）", "Software (FFmpeg)"),
+                description = t("用于特殊编码兼容性兜底，CPU 占用较高", "Fallback for non-standard streams; higher CPU usage"),
+                selected = state.videoDecoderMode == "SOFTWARE",
+                onSelect = {
+                    actions.onSelectVideoDecoderMode("SOFTWARE")
+                    actions.onClosePicker()
+                },
+            ),
+        )
+        PICKER_SUBTITLE_LANG -> t("首选字幕语言", "Preferred Subtitle Language") to listOf(
+            SettingsPickerOption(
+                id = "auto",
+                title = t("自动（跟随流默认）", "Auto"),
+                selected = state.subtitlePreferredLang == "auto",
+                onSelect = { actions.onSelectSubtitlePreferredLang("auto"); actions.onClosePicker() },
+            ),
+            SettingsPickerOption(
+                id = "zh",
+                title = t("中文", "Chinese"),
+                selected = state.subtitlePreferredLang == "zh",
+                onSelect = { actions.onSelectSubtitlePreferredLang("zh"); actions.onClosePicker() },
+            ),
+            SettingsPickerOption(
+                id = "en",
+                title = t("英文", "English"),
+                selected = state.subtitlePreferredLang == "en",
+                onSelect = { actions.onSelectSubtitlePreferredLang("en"); actions.onClosePicker() },
+            ),
+        )
+        PICKER_GROUP_SORT -> t("频道组排序方式", "Group Sorting") to listOf(
+            "DEFAULT" to t("默认（按节目列表顺序）", "Default (Playlist Order)"),
+            "NAME" to t("按名称排序", "By Name"),
+            "MANUAL" to t("人工手动排序", "Manual Order"),
+        ).map { (mode, label) ->
+            SettingsPickerOption(
+                id = mode,
+                title = label,
+                selected = state.activeGroupConfig.sortMode == mode,
+                onSelect = {
+                    val sid = state.activeSourceId ?: "default"
+                    actions.onUpdateSourceGroupConfig(sid, state.activeGroupConfig.copy(sortMode = mode))
+                    actions.onClosePicker()
+                },
+            )
+        }
+        PICKER_GROUP_MANAGE -> {
+            val sid = state.activeSourceId ?: "default"
+            val cfg = state.activeGroupConfig
+            val sortLabel = when (cfg.sortMode) {
+                "NAME" -> t("按名称", "By Name")
+                "MANUAL" -> t("手动", "Manual")
+                else -> t("默认", "Default")
+            }
+            val opts = buildList {
+                add(
+                    SettingsPickerOption(
+                        id = "grp_sort_mode",
+                        title = t("分组排序：$sortLabel", "Sort: $sortLabel"),
+                        description = t("点击切换 默认 / 按名称 / 手动", "Click to choose Default / Name / Manual"),
+                        selected = false,
+                        onSelect = { actions.onOpenPicker(PICKER_GROUP_SORT) },
+                    )
+                )
+                add(
+                    SettingsPickerOption(
+                        id = "grp_show_all",
+                        title = t("显示所有频道组", "Show All Groups"),
+                        selected = cfg.hiddenGroups.isEmpty(),
+                        onSelect = {
+                            actions.onUpdateSourceGroupConfig(sid, cfg.copy(hiddenGroups = emptySet()))
+                        },
+                    )
+                )
+                add(
+                    SettingsPickerOption(
+                        id = "grp_hide_all",
+                        title = t("隐藏所有频道组", "Hide All Groups"),
+                        selected = state.allGroupNames.isNotEmpty() && cfg.hiddenGroups.containsAll(state.allGroupNames),
+                        onSelect = {
+                            actions.onUpdateSourceGroupConfig(sid, cfg.copy(hiddenGroups = state.allGroupNames.toSet()))
+                        },
+                    )
+                )
+                state.allGroupNames.forEach { gName ->
+                    val visible = gName !in cfg.hiddenGroups
+                    add(
+                        SettingsPickerOption(
+                            id = "grp_toggle_$gName",
+                            title = gName,
+                            description = if (visible) t("当前可见（点击隐藏）", "Visible (click to hide)") else t("已隐藏（点击显示）", "Hidden (click to show)"),
+                            selected = visible,
+                            onSelect = {
+                                val nextHidden = if (visible) cfg.hiddenGroups + gName else cfg.hiddenGroups - gName
+                                actions.onUpdateSourceGroupConfig(sid, cfg.copy(hiddenGroups = nextHidden))
+                            },
+                        )
+                    )
+                }
+            }
+            t("管理频道组", "Manage Channel Groups") to opts
         }
         PICKER_REMOTE_UPDOWN -> t("上下键预设", "Up / Down Preset") to RemoteHabits.UpDown.entries.map { h ->
             SettingsPickerOption(
@@ -1280,23 +1528,207 @@ private fun SettingsRootItem(
 // ─── 二级页（全部对齐同一顶部标题基线，无挤占提示） ─────────────────────────
 
 @Composable
-private fun SettingsPlaybackPage(
+private fun SettingsGeneralPage(
     lang: AppLang,
-    onOpenLanguagePicker: () -> Unit,
-    uiScaleLabel: String,
-    onOpenUiScalePicker: () -> Unit,
-    bufferLabel: String,
-    onOpenBufferPicker: () -> Unit,
-    qualityMenuEnabled: Boolean,
-    onQualityMenuClick: () -> Unit,
-    zapPreconnectEnabled: Boolean,
-    onToggleZapPreconnect: () -> Unit,
-    multicastPrewarmEnabled: Boolean,
-    onToggleMulticastPrewarm: () -> Unit,
-    jingcaiLabel: String,
-    onOpenJingcaiPicker: () -> Unit,
-    infoOkModeLabel: String,
-    onOpenInfoOkPicker: () -> Unit,
+    autoStartOnBoot: Boolean,
+    resumeLastChannel: Boolean,
+    homePipEnabled: Boolean,
+    doubleBackExitEnabled: Boolean,
+    globalUserAgent: String,
+    globalCustomHeaders: String,
+    onToggleAutoStart: (Boolean) -> Unit,
+    onToggleResumeLast: (Boolean) -> Unit,
+    onToggleHomePip: (Boolean) -> Unit,
+    onToggleDoubleBackExit: (Boolean) -> Unit,
+    onOpenGlobalUaPicker: () -> Unit,
+    onOpenGlobalHeadersPicker: () -> Unit,
+    onSourceConfigClick: () -> Unit,
+    textScale: Float,
+    scroll: ScrollState,
+    requesterOf: (String) -> FocusRequester,
+    onFocused: (String) -> Unit,
+) {
+    fun t(zh: String, en: String) = if (lang == AppLang.EN) en else zh
+    val globalUaSummary = globalUserAgent.trim().ifBlank { t("自动（默认 VLC）", "Auto (Default VLC)") }
+    val customHeadersCount = remember(globalCustomHeaders) {
+        PlaylistSources.parseCustomHeaders(globalCustomHeaders).size
+    }
+    val globalHeadersSummary = if (customHeadersCount > 0) {
+        t("已配置 $customHeadersCount 条", "$customHeadersCount configured")
+    } else {
+        t("未配置（扫码网页编辑）", "None (Edit via WebUI)")
+    }
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(scroll)
+            .testTag(SETTINGS_LIST_TAG)
+    ) {
+        SettingsPageHeader(SettingsPage.GENERAL, lang, textScale)
+        SettingsGroupHeader(t("启动与系统", "Startup & System"))
+        SettingsItem(
+            text = if (autoStartOnBoot) t("开机时自动启动：开", "Auto-start on boot: On") else t("开机时自动启动：关", "Auto-start on boot: Off"),
+            textScale = textScale,
+            focusRequester = requesterOf("settings_auto_start"),
+            tag = "settings_auto_start",
+            onFocused = onFocused,
+            onClick = { onToggleAutoStart(!autoStartOnBoot) },
+        )
+        RowGap()
+        SettingsItem(
+            text = if (resumeLastChannel) t("启动后打开上次观看频道：开", "Turn on last channel on start: On") else t("启动后打开上次观看频道：关", "Turn on last channel on start: Off"),
+            textScale = textScale,
+            focusRequester = requesterOf("settings_resume_last"),
+            tag = "settings_resume_last",
+            onFocused = onFocused,
+            onClick = { onToggleResumeLast(!resumeLastChannel) },
+        )
+        RowGap()
+        SettingsItem(
+            text = if (homePipEnabled) t("按主页键切换到“画中画”模式：开", "Switch to PiP on Home key: On") else t("按主页键切换到“画中画”模式：关", "Switch to PiP on Home key: Off"),
+            textScale = textScale,
+            focusRequester = requesterOf("settings_home_pip"),
+            tag = "settings_home_pip",
+            onFocused = onFocused,
+            onClick = { onToggleHomePip(!homePipEnabled) },
+        )
+        RowGap()
+        SettingsItem(
+            text = if (doubleBackExitEnabled) t("双击返回键退出：开", "Confirm exit by second Back: On") else t("双击返回键退出：关", "Confirm exit by second Back: Off"),
+            textScale = textScale,
+            focusRequester = requesterOf("settings_double_back_exit"),
+            tag = "settings_double_back_exit",
+            onFocused = onFocused,
+            onClick = { onToggleDoubleBackExit(!doubleBackExitEnabled) },
+        )
+        SettingsGroupHeader(t("网络请求头与备份", "Headers & Backup"))
+        SettingsChoiceRow(
+            title = t("User-Agent 设置", "User-Agent"),
+            value = globalUaSummary,
+            textScale = textScale,
+            focusRequester = requesterOf("settings_global_ua"),
+            tag = "settings_global_ua",
+            onFocused = onFocused,
+            onClick = onOpenGlobalUaPicker,
+        )
+        RowGap()
+        SettingsChoiceRow(
+            title = t("其他 Header 设置", "Custom Headers"),
+            value = globalHeadersSummary,
+            textScale = textScale,
+            focusRequester = requesterOf("settings_global_headers"),
+            tag = "settings_global_headers",
+            onFocused = onFocused,
+            onClick = onOpenGlobalHeadersPicker,
+        )
+        RowGap()
+        SettingsChoiceRow(
+            title = t("备份 / 恢复数据（扫码 WebUI）", "Backup / Restore (QR WebUI)"),
+            value = t("手机扫码管理播放源与备份配置", "Manage sources & backup JSON via phone"),
+            textScale = textScale,
+            focusRequester = requesterOf("settings_source_config"),
+            tag = "settings_source_config",
+            onFocused = onFocused,
+            onClick = onSourceConfigClick,
+        )
+    }
+}
+
+@Composable
+private fun SettingsPlaylistsPage(
+    lang: AppLang,
+    sources: List<PlaylistSource>,
+    activeSourceId: String?,
+    autoUpdatePlaylistLabel: String,
+    recentCount: Int,
+    onOpenSourceManage: () -> Unit,
+    onOpenGroupManage: () -> Unit,
+    onRefreshPlaylistNow: () -> Unit,
+    onOpenPlaylistIntervalPicker: () -> Unit,
+    onOpenRecent: () -> Unit,
+    textScale: Float,
+    scroll: ScrollState,
+    requesterOf: (String) -> FocusRequester,
+    onFocused: (String) -> Unit,
+) {
+    fun t(zh: String, en: String) = if (lang == AppLang.EN) en else zh
+    val activeSourceName = sources.firstOrNull { it.id == activeSourceId }?.name
+        ?: sources.firstOrNull()?.name ?: t("未配置", "Not configured")
+    val visibleCount = sources.count { it.enabled }
+    val sourceManageSummary = if (sources.size > 1) {
+        t("$activeSourceName · 显示 $visibleCount/${sources.size}", "$activeSourceName · $visibleCount/${sources.size} shown")
+    } else {
+        activeSourceName
+    }
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(scroll)
+            .testTag(SETTINGS_LIST_TAG)
+    ) {
+        SettingsPageHeader(SettingsPage.PLAYLISTS, lang, textScale)
+        SettingsGroupHeader(t("当前节目列表", "Playlists"))
+        SettingsChoiceRow(
+            title = t("节目列表管理（隐藏 / 切换）", "Playlists (Show / Switch)"),
+            value = sourceManageSummary,
+            textScale = textScale,
+            focusRequester = requesterOf("settings_source_manage"),
+            tag = "settings_source_manage",
+            onFocused = onFocused,
+            onClick = onOpenSourceManage,
+        )
+        RowGap()
+        SettingsChoiceRow(
+            title = t("管理频道组（排序 / 隐藏）", "Manage Channel Groups"),
+            value = t("分组排序与显示开关", "Group sort order & visibility"),
+            textScale = textScale,
+            focusRequester = requesterOf("settings_group_manage"),
+            tag = "settings_group_manage",
+            onFocused = onFocused,
+            onClick = onOpenGroupManage,
+        )
+        SettingsGroupHeader(t("更新与记录", "Updates & History"))
+        SettingsItem(
+            text = t("立即更新所有节目列表", "Update All Playlists"),
+            textScale = textScale,
+            focusRequester = requesterOf("settings_refresh_playlist"),
+            tag = "settings_refresh_playlist",
+            onFocused = onFocused,
+            onClick = onRefreshPlaylistNow,
+        )
+        RowGap()
+        SettingsChoiceRow(
+            title = t("自动更新节目列表", "Auto-update Playlists"),
+            value = autoUpdatePlaylistLabel,
+            textScale = textScale,
+            focusRequester = requesterOf("settings_auto_playlist"),
+            tag = "settings_auto_playlist",
+            onFocused = onFocused,
+            onClick = onOpenPlaylistIntervalPicker,
+        )
+        RowGap()
+        SettingsItem(
+            text = if (recentCount > 0) t("最近观看（$recentCount）", "Recent Channels ($recentCount)") else t("最近观看", "Recent Channels"),
+            textScale = textScale,
+            focusRequester = requesterOf(RecentDialogTags.SETTINGS_ENTRY),
+            tag = RecentDialogTags.SETTINGS_ENTRY,
+            onFocused = onFocused,
+            onClick = onOpenRecent,
+        )
+    }
+}
+
+@Composable
+private fun SettingsEpgPage(
+    lang: AppLang,
+    epgRetentionDays: Int,
+    autoUpdateEpgLabel: String,
+    epgUpdateOnPlaylistChange: Boolean,
+    lastUpdateSummary: String,
+    onOpenRetentionPicker: () -> Unit,
+    onOpenEpgIntervalPicker: () -> Unit,
+    onToggleEpgOnPlaylistChange: (Boolean) -> Unit,
+    onRefreshEpgNow: () -> Unit,
     textScale: Float,
     scroll: ScrollState,
     requesterOf: (String) -> FocusRequester,
@@ -1309,7 +1741,92 @@ private fun SettingsPlaybackPage(
             .verticalScroll(scroll)
             .testTag(SETTINGS_LIST_TAG)
     ) {
-        SettingsPageHeader(SettingsPage.PLAYBACK, lang, textScale)
+        SettingsPageHeader(SettingsPage.EPG, lang, textScale)
+        SettingsGroupHeader(t("节目预告策略", "EPG Schedule & Retention"))
+        SettingsChoiceRow(
+            title = t("保存之前节目预告的天数", "Past Days to Keep EPG"),
+            value = t("$epgRetentionDays 天", "$epgRetentionDays days"),
+            textScale = textScale,
+            focusRequester = requesterOf("settings_epg_retention"),
+            tag = "settings_epg_retention",
+            onFocused = onFocused,
+            onClick = onOpenRetentionPicker,
+        )
+        RowGap()
+        SettingsChoiceRow(
+            title = t("更新频率（小时）", "Update Interval"),
+            value = autoUpdateEpgLabel,
+            textScale = textScale,
+            focusRequester = requesterOf("settings_auto_epg"),
+            tag = "settings_auto_epg",
+            onFocused = onFocused,
+            onClick = onOpenEpgIntervalPicker,
+        )
+        RowGap()
+        SettingsItem(
+            text = if (epgUpdateOnPlaylistChange) t("节目列表更改时更新：开", "Update on playlist change: On") else t("节目列表更改时更新：关", "Update on playlist change: Off"),
+            textScale = textScale,
+            focusRequester = requesterOf("settings_epg_on_playlist_change"),
+            tag = "settings_epg_on_playlist_change",
+            onFocused = onFocused,
+            onClick = { onToggleEpgOnPlaylistChange(!epgUpdateOnPlaylistChange) },
+        )
+        SettingsGroupHeader(t("手动更新", "Manual Update"))
+        SettingsItem(
+            text = t("立即更新节目预告", "Update EPG Now"),
+            textScale = textScale,
+            focusRequester = requesterOf("settings_refresh_epg"),
+            tag = "settings_refresh_epg",
+            onFocused = onFocused,
+            onClick = onRefreshEpgNow,
+        )
+        HelpText(lastUpdateSummary, start = 4.dp)
+    }
+}
+
+@Composable
+private fun SettingsAppearancePage(
+    lang: AppLang,
+    uiScaleLabel: String,
+    uiTransparencyPct: Int,
+    infoPanelTimeoutSec: Int,
+    showInfoOnZap: Boolean,
+    showClockInPlayer: Boolean,
+    showExactResolution: Boolean,
+    showFavoritesGroup: Boolean,
+    showAllChannelsGroup: Boolean,
+    infoOkModeLabel: String,
+    logoCacheSummary: String,
+    logoPrefetchEnabled: Boolean,
+    logoLoadEnabled: Boolean,
+    onOpenLanguagePicker: () -> Unit,
+    onOpenUiScalePicker: () -> Unit,
+    onOpenTransparencyPicker: () -> Unit,
+    onOpenInfoTimeoutPicker: () -> Unit,
+    onToggleShowInfoOnZap: (Boolean) -> Unit,
+    onToggleShowClock: (Boolean) -> Unit,
+    onToggleShowExactResolution: (Boolean) -> Unit,
+    onToggleShowFavoritesGroup: (Boolean) -> Unit,
+    onToggleShowAllGroup: (Boolean) -> Unit,
+    onOpenInfoOkPicker: () -> Unit,
+    onToggleLogoPrefetch: (Boolean) -> Unit,
+    onToggleLogoLoad: (Boolean) -> Unit,
+    onRefreshLogos: () -> Unit,
+    onClearLogoCache: () -> Unit,
+    textScale: Float,
+    scroll: ScrollState,
+    requesterOf: (String) -> FocusRequester,
+    onFocused: (String) -> Unit,
+) {
+    fun t(zh: String, en: String) = if (lang == AppLang.EN) en else zh
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(scroll)
+            .testTag(SETTINGS_LIST_TAG)
+    ) {
+        SettingsPageHeader(SettingsPage.APPEARANCE, lang, textScale)
+        SettingsGroupHeader(t("语言与界面", "Language & UI"))
         SettingsChoiceRow(
             title = "语言 / Language",
             value = lang.nativeName,
@@ -1321,13 +1838,60 @@ private fun SettingsPlaybackPage(
         )
         RowGap()
         SettingsChoiceRow(
-            title = t("文字与台标大小", "Text & Logo Size"),
+            title = t("字体与台标大小", "Font & Logo Size"),
             value = uiScaleLabel,
             textScale = textScale,
             focusRequester = requesterOf("settings_ui_scale"),
             tag = "settings_ui_scale",
             onFocused = onFocused,
             onClick = onOpenUiScalePicker,
+        )
+        RowGap()
+        SettingsChoiceRow(
+            title = t("用户界面透明度", "UI Transparency"),
+            value = "$uiTransparencyPct%",
+            textScale = textScale,
+            focusRequester = requesterOf("settings_ui_transparency"),
+            tag = "settings_ui_transparency",
+            onFocused = onFocused,
+            onClick = onOpenTransparencyPicker,
+        )
+        SettingsGroupHeader(t("播放器与信息面板", "Player & Info Panel"))
+        SettingsChoiceRow(
+            title = t("信息面板消失时间", "Info Panel Timeout"),
+            value = t("${infoPanelTimeoutSec} 秒", "${infoPanelTimeoutSec}s"),
+            textScale = textScale,
+            focusRequester = requesterOf("settings_info_panel_timeout"),
+            tag = "settings_info_panel_timeout",
+            onFocused = onFocused,
+            onClick = onOpenInfoTimeoutPicker,
+        )
+        RowGap()
+        SettingsItem(
+            text = if (showInfoOnZap) t("换台显示信息面板：开", "Show info panel on zap: On") else t("换台显示信息面板：关", "Show info panel on zap: Off"),
+            textScale = textScale,
+            focusRequester = requesterOf("settings_show_info_on_zap"),
+            tag = "settings_show_info_on_zap",
+            onFocused = onFocused,
+            onClick = { onToggleShowInfoOnZap(!showInfoOnZap) },
+        )
+        RowGap()
+        SettingsItem(
+            text = if (showClockInPlayer) t("播放器时钟显示：开", "Show clock in player: On") else t("播放器时钟显示：关", "Show clock in player: Off"),
+            textScale = textScale,
+            focusRequester = requesterOf("settings_show_clock"),
+            tag = "settings_show_clock",
+            onFocused = onFocused,
+            onClick = { onToggleShowClock(!showClockInPlayer) },
+        )
+        RowGap()
+        SettingsItem(
+            text = if (showExactResolution) t("显示精确分辨率：开", "Show exact resolution: On") else t("显示精确分辨率：关", "Show exact resolution: Off"),
+            textScale = textScale,
+            focusRequester = requesterOf("settings_show_exact_resolution"),
+            tag = "settings_show_exact_resolution",
+            onFocused = onFocused,
+            onClick = { onToggleShowExactResolution(!showExactResolution) },
         )
         RowGap()
         SettingsChoiceRow(
@@ -1339,9 +1903,113 @@ private fun SettingsPlaybackPage(
             onFocused = onFocused,
             onClick = onOpenInfoOkPicker,
         )
+        SettingsGroupHeader(t("频道组与台标", "Groups & Logos"))
+        SettingsItem(
+            text = if (showFavoritesGroup) t("显示“收藏夹”分组：开", "Show Favorites group: On") else t("显示“收藏夹”分组：关", "Show Favorites group: Off"),
+            textScale = textScale,
+            focusRequester = requesterOf("settings_show_favorites_group"),
+            tag = "settings_show_favorites_group",
+            onFocused = onFocused,
+            onClick = { onToggleShowFavoritesGroup(!showFavoritesGroup) },
+        )
         RowGap()
+        SettingsItem(
+            text = if (showAllChannelsGroup) t("显示“全部频道”分组：开", "Show All Channels group: On") else t("显示“全部频道”分组：关", "Show All Channels group: Off"),
+            textScale = textScale,
+            focusRequester = requesterOf("settings_show_all_group"),
+            tag = "settings_show_all_group",
+            onFocused = onFocused,
+            onClick = { onToggleShowAllGroup(!showAllChannelsGroup) },
+        )
+        RowGap()
+        SettingsItem(
+            tag = "settings_logo_prefetch",
+            text = if (logoPrefetchEnabled) t("台标预取：开", "Logo Prefetch: On") else t("台标预取：关", "Logo Prefetch: Off"),
+            textScale = textScale,
+            focusRequester = requesterOf("settings_logo_prefetch"),
+            onFocused = onFocused,
+            onClick = { onToggleLogoPrefetch(!logoPrefetchEnabled) },
+        )
+        RowGap()
+        SettingsItem(
+            tag = "settings_logo_load",
+            text = if (logoLoadEnabled) t("台标显示：开", "Show Logos: On") else t("台标显示：关", "Show Logos: Off"),
+            textScale = textScale,
+            focusRequester = requesterOf("settings_logo_load"),
+            onFocused = onFocused,
+            onClick = { onToggleLogoLoad(!logoLoadEnabled) },
+        )
+        RowGap()
+        SettingsItem(
+            text = t("刷新当前组台标", "Refresh Current Group Logos"),
+            textScale = textScale,
+            focusRequester = requesterOf("settings_logo_refresh"),
+            tag = "settings_logo_refresh",
+            onFocused = onFocused,
+            onClick = onRefreshLogos,
+        )
+        RowGap()
+        SettingsItem(
+            text = t("清理台标缓存", "Clear Logo Cache"),
+            textScale = textScale,
+            focusRequester = requesterOf("settings_logo_clear"),
+            tag = "settings_logo_clear",
+            onFocused = onFocused,
+            onClick = onClearLogoCache,
+        )
+        if (logoCacheSummary.isNotBlank()) {
+            HelpText(logoCacheSummary, start = 4.dp)
+        }
+    }
+}
+
+@Composable
+private fun SettingsPlaybackPage(
+    lang: AppLang,
+    bufferLabel: String,
+    videoDecoderMode: String,
+    rebuildOn4kZap: Boolean,
+    defaultSubtitlesEnabled: Boolean,
+    subtitlePreferredLang: String,
+    audioSummary: String?,
+    audioEntryLabel: String,
+    audioSelectable: Boolean,
+    qualityMenuEnabled: Boolean,
+    zapPreconnectEnabled: Boolean,
+    multicastPrewarmEnabled: Boolean,
+    jingcaiLabel: String,
+    onOpenBufferPicker: () -> Unit,
+    onOpenVideoDecoderPicker: () -> Unit,
+    onToggleRebuild4kZap: (Boolean) -> Unit,
+    onToggleDefaultSubtitles: (Boolean) -> Unit,
+    onOpenSubtitleLangPicker: () -> Unit,
+    onAudioTrackClick: () -> Unit,
+    onQualityMenuClick: () -> Unit,
+    onToggleZapPreconnect: () -> Unit,
+    onToggleMulticastPrewarm: () -> Unit,
+    onOpenJingcaiPicker: () -> Unit,
+    textScale: Float,
+    scroll: ScrollState,
+    requesterOf: (String) -> FocusRequester,
+    onFocused: (String) -> Unit,
+) {
+    fun t(zh: String, en: String) = if (lang == AppLang.EN) en else zh
+    val decoderLabel = if (videoDecoderMode == "SOFTWARE") t("软件解码 (FFmpeg)", "Software (FFmpeg)") else t("硬件解码", "Hardware")
+    val subLangLabel = when (subtitlePreferredLang) {
+        "zh" -> t("中文", "Chinese")
+        "en" -> t("英文", "English")
+        else -> t("自动", "Auto")
+    }
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(scroll)
+            .testTag(SETTINGS_LIST_TAG)
+    ) {
+        SettingsPageHeader(SettingsPage.PLAYBACK, lang, textScale)
+        SettingsGroupHeader(t("解码与缓冲", "Decoder & Buffer"))
         SettingsChoiceRow(
-            title = t("起播缓冲", "Playback Buffer"),
+            title = t("缓冲大小", "Buffer Size"),
             value = bufferLabel,
             textScale = textScale,
             focusRequester = requesterOf("settings_playback_buffer"),
@@ -1349,6 +2017,56 @@ private fun SettingsPlaybackPage(
             onFocused = onFocused,
             onClick = onOpenBufferPicker,
         )
+        RowGap()
+        SettingsChoiceRow(
+            title = t("视频解码器", "Video Decoder"),
+            value = decoderLabel,
+            textScale = textScale,
+            focusRequester = requesterOf("settings_video_decoder"),
+            tag = "settings_video_decoder",
+            onFocused = onFocused,
+            onClick = onOpenVideoDecoderPicker,
+        )
+        RowGap()
+        SettingsItem(
+            text = if (rebuildOn4kZap) t("4K 切台防花屏重建：开", "4K zap anti-artifacting: On") else t("4K 切台防花屏重建：关", "4K zap anti-artifacting: Off"),
+            textScale = textScale,
+            focusRequester = requesterOf("settings_rebuild_4k_zap"),
+            tag = "settings_rebuild_4k_zap",
+            onFocused = onFocused,
+            onClick = { onToggleRebuild4kZap(!rebuildOn4kZap) },
+        )
+        SettingsGroupHeader(t("音轨与字幕", "Audio & Subtitles"))
+        SettingsItem(
+            text = if (defaultSubtitlesEnabled) t("默认加载字幕：开", "Auto-load subtitles: On") else t("默认加载字幕：关", "Auto-load subtitles: Off"),
+            textScale = textScale,
+            focusRequester = requesterOf("settings_default_subtitles"),
+            tag = "settings_default_subtitles",
+            onFocused = onFocused,
+            onClick = { onToggleDefaultSubtitles(!defaultSubtitlesEnabled) },
+        )
+        RowGap()
+        SettingsChoiceRow(
+            title = t("首选字幕语言", "Preferred Subtitle Language"),
+            value = subLangLabel,
+            textScale = textScale,
+            focusRequester = requesterOf("settings_subtitle_lang"),
+            tag = "settings_subtitle_lang",
+            onFocused = onFocused,
+            onClick = onOpenSubtitleLangPicker,
+        )
+        RowGap()
+        SettingsItem(
+            text = audioEntryLabel,
+            textScale = textScale,
+            focusRequester = requesterOf("settings_audio_track"),
+            tag = "settings_audio_track",
+            onFocused = onFocused,
+            onClick = onAudioTrackClick,
+        )
+        if (!audioSummary.isNullOrBlank()) {
+            HelpText(t("当前：$audioSummary", "Current: $audioSummary"))
+        }
         if (qualityMenuEnabled) {
             RowGap()
             SettingsItem(
@@ -1357,18 +2075,17 @@ private fun SettingsPlaybackPage(
                 focusRequester = requesterOf("settings_quality_menu"),
                 tag = "settings_quality_menu",
                 onFocused = onFocused,
-                onClick = onQualityMenuClick
+                onClick = onQualityMenuClick,
             )
         }
-
-        SettingsGroupHeader(t("高级诊断（实验）", "Diagnostics (Experimental)"))
+        SettingsGroupHeader(t("高级优化（实验）", "Advanced (Experimental)"))
         SettingsItem(
             text = if (zapPreconnectEnabled) t("预连接相邻频道：开", "Neighbour Preconnect: On") else t("预连接相邻频道：关", "Neighbour Preconnect: Off"),
             textScale = textScale,
             focusRequester = requesterOf("settings_zap_preconnect"),
             tag = "settings_zap_preconnect",
             onFocused = onFocused,
-            onClick = onToggleZapPreconnect
+            onClick = onToggleZapPreconnect,
         )
         RowGap()
         SettingsItem(
@@ -1377,7 +2094,7 @@ private fun SettingsPlaybackPage(
             focusRequester = requesterOf("settings_multicast_prewarm"),
             tag = "settings_multicast_prewarm",
             onFocused = onFocused,
-            onClick = onToggleMulticastPrewarm
+            onClick = onToggleMulticastPrewarm,
         )
         RowGap()
         SettingsChoiceRow(
@@ -1499,250 +2216,6 @@ private fun SettingsRemotePage(
             tag = "settings_remote_bindings_reset",
             onFocused = onFocused,
             onClick = onResetBindings,
-        )
-    }
-}
-
-@Composable
-private fun SettingsAudioPage(
-    lang: AppLang,
-    summary: String?,
-    entryLabel: String,
-    selectable: Boolean,
-    onAudioTrackClick: () -> Unit,
-    textScale: Float,
-    scroll: ScrollState,
-    requesterOf: (String) -> FocusRequester,
-    onFocused: (String) -> Unit,
-) {
-    fun t(zh: String, en: String) = if (lang == AppLang.EN) en else zh
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(scroll)
-            .testTag(SETTINGS_LIST_TAG)
-    ) {
-        SettingsPageHeader(SettingsPage.AUDIO, lang, textScale)
-        SettingsItem(
-            text = if (selectable) entryLabel else t("$entryLabel（不可选）", "$entryLabel (Unavailable)"),
-            textScale = textScale,
-            focusRequester = requesterOf("settings_audio_track"),
-            tag = "settings_audio_track",
-            onFocused = onFocused,
-            onClick = onAudioTrackClick
-        )
-        if (!summary.isNullOrBlank()) {
-            HelpText(t("当前：$summary", "Current: $summary"))
-        }
-    }
-}
-
-@Composable
-private fun SettingsDataPage(
-    lang: AppLang,
-    sources: List<PlaylistSource>,
-    activeSourceId: String?,
-    globalUserAgent: String,
-    globalCustomHeaders: String,
-    onOpenSourceManage: () -> Unit,
-    onSourceConfigClick: () -> Unit,
-    onOpenGlobalUaPicker: () -> Unit,
-    onOpenGlobalHeadersPicker: () -> Unit,
-    autoUpdatePlaylistLabel: String,
-    autoUpdateEpgLabel: String,
-    lastUpdateSummary: String,
-    recentCount: Int,
-    onOpenPlaylistIntervalPicker: () -> Unit,
-    onOpenEpgIntervalPicker: () -> Unit,
-    onRefreshPlaylistNow: () -> Unit,
-    onRefreshEpgNow: () -> Unit,
-    onOpenRecent: () -> Unit,
-    textScale: Float,
-    scroll: ScrollState,
-    requesterOf: (String) -> FocusRequester,
-    onFocused: (String) -> Unit,
-) {
-    fun t(zh: String, en: String) = if (lang == AppLang.EN) en else zh
-    val activeSourceName = sources.firstOrNull { it.id == activeSourceId }?.name
-        ?: sources.firstOrNull()?.name ?: t("未配置", "Not configured")
-    val visibleCount = sources.count { it.enabled }
-    val sourceManageSummary = if (sources.size > 1) {
-        t("$activeSourceName · 显示 $visibleCount/${sources.size}", "$activeSourceName · $visibleCount/${sources.size} shown")
-    } else {
-        activeSourceName
-    }
-    val globalUaSummary = globalUserAgent.trim().ifBlank { t("自动（默认 VLC）", "Auto (Default VLC)") }
-    val customHeadersCount = remember(globalCustomHeaders) {
-        PlaylistSources.parseCustomHeaders(globalCustomHeaders).size
-    }
-    val globalHeadersSummary = if (customHeadersCount > 0) {
-        t("已配置 $customHeadersCount 条", "$customHeadersCount configured")
-    } else {
-        t("未配置（扫码网页编辑）", "None (Edit via Web Console)")
-    }
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(scroll)
-            .testTag(SETTINGS_LIST_TAG)
-    ) {
-        SettingsPageHeader(SettingsPage.DATA, lang, textScale)
-        SettingsGroupHeader(text = t("播放源与请求头", "Sources & Headers"))
-        SettingsChoiceRow(
-            title = t("播放源管理与显示", "Manage & Show Sources"),
-            value = sourceManageSummary,
-            textScale = textScale,
-            focusRequester = requesterOf("settings_source_manage"),
-            tag = "settings_source_manage",
-            onFocused = onFocused,
-            onClick = onOpenSourceManage,
-        )
-        RowGap()
-        SettingsChoiceRow(
-            title = t("扫码与多源控制台", "QR & Web Config Console"),
-            value = t("手机扫码管理多源、请求头与遥控设置", "Manage sources, headers & remote via phone"),
-            textScale = textScale,
-            focusRequester = requesterOf("settings_source_config"),
-            tag = "settings_source_config",
-            onFocused = onFocused,
-            onClick = onSourceConfigClick,
-        )
-        RowGap()
-        SettingsChoiceRow(
-            title = t("全局 User-Agent", "Global User-Agent"),
-            value = globalUaSummary,
-            textScale = textScale,
-            focusRequester = requesterOf("settings_global_ua"),
-            tag = "settings_global_ua",
-            onFocused = onFocused,
-            onClick = onOpenGlobalUaPicker,
-        )
-        RowGap()
-        SettingsChoiceRow(
-            title = t("全局自定义 Header", "Global Custom Headers"),
-            value = globalHeadersSummary,
-            textScale = textScale,
-            focusRequester = requesterOf("settings_global_headers"),
-            tag = "settings_global_headers",
-            onFocused = onFocused,
-            onClick = onOpenGlobalHeadersPicker,
-        )
-        SettingsGroupHeader(text = t("自动更新", "Auto Update"))
-        SettingsChoiceRow(
-            title = t("自动更新列表", "Auto-update Playlist"),
-            value = autoUpdatePlaylistLabel,
-            textScale = textScale,
-            focusRequester = requesterOf("settings_auto_playlist"),
-            tag = "settings_auto_playlist",
-            onFocused = onFocused,
-            onClick = onOpenPlaylistIntervalPicker,
-        )
-        RowGap()
-        SettingsItem(
-            text = t("立即刷新播放列表", "Refresh Playlist Now"),
-            textScale = textScale,
-            focusRequester = requesterOf("settings_refresh_playlist"),
-            tag = "settings_refresh_playlist",
-            onFocused = onFocused,
-            onClick = onRefreshPlaylistNow
-        )
-        SettingsGroupHeader(text = t("节目单 (EPG)", "Program Guide (EPG)"))
-        SettingsChoiceRow(
-            title = t("自动更新 EPG", "Auto-update EPG"),
-            value = autoUpdateEpgLabel,
-            textScale = textScale,
-            focusRequester = requesterOf("settings_auto_epg"),
-            tag = "settings_auto_epg",
-            onFocused = onFocused,
-            onClick = onOpenEpgIntervalPicker,
-        )
-        RowGap()
-        SettingsItem(
-            text = t("立即更新 EPG", "Refresh EPG Now"),
-            textScale = textScale,
-            focusRequester = requesterOf("settings_refresh_epg"),
-            tag = "settings_refresh_epg",
-            onFocused = onFocused,
-            onClick = onRefreshEpgNow
-        )
-        if (lastUpdateSummary.isNotBlank()) {
-            HelpText(lastUpdateSummary)
-        }
-        SettingsGroupHeader(text = t("观看记录", "Watch History"))
-        SettingsItem(
-            text = if (recentCount > 0) t("最近观看（$recentCount）", "Recent Channels ($recentCount)") else t("最近观看", "Recent Channels"),
-            textScale = textScale,
-            focusRequester = requesterOf(RecentDialogTags.SETTINGS_ENTRY),
-            tag = RecentDialogTags.SETTINGS_ENTRY,
-            onFocused = onFocused,
-            onClick = onOpenRecent
-        )
-    }
-}
-
-@Composable
-private fun SettingsLogoPage(
-    lang: AppLang,
-    logoCacheSummary: String,
-    logoPrefetchEnabled: Boolean,
-    logoLoadEnabled: Boolean,
-    onToggleLogoPrefetch: (Boolean) -> Unit,
-    onToggleLogoLoad: (Boolean) -> Unit,
-    onRefreshLogos: () -> Unit,
-    onClearLogoCache: () -> Unit,
-    textScale: Float,
-    scroll: ScrollState,
-    requesterOf: (String) -> FocusRequester,
-    onFocused: (String) -> Unit,
-) {
-    fun t(zh: String, en: String) = if (lang == AppLang.EN) en else zh
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(scroll)
-            .testTag(SETTINGS_LIST_TAG)
-    ) {
-        SettingsPageHeader(SettingsPage.LOGO, lang, textScale)
-        if (logoCacheSummary.isNotBlank()) {
-            HelpText(logoCacheSummary, start = 4.dp)
-        }
-        SettingsItem(
-            tag = "settings_logo_prefetch",
-            text = if (logoPrefetchEnabled) t("台标预取：开", "Logo Prefetch: On") else t("台标预取：关", "Logo Prefetch: Off"),
-            textScale = textScale,
-            focusRequester = requesterOf("settings_logo_prefetch"),
-            onFocused = onFocused,
-            onClick = { onToggleLogoPrefetch(!logoPrefetchEnabled) }
-        )
-        HelpText(t("关闭后仅加载当前可视台标，进一步降低低配盒子负载。", "Disable to load visible channel logos only, reducing memory usage."))
-        RowGap()
-        SettingsItem(
-            tag = "settings_logo_load",
-            text = if (logoLoadEnabled) t("台标显示：开", "Show Logos: On") else t("台标显示：关", "Show Logos: Off"),
-            textScale = textScale,
-            focusRequester = requesterOf("settings_logo_load"),
-            onFocused = onFocused,
-            onClick = { onToggleLogoLoad(!logoLoadEnabled) }
-        )
-        HelpText(t("关闭后不加载台标，仅显示文字首字占位。", "Disable to show channel initials instead of logo images."))
-        RowGap()
-        SettingsItem(
-            text = t("刷新当前组台标", "Refresh Current Group Logos"),
-            textScale = textScale,
-            focusRequester = requesterOf("settings_logo_refresh"),
-            tag = "settings_logo_refresh",
-            onFocused = onFocused,
-            onClick = onRefreshLogos
-        )
-        RowGap()
-        SettingsItem(
-            text = t("清理台标缓存", "Clear Logo Cache"),
-            textScale = textScale,
-            focusRequester = requesterOf("settings_logo_clear"),
-            tag = "settings_logo_clear",
-            onFocused = onFocused,
-            onClick = onClearLogoCache
         )
     }
 }

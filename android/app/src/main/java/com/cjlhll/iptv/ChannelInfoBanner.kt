@@ -66,6 +66,7 @@ import kotlin.math.sin
 
 enum class InfoCardQuickActionId {
     SOURCE,
+    FAVORITE,
     ASPECT,
     AUDIO,
     SUBTITLE,
@@ -118,6 +119,8 @@ fun ChannelInfoBanner(
     onExitFocus: () -> Unit = {},
     onFocusedChanged: (Boolean) -> Unit = {},
     uiScale: UiScalePreset = UiScalePreset.DEFAULT,
+    uiAlpha: Float = TvDesignTokens.ALPHA_INFO_CARD,
+    showExactResolution: Boolean = false,
     animate: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
@@ -128,7 +131,7 @@ fun ChannelInfoBanner(
     val focused = state == InfoCardPolicy.State.FOCUSED
     val isActiveConsole = manual || focused
 
-    val containerAlpha = if (isActiveConsole) TvDesignTokens.ALPHA_INFO_CARD else 0.64f
+    val containerAlpha = if (isActiveConsole) uiAlpha else (uiAlpha * 0.70f).coerceIn(0.40f, 0.72f)
     val containerColor = TvDesignTokens.SurfaceObsidian.copy(alpha = containerAlpha)
 
     val recentCount = recentCards.size
@@ -204,6 +207,7 @@ fun ChannelInfoBanner(
         hasHdrStaticInfo = colorInfo?.hdrStaticInfo != null,
         mime = vf?.sampleMimeType,
         codecs = vf?.codecs,
+        exactResolution = showExactResolution,
     )
 
     val programText = InfoCardPolicy.programTitleOrPlaceholder(programTitle, lang)
@@ -799,6 +803,21 @@ private fun QuickActionGlyph(
                 drawLine(tint, Offset(w * 0.66f, y1 - h * 0.16f), Offset(w * 0.84f, y1), strokeWidth = stroke.width, cap = StrokeCap.Round)
                 drawLine(tint, Offset(w * 0.16f, y2), Offset(w * 0.84f, y2), strokeWidth = stroke.width, cap = StrokeCap.Round)
                 drawLine(tint, Offset(w * 0.34f, y2 + h * 0.16f), Offset(w * 0.16f, y2), strokeWidth = stroke.width, cap = StrokeCap.Round)
+            }
+            InfoCardQuickActionId.FAVORITE -> {
+                // 五角星收藏图标
+                val cx = w * 0.50f
+                val cy = h * 0.52f
+                val outer = w * 0.38f
+                val inner = w * 0.17f
+                val pts = Array(10) { idx ->
+                    val r = if (idx % 2 == 0) outer else inner
+                    val angle = -PI / 2.0 + idx * (PI / 5.0)
+                    Offset(cx + (r * cos(angle)).toFloat(), cy + (r * sin(angle)).toFloat())
+                }
+                for (i in 0 until 10) {
+                    drawLine(tint, pts[i], pts[(i + 1) % 10], strokeWidth = stroke.width, cap = StrokeCap.Round)
+                }
             }
             InfoCardQuickActionId.ASPECT -> {
                 // 画面比例外框 + 对角伸缩角标

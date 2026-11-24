@@ -12,9 +12,15 @@ object AutoUpdateConfig {
     enum class Interval(val label: String, val labelEn: String, val periodMs: Long) {
         OFF("关闭", "Off", 0L),
         STARTUP("启动时", "On startup", 0L),
+        H2("每 2 小时", "Every 2h", 2 * 3600_000L),
+        H4("每 4 小时", "Every 4h", 4 * 3600_000L),
         H6("每 6 小时", "Every 6h", 6 * 3600_000L),
+        H8("每 8 小时", "Every 8h", 8 * 3600_000L),
         H12("每 12 小时", "Every 12h", 12 * 3600_000L),
-        H24("每 24 小时", "Every 24h", 24 * 3600_000L);
+        H16("每 16 小时", "Every 16h", 16 * 3600_000L),
+        H24("每 24 小时", "Every 24h", 24 * 3600_000L),
+        H48("每 48 小时", "Every 48h", 48 * 3600_000L),
+        H72("每 72 小时", "Every 72h", 72 * 3600_000L);
 
         fun localizedLabel(lang: AppLang): String = if (lang == AppLang.EN) labelEn else label
     }
@@ -23,9 +29,20 @@ object AutoUpdateConfig {
     val DEFAULT = Interval.STARTUP
 
     private val ORDER = listOf(Interval.OFF, Interval.STARTUP, Interval.H6, Interval.H12, Interval.H24)
+    val EPG_HOURS_ORDER = listOf(
+        Interval.OFF,
+        Interval.STARTUP,
+        Interval.H2,
+        Interval.H4,
+        Interval.H8,
+        Interval.H16,
+        Interval.H24,
+        Interval.H48,
+        Interval.H72,
+    )
 
     fun parse(raw: String?): Interval =
-        ORDER.firstOrNull { it.name == raw } ?: DEFAULT
+        Interval.entries.firstOrNull { it.name == raw } ?: DEFAULT
 
     fun encode(interval: Interval): String = interval.name
 

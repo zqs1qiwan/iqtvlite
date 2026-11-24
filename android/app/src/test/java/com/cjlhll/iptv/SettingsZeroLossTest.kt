@@ -106,18 +106,18 @@ class SettingsZeroLossTest {
     fun newLogoRefreshTagExists() {
         val drawer = code("SettingsDrawer.kt")
         assertTrue("新增 tag settings_logo_refresh", drawer.contains("\"settings_logo_refresh\""))
-        assertTrue("settings_logo_refresh" in SettingsIA.itemTags(SettingsPage.LOGO))
+        assertTrue("settings_logo_refresh" in SettingsIA.itemTags(SettingsPage.APPEARANCE))
     }
 
     @Test
-    fun recentWatchingEntryLivesInTheDataPage() {
-        assertTrue(RecentDialogTags.SETTINGS_ENTRY in SettingsIA.itemTags(SettingsPage.DATA))
+    fun recentWatchingEntryLivesInThePlaylistsPage() {
+        assertTrue(RecentDialogTags.SETTINGS_ENTRY in SettingsIA.itemTags(SettingsPage.PLAYLISTS))
         assertEquals(
-            SettingsPage.DATA,
+            SettingsPage.PLAYLISTS,
             SettingsIA.LEGACY_TAG_PAGE.getValue(RecentDialogTags.SETTINGS_ENTRY),
         )
         val drawer = read("SettingsDrawer.kt")
-        assertTrue("最近观看对话框入口仍在（数据与更新 → 观看记录）", drawer.contains("onOpenRecent"))
+        assertTrue("最近观看对话框入口仍在（节目列表 → 观看记录）", drawer.contains("onOpenRecent"))
     }
 
     @Test

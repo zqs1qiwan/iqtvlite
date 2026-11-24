@@ -763,6 +763,19 @@ object SourceConfigWebPage {
         <h2 class="card-title" id="sysTitle" style="margin-bottom:8px">电视设备信息</h2>
         <div id="sysInfo"></div>
       </div>
+
+      <div class="card">
+        <h2 class="card-title" id="backupTitle" style="margin-bottom:8px">备份与恢复配置</h2>
+        <div class="btn-row" style="margin-bottom:10px">
+          <a class="btn" href="/api/backup" download="iqtvlite-backup.json" id="btnExportBackup">导出备份 JSON</a>
+          <label class="btn btn-secondary" style="cursor:pointer">
+            <span id="btnImportFileLabel">选择备份文件恢复</span>
+            <input type="file" id="backupFileInput" accept=".json,application/json" style="display:none"/>
+          </label>
+        </div>
+        <textarea id="restoreJsonArea" rows="4" placeholder="也可直接粘贴备份 JSON 内容..." style="width:100%;margin-bottom:8px"></textarea>
+        <button class="btn btn-secondary" id="btnRestoreJson">从文本框恢复配置</button>
+      </div>
     </section>
   </main>
 
@@ -1420,6 +1433,28 @@ object SourceConfigWebPage {
         var res = await api("/api/remote", { reset: true });
         renderAll(res.state);
         toast(tr().tResetRem);
+      } catch (e) { toast(e.message, true); }
+    });
+    byId("backupFileInput").addEventListener("change", function(ev) {
+      var file = ev.target.files && ev.target.files[0];
+      if (!file) return;
+      var reader = new FileReader();
+      reader.onload = async function() {
+        try {
+          var res = await api("/api/restore", { backupJson: String(reader.result || "") });
+          renderAll(res.state);
+          toast(currentLang === "en" ? "Backup restored" : "已恢复备份配置");
+        } catch (e) { toast(e.message, true); }
+      };
+      reader.readAsText(file);
+    });
+    byId("btnRestoreJson").addEventListener("click", async function() {
+      var raw = byId("restoreJsonArea").value.trim();
+      if (!raw) return toast(currentLang === "en" ? "Paste backup JSON first" : "请先粘贴备份 JSON", true);
+      try {
+        var res = await api("/api/restore", { backupJson: raw });
+        renderAll(res.state);
+        toast(currentLang === "en" ? "Backup restored" : "已恢复备份配置");
       } catch (e) { toast(e.message, true); }
     });
 

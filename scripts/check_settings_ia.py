@@ -13,8 +13,8 @@ ACTIVITY = SRC / "PlayerActivity.kt"
 CONTROLLER = SRC / "PlayerUiController.kt"
 TOKENS = SRC / "TvDesignTokens.kt"
 
-EXPECTED_ROOT = ["PLAYBACK", "REMOTE", "AUDIO", "DATA", "LOGO", "ABOUT"]
-EXPECTED_TITLES = ["播放与画面", "遥控器与操作", "音频与字幕", "播放列表及节目单", "台标与缓存", "关于"]
+EXPECTED_ROOT = ["GENERAL", "PLAYLISTS", "EPG", "APPEARANCE", "PLAYBACK", "REMOTE", "ABOUT"]
+EXPECTED_TITLES = ["通用", "节目列表", "节目预告", "外观", "播放解码", "遥控设置", "关于与更新"]
 RETIRED = {"settings_epg_source", "settings_remote_back"}
 
 LEGACY_TAGS = [

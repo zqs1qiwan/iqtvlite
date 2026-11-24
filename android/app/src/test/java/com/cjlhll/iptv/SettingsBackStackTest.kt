@@ -13,7 +13,7 @@ import org.junit.Test
  */
 class SettingsBackStackTest {
 
-    private val pageTags = SettingsIA.itemTags(SettingsPage.DATA)
+    private val pageTags = SettingsIA.itemTags(SettingsPage.PLAYLISTS)
 
     @Test
     fun rootBackClosesTheDrawer() {
@@ -32,10 +32,10 @@ class SettingsBackStackTest {
     @Test
     fun pageBackReturnsToTheEntryRowOnlyOneLevel() {
         val (state, consumed) = SettingsNavPolicy.onKey(
-            SettingsNavPolicy.State.Page(SettingsPage.DATA, "settings_source_config"),
+            SettingsNavPolicy.State.Page(SettingsPage.GENERAL, "settings_source_config"),
             SettingsNavPolicy.Key.BACK,
         )
-        assertEquals(SettingsNavPolicy.State.Root(SettingsIA.ROOT_ORDER.indexOf(SettingsPage.DATA)), state)
+        assertEquals(SettingsNavPolicy.State.Root(SettingsIA.ROOT_ORDER.indexOf(SettingsPage.GENERAL)), state)
         assertTrue(consumed)
         // 一次按键不得直接关抽屉（不跳级）。
         assertTrue(state !is SettingsNavPolicy.State.Closed)
@@ -43,7 +43,7 @@ class SettingsBackStackTest {
 
     @Test
     fun pageLeftIsEquivalentToBack() {
-        val page = SettingsNavPolicy.State.Page(SettingsPage.LOGO, "settings_logo_clear")
+        val page = SettingsNavPolicy.State.Page(SettingsPage.APPEARANCE, "settings_logo_clear")
         val back = SettingsNavPolicy.onKey(page, SettingsNavPolicy.Key.BACK)
         val left = SettingsNavPolicy.onKey(page, SettingsNavPolicy.Key.LEFT)
         assertEquals(back, left)
@@ -63,8 +63,8 @@ class SettingsBackStackTest {
             val (state, consumed) = SettingsNavPolicy.onKey(SettingsNavPolicy.State.Root(3), key)
             assertTrue(consumed)
             val page = state as SettingsNavPolicy.State.Page
-            assertEquals(SettingsPage.DATA, page.page)
-            assertEquals("进入页面时焦点落该页第一行", SettingsIA.itemTags(SettingsPage.DATA).first(), page.focusTag)
+            assertEquals(SettingsPage.APPEARANCE, page.page)
+            assertEquals("进入页面时焦点落该页第一行", SettingsIA.itemTags(SettingsPage.APPEARANCE).first(), page.focusTag)
         }
     }
 
@@ -101,7 +101,7 @@ class SettingsBackStackTest {
     @Test
     fun upDownDoNotChangeLevels() {
         val root = SettingsNavPolicy.State.Root(2)
-        val page = SettingsNavPolicy.State.Page(SettingsPage.AUDIO, "settings_audio_track")
+        val page = SettingsNavPolicy.State.Page(SettingsPage.PLAYBACK, "settings_audio_track")
         listOf(SettingsNavPolicy.Key.UP, SettingsNavPolicy.Key.DOWN).forEach { key ->
             assertEquals("页内上下移动交给焦点系统", Pair(root, false), SettingsNavPolicy.onKey(root, key))
             assertEquals("页内上下移动交给焦点系统", Pair(page, false), SettingsNavPolicy.onKey(page, key))
@@ -113,13 +113,13 @@ class SettingsBackStackTest {
         val (state, _) = SettingsNavPolicy.onKey(SettingsNavPolicy.State.Root(99), SettingsNavPolicy.Key.OK)
         assertEquals(SettingsPage.ABOUT, (state as SettingsNavPolicy.State.Page).page)
         val (negative, _) = SettingsNavPolicy.onKey(SettingsNavPolicy.State.Root(-5), SettingsNavPolicy.Key.RIGHT)
-        assertEquals(SettingsPage.PLAYBACK, (negative as SettingsNavPolicy.State.Page).page)
+        assertEquals(SettingsPage.GENERAL, (negative as SettingsNavPolicy.State.Page).page)
     }
 
     @Test
     fun pageTagsArgumentDoesNotBreakTheLevelRules() {
         val (state, consumed) = SettingsNavPolicy.onKey(
-            SettingsNavPolicy.State.Page(SettingsPage.DATA, "settings_auto_epg"),
+            SettingsNavPolicy.State.Page(SettingsPage.EPG, "settings_auto_epg"),
             SettingsNavPolicy.Key.RIGHT,
             pageTags,
         )

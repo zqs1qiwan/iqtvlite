@@ -24,13 +24,16 @@ import tv.iqtvlite.app.R
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -107,6 +110,10 @@ class PlayerActivity : ComponentActivity() {
 
     private var onChannelStep: ((Int) -> Boolean)? = null
     private var onNumberJump: ((Int) -> Boolean)? = null
+    private var onDigitMatchJump: ((Int) -> Boolean)? = null
+    private var digitMatchCount: Int = 0
+    private var digitMatchSelectedIndex by mutableIntStateOf(0)
+    private var activeChannelGroups by mutableStateOf<List<ChannelGroup>>(emptyList())
     private var onPlayLastChannel: (() -> Boolean)? = null
     private var onCatchupSeek: ((Long) -> Boolean)? = null
     private var onReturnToLive: (() -> Boolean)? = null
@@ -164,6 +171,18 @@ class PlayerActivity : ComponentActivity() {
         longPressFiredForKey = null
     }
 
+    private fun restartDigitTimeoutTimer() {
+        numberJob?.cancel()
+        val mode = digitsMode
+        numberJob = lifecycleScope.launch {
+            delay(DigitOsdPolicy.TIMEOUT_MS)
+            when (DigitOsdPolicy.timeoutAction(mode)) {
+                DigitOsdPolicy.TimeoutAction.SUBMIT -> submitNumber()
+                DigitOsdPolicy.TimeoutAction.CLEAR -> uiController.clearDigits()
+            }
+        }
+    }
+
     private fun submitNumber() {
         numberJob?.cancel()
         numberJob = null
@@ -172,7 +191,9 @@ class PlayerActivity : ComponentActivity() {
         val number = typed.toIntOrNull()
         // 修复 P1-2：先切为蓝色确认态并保留 220ms 让用户明确看到确认反馈，再清空隐藏 OSD。
         uiController.markDigitsConfirmed()
-        if (number == null || onNumberJump?.invoke(number) != true) {
+        val jumped = onDigitMatchJump?.invoke(digitMatchSelectedIndex) == true ||
+            (number != null && onNumberJump?.invoke(number) == true)
+        if (!jumped) {
             Toast.makeText(
                 this,
                 AppStrings.tr("没有频道 $typed", "Channel $typed not found"),
@@ -343,6 +364,9 @@ class PlayerActivity : ComponentActivity() {
                             setOnExitPip = { onExitPip = it },
                             setOnExtraBack = { onExtraBack = it },
                             onSubtitleDialogOpenChanged = { subtitleDialogOpenFlag = it },
+                            digitMatchSelectedIndex = digitMatchSelectedIndex,
+                            setOnDigitMatchJump = { onDigitMatchJump = it },
+                            onChannelGroupsChanged = { activeChannelGroups = it },
                         ),
                         infoCard = InfoCardCallbacks(
                             setOpenInfoCardFromOkController = { onOpenInfoCardFromOk = it },
@@ -359,30 +383,105 @@ class PlayerActivity : ComponentActivity() {
                     )
 
                     val digitState by uiController.digitOsd.collectAsState()
+                    val digitMatches = remember(digitState.digits, activeChannelGroups) {
+                        DigitOsdPolicy.matchChannels(digitState.digits, activeChannelGroups, limit = 6)
+                    }
+                    LaunchedEffect(digitMatches.size, digitState.digits) {
+                        digitMatchCount = digitMatches.size
+                        digitMatchSelectedIndex = 0
+                    }
                     if (!isInPipMode && digitState.visible) {
                         val osdDigitColor = if (digitState.confirmed) BrandFocus.BlueColor else TvDesignTokens.TextPrimary
-                        val badgeShape = RoundedCornerShape(10.dp)
-                        Box(
+                        val stripShape = RoundedCornerShape(14.dp)
+                        val uiAlpha = Prefs.uiSurfaceAlpha(Prefs.getUiTransparencyPct(this@PlayerActivity))
+                        Row(
                             modifier = Modifier
-                                .align(Alignment.TopEnd)
-                                .padding(top = 28.dp, end = if (isInAppPipActive) 340.dp else 36.dp)
+                                .align(Alignment.BottomCenter)
+                                .fillMaxWidth()
+                                .padding(
+                                    start = 32.dp,
+                                    end = if (isInAppPipActive) 340.dp else 32.dp,
+                                    bottom = 28.dp,
+                                )
                                 .testTag("digit_osd")
-                                .clip(badgeShape)
-                                .background(ComposeColor(0xFF0A0D12).copy(alpha = 0.62f))
-                                .border(1.dp, ComposeColor.White.copy(alpha = 0.14f), badgeShape)
-                                .defaultMinSize(minWidth = 84.dp)
-                                .padding(horizontal = 20.dp, vertical = 10.dp),
-                            contentAlignment = Alignment.Center,
+                                .clip(stripShape)
+                                .background(ComposeColor(0xFF0A0D12).copy(alpha = uiAlpha.coerceAtLeast(0.76f)))
+                                .border(1.dp, ComposeColor.White.copy(alpha = 0.14f), stripShape)
+                                .padding(horizontal = 20.dp, vertical = 14.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(16.dp),
                         ) {
-                            Text(
-                                text = digitState.digits,
-                                color = osdDigitColor,
-                                fontSize = 36.sp,
-                                lineHeight = 40.sp,
-                                fontWeight = if (digitState.confirmed) FontWeight.Bold else FontWeight.SemiBold,
-                                letterSpacing = 2.sp,
-                                style = TextStyle(fontFeatureSettings = "tnum"),
-                            )
+                            Box(
+                                modifier = Modifier
+                                    .defaultMinSize(minWidth = 88.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(ComposeColor.White.copy(alpha = 0.08f))
+                                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(
+                                    text = digitState.digits,
+                                    color = osdDigitColor,
+                                    fontSize = 34.sp,
+                                    lineHeight = 38.sp,
+                                    fontWeight = if (digitState.confirmed) FontWeight.Bold else FontWeight.SemiBold,
+                                    letterSpacing = 2.sp,
+                                    style = TextStyle(fontFeatureSettings = "tnum"),
+                                )
+                            }
+                            if (digitMatches.isEmpty()) {
+                                Text(
+                                    text = AppStrings.tr("暂无匹配频道", "No matching channel"),
+                                    color = TvDesignTokens.TextSecondary,
+                                    fontSize = 15.sp,
+                                )
+                            } else {
+                                val selIdx = digitMatchSelectedIndex.coerceIn(0, digitMatches.lastIndex)
+                                Row(
+                                    modifier = Modifier.weight(1f),
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    digitMatches.forEachIndexed { idx, match ->
+                                        val selected = idx == selIdx
+                                        val cardShape = RoundedCornerShape(10.dp)
+                                        Row(
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .clip(cardShape)
+                                                .background(
+                                                    if (selected) BrandFocus.FocusBgColor
+                                                    else ComposeColor.White.copy(alpha = 0.06f)
+                                                )
+                                                .border(
+                                                    width = if (selected) 1.5.dp else 1.dp,
+                                                    color = if (selected) BrandFocus.BlueColor else ComposeColor.White.copy(alpha = 0.10f),
+                                                    shape = cardShape,
+                                                )
+                                                .padding(horizontal = 10.dp, vertical = 8.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        ) {
+                                            ChannelLogo(
+                                                logoUrl = match.logoUrl,
+                                                fallbackTitle = match.title,
+                                                width = 32.dp,
+                                                height = 24.dp,
+                                            )
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(
+                                                    text = "${match.number}  ${match.title}",
+                                                    color = if (selected) TvDesignTokens.TextPrimary else TvDesignTokens.TextSecondary,
+                                                    fontSize = 14.sp,
+                                                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis,
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -403,6 +502,18 @@ class PlayerActivity : ComponentActivity() {
             runCatching {
                 enterPictureInPictureMode(PictureInPictureParams.Builder().build())
             }
+        }
+    }
+
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        if (Prefs.isHomePipEnabled(this) &&
+            isPipSupportedOnDevice() &&
+            !isInAppPipActive &&
+            !isFinishing &&
+            !isDestroyed
+        ) {
+            enterPipMode()
         }
     }
 
@@ -556,8 +667,12 @@ class PlayerActivity : ComponentActivity() {
                 lastBackPressTimeCatchup = 0L
             }
             BackKeyPolicy.Action.TOAST_EXIT -> {
-                lastBackPressTime = nowMs
-                Toast.makeText(this, AppStrings.tr("再按一次退出app", "Press Back again to exit"), Toast.LENGTH_SHORT).show()
+                if (!Prefs.isDoubleBackExitEnabled(this)) {
+                    finish()
+                } else {
+                    lastBackPressTime = nowMs
+                    Toast.makeText(this, AppStrings.tr("再按一次退出app", "Press Back again to exit"), Toast.LENGTH_SHORT).show()
+                }
             }
             BackKeyPolicy.Action.EXIT_APP -> finish()
         }
@@ -599,11 +714,21 @@ class PlayerActivity : ComponentActivity() {
             return super.dispatchKeyEvent(event)
         }
 
-        // 3. 数字 OSD 激活态优先（BACK 取消、OK 提交、其余键先清 OSD）
+        // 3. 数字 OSD 激活态优先（BACK 取消、←/→ 选匹配台、OK 提交、其余键先清 OSD）
         if (uiController.currentDigits.digits.isNotEmpty() && !uiController.currentDigits.confirmed) {
             if (keyCode == KeyEvent.KEYCODE_BACK) {
                 cancelNumberTimers()
                 uiController.clearDigits()
+                return true
+            }
+            if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT && digitMatchCount > 0) {
+                digitMatchSelectedIndex = (digitMatchSelectedIndex - 1).coerceAtLeast(0)
+                restartDigitTimeoutTimer()
+                return true
+            }
+            if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT && digitMatchCount > 0) {
+                digitMatchSelectedIndex = (digitMatchSelectedIndex + 1).coerceAtMost((digitMatchCount - 1).coerceAtLeast(0))
+                restartDigitTimeoutTimer()
                 return true
             }
             if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER ||
@@ -644,15 +769,7 @@ class PlayerActivity : ComponentActivity() {
             if (event.repeatCount == 0) {
                 numberConfirmJob?.cancel()
                 uiController.appendDigit(keyCode - KeyEvent.KEYCODE_0)
-                numberJob?.cancel()
-                val mode = digitsMode
-                numberJob = lifecycleScope.launch {
-                    delay(DigitOsdPolicy.TIMEOUT_MS)
-                    when (DigitOsdPolicy.timeoutAction(mode)) {
-                        DigitOsdPolicy.TimeoutAction.SUBMIT -> submitNumber()
-                        DigitOsdPolicy.TimeoutAction.CLEAR -> uiController.clearDigits()
-                    }
-                }
+                restartDigitTimeoutTimer()
             }
             return true
         }
@@ -735,13 +852,24 @@ class PlayerActivity : ComponentActivity() {
     private fun resolveSingleKeyAction(keyCode: Int, longPress: Boolean): RemoteAction? {
         val resolved = RemoteBindings.resolveWith(remoteBindings, keyCode, longPress, playerContext())
         if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT && !longPress) {
-            return RemoteBindings.resolveRight(
+            val rightAction = RemoteBindings.resolveRight(
                 resolved = resolved,
                 selectedGroup = sidebarController.value.selectedGroup,
                 inGroupColumn = sidebarController.value.activeColumn == DrawerColumn.Groups ||
                     sidebarController.value.activeColumn == DrawerColumn.Sources,
                 rightCustomBound = RemoteBindings.isKeyCustomBound(remoteBindings, RemoteBindings.KEY_DPAD_RIGHT),
             )
+            if (rightAction == RemoteAction.OPEN_SETTINGS) {
+                val pureFullscreen = !uiController.isBlockingOverlayOpen &&
+                    !uiController.isDrawerOpen &&
+                    !uiController.isInfoCardVisible &&
+                    !uiController.currentDigits.visible &&
+                    !subtitleDialogOpenFlag &&
+                    !isInAppPipActive &&
+                    !isInPipMode
+                if (!pureFullscreen) return null
+            }
+            return rightAction
         }
         return resolved
     }
@@ -900,6 +1028,7 @@ fun VideoPlayerScreen(
 
     var videoAspectMode by remember { mutableStateOf(Prefs.getVideoAspectMode(context)) }
     LaunchedEffect(videoAspectMode) { playerView.resizeMode = videoAspectMode.resizeModeValue }
+    LaunchedEffect(channelGroups) { playback.onChannelGroupsChanged(channelGroups) }
     LaunchedEffect(subtitleDialogOpen) { playback.onSubtitleDialogOpenChanged(subtitleDialogOpen) }
     LaunchedEffect(overlay) { if (overlay != PlayerOverlay.None) subtitleDialogOpen = false }
 
@@ -916,6 +1045,15 @@ fun VideoPlayerScreen(
     var appLanguage by remember { mutableStateOf(Prefs.getAppLanguage(context)) }
     LaunchedEffect(Unit) { AppStrings.set(appLanguage) }
     var uiScale by remember { mutableStateOf(Prefs.getUiScale(context)) }
+    var favoriteUrls by remember { mutableStateOf(Prefs.getFavoriteUrls(context)) }
+    var groupConfigsVersion by remember { mutableIntStateOf(0) }
+    var uiTransparencyPct by remember { mutableIntStateOf(Prefs.getUiTransparencyPct(context)) }
+    var infoPanelTimeoutSec by remember { mutableIntStateOf(Prefs.getInfoPanelTimeoutSec(context)) }
+    var showInfoOnZap by remember { mutableStateOf(Prefs.isShowInfoOnZap(context)) }
+    var showClockInPlayer by remember { mutableStateOf(Prefs.isShowClockInPlayer(context)) }
+    var showExactResolution by remember { mutableStateOf(Prefs.isShowExactResolution(context)) }
+    var showFavoritesGroup by remember { mutableStateOf(Prefs.isShowFavoritesGroup(context)) }
+    var showAllChannelsGroup by remember { mutableStateOf(Prefs.isShowAllChannelsGroup(context)) }
     var sources by remember { mutableStateOf(Prefs.getSources(context)) }
     var activeSourceId by remember { mutableStateOf(Prefs.getActiveSourceId(context)) }
     var globalUserAgent by remember { mutableStateOf(Prefs.getGlobalUserAgent(context)) }
@@ -1032,7 +1170,8 @@ fun VideoPlayerScreen(
             .setPrioritizeTimeOverSizeThresholds(true)
             .build()
 
-        val renderersFactory = JingcaiRenderersFactory(context, softVideo = softVideoOverride)
+        val effectiveSoftVideo = softVideoOverride || Prefs.getVideoDecoderMode(context) == "SOFTWARE"
+        val renderersFactory = JingcaiRenderersFactory(context, softVideo = effectiveSoftVideo)
             .setEnableDecoderFallback(true)
             .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
 
@@ -1052,7 +1191,8 @@ fun VideoPlayerScreen(
                 setWakeMode(C.WAKE_MODE_NETWORK)
             }
 
-        playerUsesSoftVideo = softVideoOverride
+        playerView.setKeepContentOnPlayerReset(true)
+        playerUsesSoftVideo = effectiveSoftVideo
         if (!prepareNow) {
             playerView.player = newPlayer
             player = newPlayer
@@ -1100,11 +1240,29 @@ fun VideoPlayerScreen(
         }
     }
 
-    /** 修复 P0-8：若当前播放器曾因特殊频道降级为 FFmpeg 视频软解，切台时立即重建回硬件解码器。 */
-    fun ensureHardwarePlayerForNewZap(): ExoPlayer? {
-        if (player != null && playerUsesSoftVideo) {
+    fun isLikely4kChannel(ch: Channel?): Boolean {
+        if (ch == null) return false
+        val text = "${ch.title} ${ch.group}".uppercase()
+        return text.contains("4K") || text.contains("UHD") || text.contains("2160") || text.contains("8K")
+    }
+
+    fun isFormat4kOrHevc(fmt: Format?): Boolean {
+        if (fmt == null) return false
+        if (fmt.width >= 2560 || fmt.height >= 1440) return true
+        val codecs = fmt.codecs.orEmpty().lowercase()
+        val mime = fmt.sampleMimeType.orEmpty().lowercase()
+        return (codecs.contains("hvc") || codecs.contains("hev") || mime.contains("hevc")) &&
+            (fmt.width >= 1920 || fmt.height >= 1080)
+    }
+
+    /** 修复 P0-8 & 4K 花屏：软解降级或 4K/HEVC 切台时重建播放器以清理旧解码器 DPB 残留帧。 */
+    fun ensureHardwarePlayerForNewZap(targetChannel: Channel? = null): ExoPlayer? {
+        val wantSoft = Prefs.getVideoDecoderMode(context) == "SOFTWARE"
+        val rebuild4k = Prefs.isRebuildOn4kZap(context) &&
+            (isLikely4kChannel(targetChannel) || isFormat4kOrHevc(videoFormat))
+        if (player != null && (playerUsesSoftVideo != wantSoft || rebuild4k)) {
             releasePlayer()
-            initializePlayer(softVideoOverride = false, prepareNow = false)
+            initializePlayer(softVideoOverride = wantSoft, prepareNow = false)
         }
         return player
     }
@@ -1177,14 +1335,61 @@ fun VideoPlayerScreen(
                     videoFormat = p.videoFormat
                     audioTracks = TracksFlattening.audioTracks(tracks)
                     subtitleTracks = TracksFlattening.subtitleTracks(tracks)
+                    if (subtitleOverrideGroup < 0 && !subtitleDisabled && subtitleTracks.isNotEmpty()) {
+                        val prefEnabled = Prefs.isDefaultSubtitlesEnabled(context)
+                        if (!prefEnabled) {
+                            subtitleDisabled = true
+                            p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
+                                .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+                                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+                                .build()
+                        } else {
+                            val prefLang = Prefs.getSubtitlePreferredLang(context)
+                            val target = when (prefLang) {
+                                "zh" -> subtitleTracks.firstOrNull {
+                                    val l = it.language.orEmpty().lowercase()
+                                    val lb = it.label.orEmpty().lowercase()
+                                    l.startsWith("zh") || l.startsWith("chi") || l == "zho" ||
+                                        lb.contains("中") || lb.contains("简") || lb.contains("繁") || lb.contains("chs") || lb.contains("cht")
+                                }
+                                "en" -> subtitleTracks.firstOrNull {
+                                    val l = it.language.orEmpty().lowercase()
+                                    val lb = it.label.orEmpty().lowercase()
+                                    l.startsWith("en") || l == "eng" || lb.contains("eng") || lb.contains("英")
+                                }
+                                else -> null
+                            } ?: subtitleTracks.firstOrNull()
+                            if (target != null) {
+                                val g = tracks.groups.getOrNull(target.groupIndex)
+                                if (g != null && g.type == C.TRACK_TYPE_TEXT && target.trackIndex in 0 until g.length && g.isTrackSupported(target.trackIndex)) {
+                                    subtitleOverrideGroup = target.groupIndex
+                                    subtitleOverrideTrack = target.trackIndex
+                                    p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
+                                        .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                                        .setOverrideForType(TrackSelectionOverride(g.mediaTrackGroup, target.trackIndex))
+                                        .build()
+                                }
+                            }
+                        }
+                    }
                 }
                 override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                     audioOverrideGroup = -1
                     audioOverrideTrack = -1
-                    subtitleDisabled = false
+                    subtitleDisabled = !Prefs.isDefaultSubtitlesEnabled(context)
                     subtitleOverrideGroup = -1
                     subtitleOverrideTrack = -1
                     clearAudioOverride(p)
+                    if (subtitleDisabled) {
+                        p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
+                            .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+                            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+                            .build()
+                    } else {
+                        p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
+                            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                            .build()
+                    }
                 }
             }
             p.addListener(listener)
@@ -1453,7 +1658,7 @@ fun VideoPlayerScreen(
     fun startPlayback(request: MediaPlaybackRequest, showLoading: Boolean = true) {
         val sameLive = !request.isCatchup && request.channel.url == playbackIntent.request?.channel?.url
         if (showLoading && !sameLive) channelSwitch.show()
-        val p = ensureHardwarePlayerForNewZap()
+        val p = ensureHardwarePlayerForNewZap(request.channel)
         if (p != null) prepareRequest(p, request) else playbackIntent.retain(request)
     }
 
@@ -1636,8 +1841,17 @@ fun VideoPlayerScreen(
         return true
     }
 
-    val bannerQuickActions = remember(playingGroup, playingVariantIndex, videoAspectMode, appLanguage, inAppPipActive) {
+    val bannerQuickActions = remember(playingGroup, playingVariantIndex, videoAspectMode, appLanguage, inAppPipActive, favoriteUrls, currentChannel) {
         buildList {
+            val isFav = currentChannel?.url?.let { it in favoriteUrls } == true
+            add(
+                InfoCardQuickAction(
+                    id = InfoCardQuickActionId.FAVORITE,
+                    label = if (isFav) AppStrings.tr(appLanguage, "已收藏", "Fav") else AppStrings.tr(appLanguage, "收藏", "Fav"),
+                    description = AppStrings.tr(appLanguage, "收藏/取消收藏当前频道", "Toggle favorite"),
+                    active = isFav,
+                )
+            )
             val variantCount = playingGroup?.variants?.size ?: 0
             if (variantCount > 1) {
                 val idx = (playingVariantIndex + 1).coerceIn(1, variantCount)
@@ -1691,6 +1905,12 @@ fun VideoPlayerScreen(
 
     fun triggerQuickAction(actionId: InfoCardQuickActionId) {
         when (actionId) {
+            InfoCardQuickActionId.FAVORITE -> {
+                val ch = currentChannel ?: return
+                Prefs.toggleFavoriteUrl(context, ch.url)
+                favoriteUrls = Prefs.getFavoriteUrls(context)
+                uiController.noteInfoCardInteraction(promoteManual = true)
+            }
             InfoCardQuickActionId.SOURCE -> uiController.openQualityDialog(currentGroupIndex)
             InfoCardQuickActionId.ASPECT -> {
                 val next = videoAspectMode.next()
@@ -1794,6 +2014,15 @@ fun VideoPlayerScreen(
                 true
             }
         }
+        playback.setOnDigitMatchJump { matchIndex ->
+            val gs = latestChannelGroups.value
+            val matches = DigitOsdPolicy.matchChannels(uiController.currentDigits.digits, gs, limit = 6)
+            val chosen = matches.getOrNull(matchIndex) ?: return@setOnDigitMatchJump false
+            if (chosen.groupIndex !in gs.indices) return@setOnDigitMatchJump false
+            latestPlayGroupAuto.value(chosen.groupIndex)
+            uiController.showInfoCard(focused = false)
+            true
+        }
         playback.setOnChannelStep { direction ->
             val gs = latestChannelGroups.value
             if (gs.size < 2 || uiController.isBlockingOverlayOpen) return@setOnChannelStep false
@@ -1888,13 +2117,21 @@ fun VideoPlayerScreen(
     }
 
     // ── 抽屉数据派生 ─────────────────────────────────────────────────────────
-    val groups = remember(channelGroups) { ChannelGrouper.sortedDrawerGroups(channelGroups) }
-    val filteredChannels = remember(channelGroups, selectedGroup) {
-        val display = ChannelGrouper.displayChannels(channelGroups)
-        if (selectedGroup == SidebarState.ALL_GROUP) display
-        else channelGroups.mapIndexedNotNull { index, group ->
-            if (ChannelGrouper.displayGroupName(group) == selectedGroup) display.getOrNull(index) else null
-        }
+    val activeGroupConfig = remember(activeSourceId, groupConfigsVersion) {
+        val sid = activeSourceId ?: "default"
+        Prefs.getSourceGroupConfig(context, sid)
+    }
+    val groups = remember(channelGroups, favoriteUrls, showFavoritesGroup, showAllChannelsGroup, activeGroupConfig) {
+        ChannelGrouper.sortedDrawerGroups(
+            channelGroups = channelGroups,
+            favoriteUrls = favoriteUrls,
+            showFavorites = showFavoritesGroup,
+            showAll = showAllChannelsGroup,
+            groupConfig = activeGroupConfig,
+        )
+    }
+    val filteredChannels = remember(channelGroups, selectedGroup, favoriteUrls) {
+        ChannelGrouper.numberedDisplayChannelsForGroup(channelGroups, selectedGroup, favoriteUrls).map { it.channel }
     }
     val channelNumbersMap = remember(channelGroups) { ChannelGrouper.globalNumberByUrl(channelGroups) }
 
@@ -2045,6 +2282,13 @@ fun VideoPlayerScreen(
             override fun onSelectChannel(channel: Channel) {
                 latestPlayChannel.value(channel)
             }
+            override fun onToggleFavorite(channel: Channel) {
+                val added = Prefs.toggleFavoriteUrl(context, channel.url)
+                favoriteUrls = Prefs.getFavoriteUrls(context)
+                val msg = if (added) AppStrings.tr(appLanguage, "已加入收藏夹", "Added to Favorites")
+                else AppStrings.tr(appLanguage, "已移出收藏夹", "Removed from Favorites")
+                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+            }
             override fun onPlayProgram(request: CatchupPlayRequest) {
                 val bound = PlaybackIntent.catchup(latestAllChannels.value, request, playbackIntent.request)
                 if (bound != null) {
@@ -2085,6 +2329,7 @@ fun VideoPlayerScreen(
         uiScale,
         appLanguage,
         drawerOpen,
+        favoriteUrls,
     ) {
         nativeDrawer.updateSnapshot(
             NativeChannelDrawerView.Snapshot(
@@ -2104,6 +2349,7 @@ fun VideoPlayerScreen(
                 initialFocusUrl = sidebarController.lastFocusedUrlFor(selectedGroup),
                 uiScale = uiScale,
                 lang = appLanguage,
+                favoriteUrls = favoriteUrls,
             )
         )
         nativeDrawer.setOpen(drawerOpen)
@@ -2174,6 +2420,25 @@ fun VideoPlayerScreen(
             autoCheckUpdate = autoCheckUpdate,
             updateState = inlineUpdateState,
             notice = settingsNotice,
+            autoStartOnBoot = Prefs.isAutoStartOnBoot(context),
+            resumeLastChannel = Prefs.isResumeLastChannel(context),
+            homePipEnabled = Prefs.isHomePipEnabled(context),
+            doubleBackExitEnabled = Prefs.isDoubleBackExitEnabled(context),
+            epgRetentionDays = Prefs.getEpgRetentionDays(context),
+            epgUpdateOnPlaylistChange = Prefs.isEpgUpdateOnPlaylistChange(context),
+            uiTransparencyPct = uiTransparencyPct,
+            infoPanelTimeoutSec = infoPanelTimeoutSec,
+            showInfoOnZap = showInfoOnZap,
+            showClockInPlayer = showClockInPlayer,
+            showExactResolution = showExactResolution,
+            showFavoritesGroup = showFavoritesGroup,
+            showAllChannelsGroup = showAllChannelsGroup,
+            videoDecoderMode = Prefs.getVideoDecoderMode(context),
+            rebuildOn4kZap = Prefs.isRebuildOn4kZap(context),
+            defaultSubtitlesEnabled = Prefs.isDefaultSubtitlesEnabled(context),
+            subtitlePreferredLang = Prefs.getSubtitlePreferredLang(context),
+            allGroupNames = remember(channelGroups) { ChannelGrouper.allRawGroupNames(channelGroups) },
+            activeGroupConfig = activeGroupConfig,
         )
 
         val settingsActions = remember(
@@ -2197,6 +2462,14 @@ fun VideoPlayerScreen(
             audioTracks,
             playingGroupIndex,
             filteredChannels,
+            uiTransparencyPct,
+            infoPanelTimeoutSec,
+            showInfoOnZap,
+            showClockInPlayer,
+            showExactResolution,
+            showFavoritesGroup,
+            showAllChannelsGroup,
+            groupConfigsVersion,
         ) {
             SettingsActions(
                 onOpenPage = { uiController.openSettingsPage(it) },
@@ -2451,6 +2724,79 @@ fun VideoPlayerScreen(
                     notifySettings(AppStrings.tr(appLanguage, "正在刷新 EPG…", "Refreshing EPG…"))
                     requestManualEpg()
                 },
+                onToggleAutoStart = { enabled ->
+                    Prefs.setAutoStartOnBoot(context, enabled)
+                    groupConfigsVersion++
+                },
+                onToggleResumeLast = { enabled ->
+                    Prefs.setResumeLastChannel(context, enabled)
+                    groupConfigsVersion++
+                },
+                onToggleHomePip = { enabled ->
+                    Prefs.setHomePipEnabled(context, enabled)
+                    groupConfigsVersion++
+                },
+                onToggleDoubleBackExit = { enabled ->
+                    Prefs.setDoubleBackExitEnabled(context, enabled)
+                    groupConfigsVersion++
+                },
+                onSelectEpgRetentionDays = { days ->
+                    Prefs.setEpgRetentionDays(context, days)
+                    groupConfigsVersion++
+                },
+                onToggleEpgOnPlaylistChange = { enabled ->
+                    Prefs.setEpgUpdateOnPlaylistChange(context, enabled)
+                    groupConfigsVersion++
+                },
+                onSelectUiTransparencyPct = { pct ->
+                    uiTransparencyPct = pct
+                    Prefs.setUiTransparencyPct(context, pct)
+                },
+                onSelectInfoPanelTimeoutSec = { sec ->
+                    infoPanelTimeoutSec = sec
+                    Prefs.setInfoPanelTimeoutSec(context, sec)
+                },
+                onToggleShowInfoOnZap = { enabled ->
+                    showInfoOnZap = enabled
+                    Prefs.setShowInfoOnZap(context, enabled)
+                },
+                onToggleShowClock = { enabled ->
+                    showClockInPlayer = enabled
+                    Prefs.setShowClockInPlayer(context, enabled)
+                },
+                onToggleShowExactResolution = { enabled ->
+                    showExactResolution = enabled
+                    Prefs.setShowExactResolution(context, enabled)
+                },
+                onToggleShowFavoritesGroup = { enabled ->
+                    showFavoritesGroup = enabled
+                    Prefs.setShowFavoritesGroup(context, enabled)
+                },
+                onToggleShowAllGroup = { enabled ->
+                    showAllChannelsGroup = enabled
+                    Prefs.setShowAllChannelsGroup(context, enabled)
+                },
+                onSelectVideoDecoderMode = { mode ->
+                    Prefs.setVideoDecoderMode(context, mode)
+                    groupConfigsVersion++
+                    notifySettings(AppStrings.tr(appLanguage, "解码器设置将在下次换台生效", "Decoder change applies on next zap"))
+                },
+                onToggleRebuild4kZap = { enabled ->
+                    Prefs.setRebuildOn4kZap(context, enabled)
+                    groupConfigsVersion++
+                },
+                onToggleDefaultSubtitles = { enabled ->
+                    Prefs.setDefaultSubtitlesEnabled(context, enabled)
+                    groupConfigsVersion++
+                },
+                onSelectSubtitlePreferredLang = { langCode ->
+                    Prefs.setSubtitlePreferredLang(context, langCode)
+                    groupConfigsVersion++
+                },
+                onUpdateSourceGroupConfig = { sourceId, cfg ->
+                    Prefs.saveSourceGroupConfig(context, sourceId, cfg)
+                    groupConfigsVersion++
+                },
             )
         }
 
@@ -2579,6 +2925,8 @@ fun VideoPlayerScreen(
                 onExitFocus = { uiController.unfocusInfoCard() },
                 onFocusedChanged = { /* 单源状态已在 uiController，无需反向镜像 */ },
                 uiScale = uiScale,
+                uiAlpha = Prefs.uiSurfaceAlpha(uiTransparencyPct),
+                showExactResolution = showExactResolution,
                 animate = true,
                 modifier = Modifier.fillMaxWidth(),
             )

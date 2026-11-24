@@ -19,7 +19,8 @@ class SplashActivity : ComponentActivity() {
         cleanOldApkFiles()
 
         val liveSource = Prefs.getLiveSource(this)
-        val (lastUrl, lastTitle) = Prefs.getLastChannel(this)
+        val resumeLast = Prefs.isResumeLastChannel(this)
+        val (lastUrl, lastTitle) = if (resumeLast) Prefs.getLastChannel(this) else null to null
         val playlistFileName = Prefs.getPlaylistFileName(this)
 
         // t55：非阻塞延迟展示正式字标；不 sleep，800ms 后启动目标 Activity 并 finish。
@@ -27,9 +28,9 @@ class SplashActivity : ComponentActivity() {
             if (isFinishing || isDestroyed) return@postDelayed
             if (!Prefs.hasSelectedLanguage(this)) {
                 startActivity(Intent(this, LanguageSelectActivity::class.java))
-            } else if (liveSource.isNotBlank() && !lastUrl.isNullOrBlank()) {
+            } else if (liveSource.isNotBlank() && (!lastUrl.isNullOrBlank() || !resumeLast)) {
                 val intent = Intent(this, PlayerActivity::class.java).apply {
-                    putExtra("VIDEO_URL", lastUrl)
+                    putExtra("VIDEO_URL", lastUrl ?: "")
                     putExtra("VIDEO_TITLE", lastTitle ?: "Live")
                     if (!playlistFileName.isNullOrBlank()) {
                         putExtra("PLAYLIST_FILE_NAME", playlistFileName)

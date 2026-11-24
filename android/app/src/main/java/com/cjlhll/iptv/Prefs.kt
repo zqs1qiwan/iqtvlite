@@ -53,6 +53,26 @@ object Prefs {
     private const val KEY_GLOBAL_CUSTOM_HEADERS = "pref_global_custom_headers"
     private const val KEY_VIDEO_ASPECT_MODE = "pref_video_aspect_mode"
     private const val KEY_AUTO_CHECK_UPDATE = "pref_auto_check_update"
+    private const val KEY_AUTO_START_ON_BOOT = "pref_auto_start_on_boot"
+    private const val KEY_RESUME_LAST_CHANNEL = "pref_resume_last_channel"
+    private const val KEY_HOME_PIP_ENABLED = "pref_home_pip_enabled"
+    private const val KEY_DOUBLE_BACK_EXIT = "pref_double_back_exit"
+    private const val KEY_FAVORITE_URLS = "pref_favorite_urls_v1"
+    private const val KEY_GROUP_CONFIGS_JSON = "pref_group_configs_v1"
+    private const val KEY_PLAYLIST_SORT_MODE = "pref_playlist_sort_mode"
+    private const val KEY_EPG_RETENTION_DAYS = "pref_epg_retention_days"
+    private const val KEY_EPG_UPDATE_ON_PLAYLIST_CHANGE = "pref_epg_update_on_playlist_change"
+    private const val KEY_UI_TRANSPARENCY_PCT = "pref_ui_transparency_pct"
+    private const val KEY_INFO_PANEL_TIMEOUT_SEC = "pref_info_panel_timeout_sec"
+    private const val KEY_SHOW_INFO_ON_ZAP = "pref_show_info_on_zap"
+    private const val KEY_SHOW_CLOCK_IN_PLAYER = "pref_show_clock_in_player"
+    private const val KEY_SHOW_EXACT_RESOLUTION = "pref_show_exact_resolution"
+    private const val KEY_SHOW_FAVORITES_GROUP = "pref_show_favorites_group"
+    private const val KEY_SHOW_ALL_CHANNELS_GROUP = "pref_show_all_channels_group"
+    private const val KEY_REBUILD_ON_4K_ZAP = "pref_rebuild_on_4k_zap"
+    private const val KEY_VIDEO_DECODER_MODE = "pref_video_decoder_mode"
+    private const val KEY_DEFAULT_SUBTITLES_ENABLED = "pref_default_subtitles_enabled"
+    private const val KEY_SUBTITLE_PREFERRED_LANG = "pref_subtitle_preferred_lang"
 
     private fun getPrefs(context: Context): SharedPreferences {
         return context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
@@ -447,4 +467,243 @@ object Prefs {
     fun setAutoCheckUpdateEnabled(context: Context, enabled: Boolean) {
         getPrefs(context).edit().putBoolean(KEY_AUTO_CHECK_UPDATE, enabled).apply()
     }
+
+    fun isAutoStartOnBoot(context: Context): Boolean =
+        getPrefs(context).getBoolean(KEY_AUTO_START_ON_BOOT, false)
+
+    fun setAutoStartOnBoot(context: Context, enabled: Boolean) {
+        getPrefs(context).edit().putBoolean(KEY_AUTO_START_ON_BOOT, enabled).apply()
+    }
+
+    fun isResumeLastChannel(context: Context): Boolean =
+        getPrefs(context).getBoolean(KEY_RESUME_LAST_CHANNEL, true)
+
+    fun setResumeLastChannel(context: Context, enabled: Boolean) {
+        getPrefs(context).edit().putBoolean(KEY_RESUME_LAST_CHANNEL, enabled).apply()
+    }
+
+    fun isHomePipEnabled(context: Context): Boolean =
+        getPrefs(context).getBoolean(KEY_HOME_PIP_ENABLED, true)
+
+    fun setHomePipEnabled(context: Context, enabled: Boolean) {
+        getPrefs(context).edit().putBoolean(KEY_HOME_PIP_ENABLED, enabled).apply()
+    }
+
+    fun isDoubleBackExitEnabled(context: Context): Boolean =
+        getPrefs(context).getBoolean(KEY_DOUBLE_BACK_EXIT, true)
+
+    fun setDoubleBackExitEnabled(context: Context, enabled: Boolean) {
+        getPrefs(context).edit().putBoolean(KEY_DOUBLE_BACK_EXIT, enabled).apply()
+    }
+
+    fun getFavoriteUrls(context: Context): Set<String> =
+        getPrefs(context).getStringSet(KEY_FAVORITE_URLS, emptySet())?.toSet() ?: emptySet()
+
+    fun toggleFavoriteUrl(context: Context, url: String): Boolean {
+        val current = getFavoriteUrls(context).toMutableSet()
+        val added = if (current.contains(url)) {
+            current.remove(url)
+            false
+        } else {
+            current.add(url)
+            true
+        }
+        getPrefs(context).edit().putStringSet(KEY_FAVORITE_URLS, current).apply()
+        return added
+    }
+
+    fun getPlaylistSortMode(context: Context): String =
+        getPrefs(context).getString(KEY_PLAYLIST_SORT_MODE, "DEFAULT") ?: "DEFAULT"
+
+    fun setPlaylistSortMode(context: Context, mode: String) {
+        getPrefs(context).edit().putString(KEY_PLAYLIST_SORT_MODE, mode).apply()
+    }
+
+    data class SourceGroupConfig(
+        val sortMode: String = "DEFAULT",
+        val manualOrder: List<String> = emptyList(),
+        val hiddenGroups: Set<String> = emptySet(),
+    )
+
+    fun getGroupConfigsJson(context: Context): String =
+        getPrefs(context).getString(KEY_GROUP_CONFIGS_JSON, "{}").orEmpty()
+
+    fun setGroupConfigsJson(context: Context, json: String) {
+        getPrefs(context).edit().putString(KEY_GROUP_CONFIGS_JSON, json).apply()
+    }
+
+    fun getSourceGroupConfig(context: Context, sourceId: String): SourceGroupConfig = runCatching {
+        val root = org.json.JSONObject(getGroupConfigsJson(context).ifBlank { "{}" })
+        val obj = root.optJSONObject(sourceId) ?: return SourceGroupConfig()
+        val sortMode = obj.optString("sortMode", "DEFAULT")
+        val orderArr = obj.optJSONArray("manualOrder")
+        val order = buildList {
+            if (orderArr != null) {
+                for (i in 0 until orderArr.length()) {
+                    val s = orderArr.optString(i)
+                    if (s.isNotBlank()) add(s)
+                }
+            }
+        }
+        val hiddenArr = obj.optJSONArray("hiddenGroups")
+        val hidden = buildSet {
+            if (hiddenArr != null) {
+                for (i in 0 until hiddenArr.length()) {
+                    val s = hiddenArr.optString(i)
+                    if (s.isNotBlank()) add(s)
+                }
+            }
+        }
+        SourceGroupConfig(sortMode = sortMode, manualOrder = order, hiddenGroups = hidden)
+    }.getOrDefault(SourceGroupConfig())
+
+    fun saveSourceGroupConfig(context: Context, sourceId: String, config: SourceGroupConfig) {
+        runCatching {
+            val root = org.json.JSONObject(getGroupConfigsJson(context).ifBlank { "{}" })
+            val obj = org.json.JSONObject().apply {
+                put("sortMode", config.sortMode)
+                put("manualOrder", org.json.JSONArray(config.manualOrder))
+                put("hiddenGroups", org.json.JSONArray(config.hiddenGroups.toList()))
+            }
+            root.put(sourceId, obj)
+            setGroupConfigsJson(context, root.toString())
+        }
+    }
+
+    fun getEpgRetentionDays(context: Context): Int =
+        getPrefs(context).getInt(KEY_EPG_RETENTION_DAYS, 7).coerceIn(1, 21)
+
+    fun setEpgRetentionDays(context: Context, days: Int) {
+        getPrefs(context).edit().putInt(KEY_EPG_RETENTION_DAYS, days.coerceIn(1, 21)).apply()
+    }
+
+    fun isEpgUpdateOnPlaylistChange(context: Context): Boolean =
+        getPrefs(context).getBoolean(KEY_EPG_UPDATE_ON_PLAYLIST_CHANGE, true)
+
+    fun setEpgUpdateOnPlaylistChange(context: Context, enabled: Boolean) {
+        getPrefs(context).edit().putBoolean(KEY_EPG_UPDATE_ON_PLAYLIST_CHANGE, enabled).apply()
+    }
+
+    fun getUiTransparencyPct(context: Context): Int =
+        getPrefs(context).getInt(KEY_UI_TRANSPARENCY_PCT, 50).coerceIn(0, 90)
+
+    fun setUiTransparencyPct(context: Context, pct: Int) {
+        getPrefs(context).edit().putInt(KEY_UI_TRANSPARENCY_PCT, pct.coerceIn(0, 90)).apply()
+    }
+
+    fun uiSurfaceAlpha(pct: Int): Float =
+        (0.98f - pct.coerceIn(0, 90) * 0.0055f).coerceIn(0.45f, 0.98f)
+
+    fun getInfoPanelTimeoutSec(context: Context): Int =
+        getPrefs(context).getInt(KEY_INFO_PANEL_TIMEOUT_SEC, 5).coerceIn(2, 15)
+
+    fun setInfoPanelTimeoutSec(context: Context, sec: Int) {
+        getPrefs(context).edit().putInt(KEY_INFO_PANEL_TIMEOUT_SEC, sec.coerceIn(2, 15)).apply()
+    }
+
+    fun isShowInfoOnZap(context: Context): Boolean =
+        getPrefs(context).getBoolean(KEY_SHOW_INFO_ON_ZAP, true)
+
+    fun setShowInfoOnZap(context: Context, enabled: Boolean) {
+        getPrefs(context).edit().putBoolean(KEY_SHOW_INFO_ON_ZAP, enabled).apply()
+    }
+
+    fun isShowClockInPlayer(context: Context): Boolean =
+        getPrefs(context).getBoolean(KEY_SHOW_CLOCK_IN_PLAYER, false)
+
+    fun setShowClockInPlayer(context: Context, enabled: Boolean) {
+        getPrefs(context).edit().putBoolean(KEY_SHOW_CLOCK_IN_PLAYER, enabled).apply()
+    }
+
+    fun isShowExactResolution(context: Context): Boolean =
+        getPrefs(context).getBoolean(KEY_SHOW_EXACT_RESOLUTION, false)
+
+    fun setShowExactResolution(context: Context, enabled: Boolean) {
+        getPrefs(context).edit().putBoolean(KEY_SHOW_EXACT_RESOLUTION, enabled).apply()
+    }
+
+    fun isShowFavoritesGroup(context: Context): Boolean =
+        getPrefs(context).getBoolean(KEY_SHOW_FAVORITES_GROUP, true)
+
+    fun setShowFavoritesGroup(context: Context, enabled: Boolean) {
+        getPrefs(context).edit().putBoolean(KEY_SHOW_FAVORITES_GROUP, enabled).apply()
+    }
+
+    fun isShowAllChannelsGroup(context: Context): Boolean =
+        getPrefs(context).getBoolean(KEY_SHOW_ALL_CHANNELS_GROUP, true)
+
+    fun setShowAllChannelsGroup(context: Context, enabled: Boolean) {
+        getPrefs(context).edit().putBoolean(KEY_SHOW_ALL_CHANNELS_GROUP, enabled).apply()
+    }
+
+    fun isRebuildOn4kZap(context: Context): Boolean =
+        getPrefs(context).getBoolean(KEY_REBUILD_ON_4K_ZAP, true)
+
+    fun setRebuildOn4kZap(context: Context, enabled: Boolean) {
+        getPrefs(context).edit().putBoolean(KEY_REBUILD_ON_4K_ZAP, enabled).apply()
+    }
+
+    fun getVideoDecoderMode(context: Context): String =
+        getPrefs(context).getString(KEY_VIDEO_DECODER_MODE, "HARDWARE") ?: "HARDWARE"
+
+    fun setVideoDecoderMode(context: Context, mode: String) {
+        getPrefs(context).edit().putString(KEY_VIDEO_DECODER_MODE, mode).apply()
+    }
+
+    fun isDefaultSubtitlesEnabled(context: Context): Boolean =
+        getPrefs(context).getBoolean(KEY_DEFAULT_SUBTITLES_ENABLED, true)
+
+    fun setDefaultSubtitlesEnabled(context: Context, enabled: Boolean) {
+        getPrefs(context).edit().putBoolean(KEY_DEFAULT_SUBTITLES_ENABLED, enabled).apply()
+    }
+
+    fun getSubtitlePreferredLang(context: Context): String =
+        getPrefs(context).getString(KEY_SUBTITLE_PREFERRED_LANG, "auto") ?: "auto"
+
+    fun setSubtitlePreferredLang(context: Context, lang: String) {
+        getPrefs(context).edit().putString(KEY_SUBTITLE_PREFERRED_LANG, lang).apply()
+    }
+
+    fun exportBackupJson(context: Context): String {
+        val all = getPrefs(context).all
+        val root = org.json.JSONObject()
+        root.put("app", "IQTV Lite")
+        root.put("schema", 1)
+        val entries = org.json.JSONObject()
+        for ((k, v) in all) {
+            when (v) {
+                is Boolean, is Int, is Long, is Float, is Double, is String -> entries.put(k, v)
+                is Set<*> -> entries.put(k, org.json.JSONArray(v.mapNotNull { it?.toString() }))
+            }
+        }
+        root.put("prefs", entries)
+        return root.toString(2)
+    }
+
+    fun importBackupJson(context: Context, raw: String): Boolean = runCatching {
+        val root = org.json.JSONObject(raw)
+        val prefsObj = root.optJSONObject("prefs") ?: return false
+        val editor = getPrefs(context).edit()
+        val keys = prefsObj.keys()
+        while (keys.hasNext()) {
+            val k = keys.next()
+            val v = prefsObj.opt(k)
+            when (v) {
+                is Boolean -> editor.putBoolean(k, v)
+                is Int -> editor.putInt(k, v)
+                is Long -> editor.putLong(k, v)
+                is Number -> editor.putInt(k, v.toInt())
+                is String -> editor.putString(k, v)
+                is org.json.JSONArray -> {
+                    val set = LinkedHashSet<String>()
+                    for (i in 0 until v.length()) {
+                        val s = v.optString(i)
+                        if (s.isNotBlank()) set.add(s)
+                    }
+                    editor.putStringSet(k, set)
+                }
+            }
+        }
+        editor.commit()
+    }.getOrDefault(false)
 }

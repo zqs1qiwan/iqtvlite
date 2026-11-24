@@ -26,6 +26,10 @@ data class PlaybackCallbacks(
     val setOnExitPip: ((() -> Unit)?) -> Unit = {},
     val setOnExtraBack: (((() -> Boolean)?) -> Unit) = {},
     val onSubtitleDialogOpenChanged: (Boolean) -> Unit = {},
+    val digitMatchSelectedIndex: Int = 0,
+    val onDigitMatchesChanged: (Int) -> Unit = {},
+    val setOnDigitMatchJump: (((Int) -> Boolean)?) -> Unit = {},
+    val onChannelGroupsChanged: (List<ChannelGroup>) -> Unit = {},
 )
 
 /** 覆盖层（抽屉/设置/线路/最近观看/音轨）控制器与状态镜像。 */

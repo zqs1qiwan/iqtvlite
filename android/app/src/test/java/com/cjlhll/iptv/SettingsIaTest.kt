@@ -12,21 +12,22 @@ import org.junit.Test
 class SettingsIaTest {
 
     @Test
-    fun rootHasExactlySixEntriesInTheApprovedOrder() {
-        assertEquals(6, SettingsIA.ROOT_ORDER.size)
+    fun rootHasExactlySevenEntriesInTheApprovedOrder() {
+        assertEquals(7, SettingsIA.ROOT_ORDER.size)
         assertEquals(
             listOf(
+                SettingsPage.GENERAL,
+                SettingsPage.PLAYLISTS,
+                SettingsPage.EPG,
+                SettingsPage.APPEARANCE,
                 SettingsPage.PLAYBACK,
                 SettingsPage.REMOTE,
-                SettingsPage.AUDIO,
-                SettingsPage.DATA,
-                SettingsPage.LOGO,
                 SettingsPage.ABOUT,
             ),
             SettingsIA.ROOT_ORDER,
         )
         assertEquals(
-            listOf("播放与画面", "遥控器与操作", "音频与字幕", "播放列表及节目单", "台标与缓存", "关于"),
+            listOf("通用", "节目列表", "节目预告", "外观", "播放解码", "遥控设置", "关于与更新"),
             SettingsIA.ROOT_ORDER.map { it.title },
         )
     }
@@ -42,11 +43,11 @@ class SettingsIaTest {
 
     @Test
     fun everyPageStaysWithinTheFirstScreenBudget() {
-        // 每个二级页保持精简（含多源管理与全局请求头在内 ≤9 行）。
+        // 每个二级页保持精简（≤16 行，支持 scrollable 分组）。
         SettingsPage.entries.forEach { page ->
             assertTrue(
-                "$page 有 ${SettingsIA.itemTags(page).size} 行，超过 9 行预算",
-                SettingsIA.itemTags(page).size <= 9,
+                "$page 有 ${SettingsIA.itemTags(page).size} 行，超过 16 行预算",
+                SettingsIA.itemTags(page).size <= 16,
             )
         }
     }
@@ -54,7 +55,7 @@ class SettingsIaTest {
     @Test
     fun rootTagsAreDistinctAndNotPageItems() {
         val rootTags = SettingsIA.ROOT_ORDER.map { SettingsIA.rootTag(it) }
-        assertEquals(6, rootTags.distinct().size)
+        assertEquals(7, rootTags.distinct().size)
         val pageItems = SettingsPage.entries.flatMap { SettingsIA.itemTags(it) }.toSet()
         rootTags.forEach { rootTag ->
             assertFalse("一级 tag $rootTag 不能出现在二级行里", rootTag in pageItems)
@@ -90,7 +91,7 @@ class SettingsIaTest {
     fun retiredSetIsExactlyTheMergedEpgAndRetiredBackRows() {
         assertEquals(setOf("settings_epg_source", "settings_remote_back"), SettingsIA.RETIRED_TAGS)
         // 合并后的手动 EPG 刷新仍由 settings_refresh_epg 承载，且全仓只此一个。
-        assertTrue("settings_refresh_epg" in SettingsIA.itemTags(SettingsPage.DATA))
+        assertTrue("settings_refresh_epg" in SettingsIA.itemTags(SettingsPage.EPG))
         val manualEpgTags = SettingsPage.entries
             .flatMap { SettingsIA.itemTags(it) }
             .filter { it == "settings_refresh_epg" || it == "settings_epg_source" }
@@ -100,13 +101,13 @@ class SettingsIaTest {
     @Test
     fun rootEntriesUseTheGivenSummariesAndFallBackToDash() {
         val entries = SettingsIA.rootEntries(
-            mapOf(SettingsPage.PLAYBACK to "起播缓冲 稳(500ms)", SettingsPage.ABOUT to "版本 10145")
+            mapOf(SettingsPage.GENERAL to "主页画中画 · WebUI 备份", SettingsPage.ABOUT to "v0.2.0")
         )
-        assertEquals(6, entries.size)
-        assertEquals("起播缓冲 稳(500ms)", entries[0].summary)
-        assertEquals("版本 10145", entries[5].summary)
+        assertEquals(7, entries.size)
+        assertEquals("主页画中画 · WebUI 备份", entries[0].summary)
+        assertEquals("v0.2.0", entries[6].summary)
         assertEquals("缺失摘要用 —", SettingsSummary.EMPTY, entries[1].summary)
-        assertEquals("settings_root_remote", entries[1].tag)
+        assertEquals("settings_root_playlists", entries[1].tag)
     }
 
     @Test

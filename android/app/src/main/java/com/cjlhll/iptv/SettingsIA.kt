@@ -8,14 +8,15 @@ package com.cjlhll.iptv
  * / `SettingsSummaryTest`）。规格见 docs/SETTINGS_IA_V2.md。
  */
 
-/** 六个二级页；[id] 同时用于 `settings_page_<id>` / `settings_root_<id>` testTag。 */
+/** 七个二级页（无家长控制）；[id] 同时用于 `settings_page_<id>` / `settings_root_<id>` testTag。 */
 enum class SettingsPage(val id: String, val title: String, val titleEn: String) {
-    PLAYBACK("playback", "播放与画面", "Playback & Display"),
-    REMOTE("remote", "遥控器与操作", "Remote & Controls"),
-    AUDIO("audio", "音频与字幕", "Audio & Subtitles"),
-    DATA("data", "播放列表及节目单", "Playlists & EPG"),
-    LOGO("logo", "台标与缓存", "Logos & Cache"),
-    ABOUT("about", "关于", "About");
+    GENERAL("general", "通用", "General"),
+    PLAYLISTS("playlists", "节目列表", "Playlists"),
+    EPG("epg", "节目预告", "EPG"),
+    APPEARANCE("appearance", "外观", "Appearance"),
+    PLAYBACK("playback", "播放解码", "Playback"),
+    REMOTE("remote", "遥控设置", "Remote Control"),
+    ABOUT("about", "关于与更新", "About & Updates");
 
     fun localizedTitle(lang: AppLang): String = if (lang == AppLang.EN) titleEn else title
 }
@@ -34,23 +35,63 @@ object SettingsIA {
     const val ROOT_CONTAINER_TAG = "settings_root"
     const val ROOT_TITLE_TAG = "settings_root_title"
 
-    /** 一级入口顺序（规格 §2，不得随意调整）。 */
+    /** 一级入口顺序（7 大分类，不得随意调整）。 */
     val ROOT_ORDER: List<SettingsPage> = listOf(
+        SettingsPage.GENERAL,
+        SettingsPage.PLAYLISTS,
+        SettingsPage.EPG,
+        SettingsPage.APPEARANCE,
         SettingsPage.PLAYBACK,
         SettingsPage.REMOTE,
-        SettingsPage.AUDIO,
-        SettingsPage.DATA,
-        SettingsPage.LOGO,
         SettingsPage.ABOUT,
     )
 
     /** 每页可聚焦行的 tag，顺序即展示顺序（含条件行，UI 侧按可用性过滤）。 */
     private val PAGE_ITEMS: Map<SettingsPage, List<String>> = mapOf(
-        SettingsPage.PLAYBACK to listOf(
+        SettingsPage.GENERAL to listOf(
+            "settings_auto_start",
+            "settings_resume_last",
+            "settings_home_pip",
+            "settings_double_back_exit",
+            "settings_global_ua",
+            "settings_global_headers",
+            "settings_source_config",
+        ),
+        SettingsPage.PLAYLISTS to listOf(
+            "settings_source_manage",
+            "settings_refresh_playlist",
+            "settings_auto_playlist",
+            "settings_recent_entry",
+        ),
+        SettingsPage.EPG to listOf(
+            "settings_epg_retention",
+            "settings_auto_epg",
+            "settings_epg_on_playlist_change",
+            "settings_refresh_epg",
+        ),
+        SettingsPage.APPEARANCE to listOf(
             "settings_language",
             "settings_ui_scale",
+            "settings_ui_transparency",
+            "settings_info_panel_timeout",
+            "settings_show_info_on_zap",
+            "settings_show_clock",
+            "settings_show_exact_resolution",
+            "settings_show_favorites_group",
+            "settings_show_all_group",
             "settings_info_ok_mode",
+            "settings_logo_prefetch",
+            "settings_logo_load",
+            "settings_logo_refresh",
+            "settings_logo_clear",
+        ),
+        SettingsPage.PLAYBACK to listOf(
             "settings_playback_buffer",
+            "settings_video_decoder",
+            "settings_rebuild_4k_zap",
+            "settings_default_subtitles",
+            "settings_subtitle_lang",
+            "settings_audio_track",
             "settings_quality_menu",
             "settings_zap_preconnect",
             "settings_multicast_prewarm",
@@ -62,26 +103,6 @@ object SettingsIA {
             "settings_remote_digits",
             "settings_remote_channel_keys",
             "settings_remote_reset",
-        ),
-        SettingsPage.AUDIO to listOf(
-            "settings_audio_track",
-        ),
-        SettingsPage.DATA to listOf(
-            "settings_source_manage",
-            "settings_source_config",
-            "settings_global_ua",
-            "settings_global_headers",
-            "settings_auto_playlist",
-            "settings_refresh_playlist",
-            "settings_auto_epg",
-            "settings_refresh_epg",
-            "settings_recent_entry",
-        ),
-        SettingsPage.LOGO to listOf(
-            "settings_logo_prefetch",
-            "settings_logo_load",
-            "settings_logo_refresh",
-            "settings_logo_clear",
         ),
         SettingsPage.ABOUT to listOf(
             "settings_auto_check_update",
@@ -110,11 +131,11 @@ object SettingsIA {
      * `settings_epg_source`（映射到播放列表及节目单页，动作由 `settings_refresh_epg` 承载）。
      */
     val LEGACY_TAG_PAGE: Map<String, SettingsPage> = buildMap {
-        put("settings_source_config", SettingsPage.DATA)
-        put("settings_epg_source", SettingsPage.DATA)
+        put("settings_source_config", SettingsPage.GENERAL)
+        put("settings_epg_source", SettingsPage.EPG)
         put("settings_quality_menu", SettingsPage.PLAYBACK)
         put("settings_check_update", SettingsPage.ABOUT)
-        put("settings_recent_entry", SettingsPage.DATA)
+        put("settings_recent_entry", SettingsPage.PLAYLISTS)
         put("settings_playback_buffer", SettingsPage.PLAYBACK)
         put("settings_zap_preconnect", SettingsPage.PLAYBACK)
         put("settings_multicast_prewarm", SettingsPage.PLAYBACK)
@@ -125,15 +146,15 @@ object SettingsIA {
         put("settings_remote_digits", SettingsPage.REMOTE)
         put("settings_remote_channel_keys", SettingsPage.REMOTE)
         put("settings_remote_reset", SettingsPage.REMOTE)
-        put("settings_audio_track", SettingsPage.AUDIO)
-        put("settings_auto_playlist", SettingsPage.DATA)
-        put("settings_refresh_playlist", SettingsPage.DATA)
-        put("settings_auto_epg", SettingsPage.DATA)
-        put("settings_refresh_epg", SettingsPage.DATA)
-        put("settings_logo_prefetch", SettingsPage.LOGO)
-        put("settings_logo_load", SettingsPage.LOGO)
-        put("settings_logo_refresh", SettingsPage.LOGO)
-        put("settings_logo_clear", SettingsPage.LOGO)
+        put("settings_audio_track", SettingsPage.PLAYBACK)
+        put("settings_auto_playlist", SettingsPage.PLAYLISTS)
+        put("settings_refresh_playlist", SettingsPage.PLAYLISTS)
+        put("settings_auto_epg", SettingsPage.EPG)
+        put("settings_refresh_epg", SettingsPage.EPG)
+        put("settings_logo_prefetch", SettingsPage.APPEARANCE)
+        put("settings_logo_load", SettingsPage.APPEARANCE)
+        put("settings_logo_refresh", SettingsPage.APPEARANCE)
+        put("settings_logo_clear", SettingsPage.APPEARANCE)
     }
 
     /** 已合并/退役的 tag（settings_epg_source 并入 settings_refresh_epg；settings_remote_back 统一由 BackKeyPolicy 分层双按承载）。 */

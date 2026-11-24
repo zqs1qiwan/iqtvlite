@@ -208,7 +208,11 @@ fun MainScreen() {
                 }
                 if (generation != requestGeneration) return@launch
                 if (!committed) throw IOException("Unable to save playlist cache")
-                val (lastUrl, lastTitle) = Prefs.getLastChannel(context)
+                val (lastUrl, lastTitle) = if (Prefs.isResumeLastChannel(context)) {
+                    Prefs.getLastChannel(context)
+                } else {
+                    null to null
+                }
                 val (groupIndex, variantIndex) = ChannelGrouper.findBestGroupVariant(groups, lastUrl, lastTitle)
                 val channel = groups[groupIndex].variants[variantIndex].channel
                 Prefs.setLastChannel(context, channel.url, channel.title)

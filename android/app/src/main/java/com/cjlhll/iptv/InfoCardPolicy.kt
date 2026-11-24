@@ -240,6 +240,12 @@ object InfoCardPolicy {
         else -> "${channelCount}ch"
     }
 
+    /** 分辨率显示：exact=true 且宽高均有效时返回 "1920x1080"，否则返回档位短标（FHD/4K）。 */
+    fun resolutionLabel(width: Int, height: Int, exact: Boolean = false): String? {
+        if (exact && width > 0 && height > 0) return "${width}x${height}"
+        return resolutionTier(width, height)?.label
+    }
+
     /**
      * 右上角信息 Tag：分辨率、真实帧率、声道数字、真实动态范围、视频编码。
      * 只有真实获取到该维度数据时才加入，未知项直接省略、不填占位符。
@@ -253,9 +259,10 @@ object InfoCardPolicy {
         hasHdrStaticInfo: Boolean,
         mime: String?,
         codecs: String?,
+        exactResolution: Boolean = false,
     ): List<String> {
         val out = ArrayList<String>(5)
-        resolutionTier(width, height)?.label?.let(out::add)
+        resolutionLabel(width, height, exactResolution)?.let(out::add)
         frameRateLabel(frameRate)?.let(out::add)
         channelNumberLabel(channelCount)?.let(out::add)
         dynamicRangeLabel(colorTransfer, hasHdrStaticInfo)?.let(out::add)

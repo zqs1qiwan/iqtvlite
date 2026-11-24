@@ -68,12 +68,14 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
         val initialFocusUrl: String? = null,
         val uiScale: UiScalePreset = UiScalePreset.DEFAULT,
         val lang: AppLang = AppLang.ZH,
+        val favoriteUrls: Set<String> = emptySet(),
     )
 
     interface Listener {
         fun onSelectSource(source: PlaylistSource)
         fun onSelectGroup(group: String, resetFocus: Boolean)
         fun onSelectChannel(channel: Channel)
+        fun onToggleFavorite(channel: Channel) {}
         fun onPlayProgram(request: CatchupPlayRequest)
         fun onClose()
         fun onActiveColumnChanged(column: DrawerColumn)
@@ -431,6 +433,7 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
         if (snapshot.lang != AppLang.EN) return raw
         return when (raw) {
             SidebarState.ALL_GROUP -> "All"
+            SidebarState.FAVORITES_GROUP -> "Favorites"
             "央视频道" -> "CCTV"
             "卫视频道" -> "Satellite TV"
             "卡通频道" -> "Kids"
@@ -755,6 +758,13 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
                     scheduleEpgLoad(immediate = true)
                 } else {
                     Toast.makeText(context, t("当前频道暂无节目单", "No EPG for this channel"), Toast.LENGTH_SHORT).show()
+                }
+                true
+            }
+            KeyEvent.KEYCODE_MENU,
+            KeyEvent.KEYCODE_BOOKMARK -> {
+                currentFocusedChannel()?.let { ch ->
+                    listener?.onToggleFavorite(ch)
                 }
                 true
             }
@@ -1438,7 +1448,8 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
             val ch = snapshot.channels[position]
             val num = snapshot.channelNumbers[ch.url] ?: (position + 1)
             holder.numTv.text = num.toString()
-            holder.titleTv.text = ch.title
+            val fav = ch.url in snapshot.favoriteUrls
+            holder.titleTv.text = if (fav) "★ ${ch.title}" else ch.title
 
             bindNowProgram(holder, ch)
             bindLogo(holder, ch)

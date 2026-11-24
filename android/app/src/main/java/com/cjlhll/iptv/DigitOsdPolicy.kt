@@ -38,4 +38,30 @@ object DigitOsdPolicy {
 
     /** An open overlay must hide the OSD instead of leaving it on top. */
     fun visibleWhen(anyOverlayOpen: Boolean): Boolean = !anyOverlayOpen
+
+    data class DigitMatch(
+        val groupIndex: Int,
+        val number: Int,
+        val title: String,
+        val logoUrl: String?,
+    )
+
+    /** 数字输入实时匹配频道：精确频道号优先，其次前缀匹配，最多返回 [limit] 条。 */
+    fun matchChannels(digits: String, groups: List<ChannelGroup>, limit: Int = 6): List<DigitMatch> {
+        if (digits.isBlank() || groups.isEmpty() || limit <= 0) return emptyList()
+        val exact = ArrayList<DigitMatch>(1)
+        val prefix = ArrayList<DigitMatch>(limit)
+        for (i in groups.indices) {
+            val number = i + 1
+            val numStr = number.toString()
+            if (numStr == digits) {
+                val ch = groups[i].defaultChannel
+                exact.add(DigitMatch(i, number, groups[i].displayTitle, groups[i].logoUrl ?: ch.logoUrl))
+            } else if (numStr.startsWith(digits) && prefix.size < limit) {
+                val ch = groups[i].defaultChannel
+                prefix.add(DigitMatch(i, number, groups[i].displayTitle, groups[i].logoUrl ?: ch.logoUrl))
+            }
+        }
+        return (exact + prefix).take(limit)
+    }
 }
