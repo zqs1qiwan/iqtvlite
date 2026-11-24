@@ -45,6 +45,7 @@ object M3uParser {
                         userAgent = address.userAgent,
                         referrer = address.referrer,
                         customHeaders = address.headers,
+                        entryIndex = i,
                     ))
                 }
             }

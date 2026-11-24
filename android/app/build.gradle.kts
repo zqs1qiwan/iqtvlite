@@ -12,13 +12,13 @@ android {
         minSdk = 24
         targetSdk = 35
         resValue("string", "app_name", if (providers.gradleProperty("ISOLATED_TEST_PACKAGE").orNull == "true") "IQTV Lite Validation" else "IQTV Lite")
-        versionCode = providers.gradleProperty("APP_VERSION_CODE").orNull?.toInt() ?: 100
-        versionName = (providers.gradleProperty("APP_VERSION_NAME").orNull ?: "0.1.0") +
+        versionCode = providers.gradleProperty("APP_VERSION_CODE").orNull?.toInt() ?: 101
+        versionName = (providers.gradleProperty("APP_VERSION_NAME").orNull ?: "0.1.1") +
             (if (providers.gradleProperty("ISOLATED_TEST_PACKAGE").orNull == "true") "-validation" else "")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
     }
-    // ── Validation 稳定签名（CI 跨 run 同证书，设备可一直 `adb install -r`） ──
+    // ── 正式 / Validation 稳定签名（见 docs/RELEASE_SIGNING.md） ──
     // 首选 VALIDATION_*（见 docs/CI_STABLE_SIGNING.md），兼容旧名 ANDROID_SIGNING_*。
     // 四个值必须同时提供；keystore 文件必须存在。都没配置时回退 Android 自动 debug
     // keystore（本地开发 / 未加 secrets 的 CI 照常构建，只是签名每个 run 都会变）。

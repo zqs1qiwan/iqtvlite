@@ -15,6 +15,11 @@ data class PlaybackCallbacks(
     val setOnReturnToLive: ((() -> Boolean)?) -> Unit = {},
     val onCatchupPlaybackChanged: (Boolean) -> Unit = {},
     val onBack: () -> Unit = {},
+    val isPipSupported: Boolean = false,
+    val isInPipMode: Boolean = false,
+    val onEnterPip: () -> Unit = {},
+    val setOnExtraBack: (((() -> Boolean)?) -> Unit) = {},
+    val onSubtitleDialogOpenChanged: (Boolean) -> Unit = {},
 )
 
 /** 覆盖层（抽屉/设置/线路/最近观看/音轨）控制器与状态镜像。 */

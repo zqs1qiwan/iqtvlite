@@ -15,4 +15,6 @@ data class Channel(
     val userAgent: String? = null,
     val referrer: String? = null,
     val customHeaders: Map<String, String> = emptyMap(),
+    /** 来自同一个 M3U `#EXTINF` 条目的原始序号；相同序号的多条 URL 为同一频道的多源线路，不同 `#EXTINF` 条目各自独立成台。 */
+    val entryIndex: Int = -1,
 )

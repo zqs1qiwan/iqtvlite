@@ -166,7 +166,6 @@ object HttpStreamAddress {
                         val cleanKey = line.substringBefore('|').trim()
                         perUrl[line] = HashMap(pending)
                         if (cleanKey != line) perUrl.putIfAbsent(cleanKey, HashMap(pending))
-                        pending.clear()
                     }
                 }
             }

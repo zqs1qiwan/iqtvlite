@@ -47,6 +47,7 @@
             android:name="com.cjlhll.iptv.PlayerActivity"
             android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|smallestScreenSize|uiMode"
             android:screenOrientation="landscape"
+            android:supportsPictureInPicture="true"
             android:theme="@style/Theme.AppCompat.NoActionBar" />
 
         <activity-alias android:name="tv.iqtvlite.app.MainActivity"

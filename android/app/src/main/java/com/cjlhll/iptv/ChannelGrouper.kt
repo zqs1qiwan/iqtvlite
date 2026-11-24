@@ -262,6 +262,9 @@ object ChannelGrouper {
     }
 
     internal fun mergeKeys(channel: Channel): Set<String> {
+        if (channel.entryIndex >= 0) {
+            return setOf("entry:${channel.entryIndex}")
+        }
         val keys = LinkedHashSet<String>()
 
         val label = EpgNormalize.displayName(

@@ -81,4 +81,48 @@ class ChannelGrouperTest {
         assertEquals(2, groups[0].variants.size)
         assertEquals(2, groups[1].variants.size)
     }
+
+    @Test
+    fun groupsMultiUrlsFromSingleExtinfAndKeepsSeparateExtinfEntriesIndependent() {
+        val groupedFromOneExtinf = listOf(
+            Channel(
+                title = "东方卫视",
+                url = "http://audiovisual.vsd.gehua.net.cn/1111111",
+                group = "卫视频道",
+                tvgId = "dongfangweishi",
+                tvgName = "东方卫视",
+                entryIndex = 0,
+            ),
+            Channel(
+                title = "东方卫视",
+                url = "http://audiovisual.vsd.gehua.net.cn/222222",
+                group = "卫视频道",
+                tvgId = "dongfangweishi",
+                tvgName = "东方卫视",
+                entryIndex = 0,
+            ),
+            Channel(
+                title = "东方卫视",
+                url = "http://audiovisual.vsd.gehua.net.cn/333333",
+                group = "卫视频道",
+                tvgId = "dongfangweishi",
+                tvgName = "东方卫视",
+                entryIndex = 0,
+            ),
+            Channel(
+                title = "东方卫视",
+                url = "http://audiovisual.vsd.gehua.net.cn/444444",
+                group = "卫视频道",
+                tvgId = "dongfangweishi",
+                tvgName = "东方卫视",
+                entryIndex = 1,
+            ),
+        )
+
+        val groups = ChannelGrouper.group(groupedFromOneExtinf)
+        assertEquals(2, groups.size)
+        assertEquals(3, groups[0].variants.size)
+        assertEquals(1, groups[1].variants.size)
+        assertNotEquals(groups[0].key, groups[1].key)
+    }
 }

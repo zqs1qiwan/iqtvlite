@@ -51,6 +51,7 @@ object Prefs {
     private const val KEY_ACTIVE_SOURCE_ID = "active_source_id_v1"
     private const val KEY_GLOBAL_USER_AGENT = "pref_global_user_agent"
     private const val KEY_GLOBAL_CUSTOM_HEADERS = "pref_global_custom_headers"
+    private const val KEY_VIDEO_ASPECT_MODE = "pref_video_aspect_mode"
 
     private fun getPrefs(context: Context): SharedPreferences {
         return context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
@@ -430,5 +431,12 @@ object Prefs {
             .putLong(KEY_EPG_LAST_FAILURE, 0L)
             .putInt(KEY_EPG_FAIL_COUNT, 0)
             .apply()
+    }
+
+    fun getVideoAspectMode(context: Context): VideoAspectMode =
+        VideoAspectMode.parse(getPrefs(context).getString(KEY_VIDEO_ASPECT_MODE, null))
+
+    fun setVideoAspectMode(context: Context, mode: VideoAspectMode) {
+        getPrefs(context).edit().putString(KEY_VIDEO_ASPECT_MODE, mode.id).apply()
     }
 }

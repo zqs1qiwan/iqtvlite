@@ -1,8 +1,12 @@
 package com.cjlhll.iptv
 
 import android.app.Activity
+import android.app.PictureInPictureParams
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.graphics.Color
+import android.os.Build
 import android.os.Bundle
 import android.os.SystemClock
 import android.util.Log
@@ -102,6 +106,9 @@ class PlayerActivity : ComponentActivity() {
     private var onReturnToLive: (() -> Boolean)? = null
     private var onOpenInfoCardFromOk: (() -> Boolean)? = null
     private var onInfoCardFocusedAction: ((InfoCardPolicy.FocusedKeyAction) -> Boolean)? = null
+    private var onExtraBack: (() -> Boolean)? = null
+    private var subtitleDialogOpenFlag: Boolean = false
+    private var isInPipMode by mutableStateOf(false)
     private lateinit var nativeDrawer: NativeChannelDrawerView
 
     private var isCatchupPlayback: Boolean = false
@@ -187,6 +194,7 @@ class PlayerActivity : ComponentActivity() {
             setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
             setKeepContentOnPlayerReset(true)
             setShutterBackgroundColor(Color.TRANSPARENT)
+            resizeMode = Prefs.getVideoAspectMode(this@PlayerActivity).resizeModeValue
             keepScreenOn = true
             isFocusable = false
             isFocusableInTouchMode = false
@@ -269,6 +277,11 @@ class PlayerActivity : ComponentActivity() {
                             setOnReturnToLive = { onReturnToLive = it },
                             onCatchupPlaybackChanged = { isCatchupPlayback = it },
                             onBack = { finish() },
+                            isPipSupported = isPipSupportedOnDevice(),
+                            isInPipMode = isInPipMode,
+                            onEnterPip = { enterPipMode() },
+                            setOnExtraBack = { onExtraBack = it },
+                            onSubtitleDialogOpenChanged = { subtitleDialogOpenFlag = it },
                         ),
                         infoCard = InfoCardCallbacks(
                             setOpenInfoCardFromOkController = { onOpenInfoCardFromOk = it },
@@ -285,7 +298,7 @@ class PlayerActivity : ComponentActivity() {
                     )
 
                     val digitState by uiController.digitOsd.collectAsState()
-                    if (digitState.visible) {
+                    if (!isInPipMode && digitState.visible) {
                         val osdDigitColor = if (digitState.confirmed) BrandFocus.BlueColor else TvDesignTokens.TextPrimary
                         val badgeShape = RoundedCornerShape(10.dp)
                         Box(
@@ -313,6 +326,34 @@ class PlayerActivity : ComponentActivity() {
                     }
                 }
             }
+        }
+    }
+
+    private fun isPipSupportedOnDevice(): Boolean =
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+            packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)
+
+    private fun enterPipMode() {
+        if (!isPipSupportedOnDevice()) return
+        uiController.closeAll()
+        onExtraBack?.invoke()
+        closeDrawerSynced()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            runCatching {
+                enterPictureInPictureMode(PictureInPictureParams.Builder().build())
+            }
+        }
+    }
+
+    override fun onPictureInPictureModeChanged(
+        isInPictureInPictureMode: Boolean,
+        newConfig: Configuration,
+    ) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        isInPipMode = isInPictureInPictureMode
+        if (isInPictureInPictureMode) {
+            uiController.closeAll()
+            closeDrawerSynced()
         }
     }
 
@@ -418,6 +459,9 @@ class PlayerActivity : ComponentActivity() {
     }
 
     private fun handleBackKey(): Boolean {
+        if (onExtraBack?.invoke() == true) {
+            return true
+        }
         val nowMs = System.currentTimeMillis()
         val within2s = if (isCatchupPlayback) {
             nowMs - lastBackPressTimeCatchup <= 2000L
@@ -520,8 +564,8 @@ class PlayerActivity : ComponentActivity() {
             return keyCode in NAV_AND_OK_KEYS
         }
 
-        // 6. 其它阻断型覆盖层（设置 / 线路 / 音轨 / 最近观看 / 更新弹窗）：全部交给浮层消费，绝不透传到底层播放器
-        if (uiController.isBlockingOverlayOpen) {
+        // 6. 其它阻断型覆盖层（设置 / 线路 / 音轨 / 字幕 / 最近观看 / 更新弹窗）：全部交给浮层消费，绝不透传到底层播放器
+        if (uiController.isBlockingOverlayOpen || subtitleDialogOpenFlag) {
             cancelLongPress()
             return super.dispatchKeyEvent(event)
         }
@@ -687,6 +731,7 @@ fun VideoPlayerScreen(
     var channelGroups by remember { mutableStateOf<List<ChannelGroup>>(emptyList()) }
     var currentGroupIndex by remember { mutableIntStateOf(0) }
     var currentVariantIndex by remember { mutableIntStateOf(0) }
+    val triedVariantUrls = remember { mutableSetOf<String>() }
 
     LaunchedEffect(channelGroups) { sidebarController.setChannelGroups(channelGroups) }
     LaunchedEffect(currentGroupIndex, currentVariantIndex) {
@@ -744,6 +789,17 @@ fun VideoPlayerScreen(
     var audioTracks by remember { mutableStateOf<List<AudioTrackUi.Raw>>(emptyList()) }
     var audioOverrideGroup by remember { mutableIntStateOf(-1) }
     var audioOverrideTrack by remember { mutableIntStateOf(-1) }
+
+    var subtitleTracks by remember { mutableStateOf<List<SubtitleTrackUi.Raw>>(emptyList()) }
+    var subtitleDisabled by remember { mutableStateOf(false) }
+    var subtitleOverrideGroup by remember { mutableIntStateOf(-1) }
+    var subtitleOverrideTrack by remember { mutableIntStateOf(-1) }
+    var subtitleDialogOpen by remember { mutableStateOf(false) }
+
+    var videoAspectMode by remember { mutableStateOf(Prefs.getVideoAspectMode(context)) }
+    LaunchedEffect(videoAspectMode) { playerView.resizeMode = videoAspectMode.resizeModeValue }
+    LaunchedEffect(subtitleDialogOpen) { playback.onSubtitleDialogOpenChanged(subtitleDialogOpen) }
+    LaunchedEffect(overlay) { if (overlay != PlayerOverlay.None) subtitleDialogOpen = false }
 
     var autoUpdatePlaylist by remember { mutableStateOf(Prefs.getAutoUpdatePlaylist(context)) }
     var autoUpdateEpg by remember { mutableStateOf(Prefs.getAutoUpdateEpg(context)) }
@@ -1012,10 +1068,14 @@ fun VideoPlayerScreen(
                 override fun onTracksChanged(tracks: Tracks) {
                     videoFormat = p.videoFormat
                     audioTracks = TracksFlattening.audioTracks(tracks)
+                    subtitleTracks = TracksFlattening.subtitleTracks(tracks)
                 }
                 override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                     audioOverrideGroup = -1
                     audioOverrideTrack = -1
+                    subtitleDisabled = false
+                    subtitleOverrideGroup = -1
+                    subtitleOverrideTrack = -1
                     clearAudioOverride(p)
                 }
             }
@@ -1124,15 +1184,20 @@ fun VideoPlayerScreen(
             if (groupIndex != null && !playbackIntent.retainsUnlistedLive) {
                 val group = channelGroups[groupIndex]
                 if (group.variants.size > 1) {
+                    triedVariantUrls.add(failed.request.channel.url)
                     val failedIdx = ChannelGrouper.findVariantIndexByUrl(group, failed.request.channel.url)
-                    val nextIdx = (failedIdx + 1) % group.variants.size
-                    val nextCh = group.variants[nextIdx].channel
-                    if (nextCh.url != failed.request.channel.url && playbackIntent.isCurrent(failed)) {
+                    val nextIdx = (1 until group.variants.size)
+                        .map { offset -> (failedIdx + offset) % group.variants.size }
+                        .firstOrNull { idx -> group.variants[idx].channel.url !in triedVariantUrls }
+                    if (nextIdx != null && playbackIntent.isCurrent(failed)) {
+                        val nextCh = group.variants[nextIdx].channel
                         currentGroupIndex = groupIndex
                         currentVariantIndex = nextIdx
                         prepareRequest(p, MediaPlaybackRequest(nextCh))
                         Prefs.setLastChannel(context, nextCh.url, nextCh.title)
                         continue
+                    } else {
+                        triedVariantUrls.clear()
                     }
                 }
             }
@@ -1277,6 +1342,7 @@ fun VideoPlayerScreen(
     }
 
     fun playGroupVariant(groupIndex: Int, variantIndex: Int, armZap: Boolean = true) {
+        triedVariantUrls.clear()
         ZapPreconnect.cancel()
         MulticastPrewarm.cancel()
         StreamPlayback.onUserZap()
@@ -1315,15 +1381,25 @@ fun VideoPlayerScreen(
     }
 
     fun playChannel(channel: Channel) {
+        val targetIdx = channelGroups.indexOfFirst { group ->
+            group.variants.any { it.channel.url == channel.url && (channel.id == 0L || it.channel.id == channel.id) }
+        }
+        if (targetIdx < 0) return
+        val liveChannel = playbackIntent.request?.channel
+        if (catchupRequest == null &&
+            targetIdx == currentGroupIndex &&
+            liveChannel != null &&
+            channelGroups[targetIdx].variants.any { it.channel.url == liveChannel.url }
+        ) {
+            // 已在播放当前频道时再次确认：不重载，直接收起选台抽屉进入全屏
+            sidebarController.closeDrawer()
+            uiController.closeDrawer()
+            return
+        }
         channel.logoUrl?.trim()?.takeIf { it.isNotBlank() }?.let { u ->
             scope.launch { LogoLoader.prefetch(context, listOf(u), LogoLoader.CANONICAL_WIDTH_PX, LogoLoader.CANONICAL_HEIGHT_PX) }
         }
-        channelGroups.forEachIndexed { groupIndex, group ->
-            if (group.variants.any { it.channel.url == channel.url && (channel.id == 0L || it.channel.id == channel.id) }) {
-                playGroupAuto(groupIndex)
-                return
-            }
-        }
+        playGroupAuto(targetIdx)
     }
 
     fun applyAudioOverride(groupIndex: Int, trackIndex: Int) {
@@ -1341,6 +1417,95 @@ fun VideoPlayerScreen(
             audioOverrideTrack = trackIndex
         }
         p.trackSelectionParameters = builder.build()
+    }
+
+    fun applySubtitleOverride(item: SubtitleTrackUi.Item) {
+        val p = player ?: return
+        val builder = p.trackSelectionParameters.buildUpon()
+        if (item.isOff) {
+            builder.clearOverridesOfType(C.TRACK_TYPE_TEXT)
+                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+            subtitleDisabled = true
+            subtitleOverrideGroup = -1
+            subtitleOverrideTrack = -1
+        } else {
+            val group = p.currentTracks.groups.getOrNull(item.groupIndex) ?: return
+            if (group.type != C.TRACK_TYPE_TEXT || item.trackIndex !in 0 until group.length || !group.isTrackSupported(item.trackIndex)) return
+            builder.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                .setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, item.trackIndex))
+            subtitleDisabled = false
+            subtitleOverrideGroup = item.groupIndex
+            subtitleOverrideTrack = item.trackIndex
+        }
+        p.trackSelectionParameters = builder.build()
+    }
+
+    val bannerQuickActions = remember(playingGroup, playingVariantIndex, videoAspectMode, appLanguage, playback.isPipSupported) {
+        buildList {
+            val variantCount = playingGroup?.variants?.size ?: 0
+            if (variantCount > 1) {
+                val idx = (playingVariantIndex + 1).coerceIn(1, variantCount)
+                add(
+                    InfoCardQuickAction(
+                        id = InfoCardQuickActionId.SOURCE,
+                        label = AppStrings.tr(appLanguage, "线路 $idx/$variantCount", "Src $idx/$variantCount"),
+                        description = AppStrings.tr(appLanguage, "切换播放线路", "Switch source"),
+                    )
+                )
+            }
+            add(
+                InfoCardQuickAction(
+                    id = InfoCardQuickActionId.ASPECT,
+                    label = videoAspectMode.shortLabel(appLanguage),
+                    description = AppStrings.tr(appLanguage, "画面比例：${videoAspectMode.localizedLabel(appLanguage)}", "Aspect ratio: ${videoAspectMode.localizedLabel(appLanguage)}"),
+                )
+            )
+            add(
+                InfoCardQuickAction(
+                    id = InfoCardQuickActionId.AUDIO,
+                    label = AppStrings.tr(appLanguage, "音轨", "Audio"),
+                )
+            )
+            add(
+                InfoCardQuickAction(
+                    id = InfoCardQuickActionId.SUBTITLE,
+                    label = AppStrings.tr(appLanguage, "字幕", "Subtitles"),
+                )
+            )
+            if (playback.isPipSupported) {
+                add(
+                    InfoCardQuickAction(
+                        id = InfoCardQuickActionId.PIP,
+                        label = AppStrings.tr(appLanguage, "画中画", "PiP"),
+                    )
+                )
+            }
+            add(
+                InfoCardQuickAction(
+                    id = InfoCardQuickActionId.SETTINGS,
+                    label = AppStrings.tr(appLanguage, "设置", "Settings"),
+                )
+            )
+        }
+    }
+
+    fun triggerQuickAction(actionId: InfoCardQuickActionId) {
+        when (actionId) {
+            InfoCardQuickActionId.SOURCE -> uiController.openQualityDialog(playingGroupIndex)
+            InfoCardQuickActionId.ASPECT -> {
+                val next = videoAspectMode.next()
+                videoAspectMode = next
+                Prefs.setVideoAspectMode(context, next)
+                uiController.noteInfoCardInteraction(promoteManual = true)
+            }
+            InfoCardQuickActionId.AUDIO -> uiController.openAudioDialog()
+            InfoCardQuickActionId.SUBTITLE -> {
+                uiController.hideInfoCard()
+                subtitleDialogOpen = true
+            }
+            InfoCardQuickActionId.PIP -> playback.onEnterPip()
+            InfoCardQuickActionId.SETTINGS -> uiController.openSettings()
+        }
     }
 
     fun playLastChannel(): Boolean {
@@ -1404,10 +1569,19 @@ fun VideoPlayerScreen(
     val latestPlayer = rememberUpdatedState(player)
     val latestCatchupReq = rememberUpdatedState(catchupRequest)
     val latestCardRecent = rememberUpdatedState(cardRecentItems)
+    val latestQuickActions = rememberUpdatedState(bannerQuickActions)
+    val latestTriggerQuickAction = rememberUpdatedState(::triggerQuickAction)
+    val latestSubtitleDialogOpen = rememberUpdatedState(subtitleDialogOpen)
     val latestInfoOkMode = rememberUpdatedState(infoOkMode)
     val latestSeekOverlay = rememberUpdatedState(isSeekOverlayVisible)
 
     DisposableEffect(Unit) {
+        playback.setOnExtraBack {
+            if (latestSubtitleDialogOpen.value) {
+                subtitleDialogOpen = false
+                true
+            } else false
+        }
         playback.setOnNumberJump { number ->
             val gs = latestChannelGroups.value
             if (number !in 1..gs.size) false else {
@@ -1448,9 +1622,14 @@ fun VideoPlayerScreen(
             true
         }
         infoCard.setOpenInfoCardFromOkController {
+            val recentShownCount = if (latestCatchupReq.value == null && !latestSeekOverlay.value) {
+                latestCardRecent.value.size
+            } else 0
+            val quickCount = if (!latestSeekOverlay.value) latestQuickActions.value.size else 0
+            val totalSlots = recentShownCount + quickCount
             val canFocus = InfoCardPolicy.canFocusRecent(
-                recentCount = latestCardRecent.value.size,
-                catchup = latestCatchupReq.value != null,
+                recentCount = totalSlots,
+                catchup = false,
                 seekOverlayVisible = latestSeekOverlay.value,
             )
             val cur = uiController.currentOverlay as? PlayerOverlay.InfoCard
@@ -1466,14 +1645,23 @@ fun VideoPlayerScreen(
         }
         infoCard.setInfoCardFocusedActionController { action ->
             val items = latestCardRecent.value
+            val actions = latestQuickActions.value
+            val recentShownCount = if (latestCatchupReq.value == null && !latestSeekOverlay.value) items.size else 0
+            val totalSlots = recentShownCount + actions.size
             when (action) {
-                InfoCardPolicy.FocusedKeyAction.MOVE_LEFT -> uiController.moveInfoCardFocus(-1, items.size)
-                InfoCardPolicy.FocusedKeyAction.MOVE_RIGHT -> uiController.moveInfoCardFocus(1, items.size)
+                InfoCardPolicy.FocusedKeyAction.MOVE_LEFT -> uiController.moveInfoCardFocus(-1, totalSlots)
+                InfoCardPolicy.FocusedKeyAction.MOVE_RIGHT -> uiController.moveInfoCardFocus(1, totalSlots)
                 InfoCardPolicy.FocusedKeyAction.SWITCH -> {
                     val idx = (uiController.currentOverlay as? PlayerOverlay.InfoCard)?.focusIndex ?: 0
-                    InfoCardPolicy.resolveRecentTarget(items, idx)?.let { item ->
-                        uiController.noteInfoCardInteraction()
-                        if (switchToRecent(item)) uiController.focusInfoCard(0)
+                    if (idx < recentShownCount) {
+                        InfoCardPolicy.resolveRecentTarget(items, idx)?.let { item ->
+                            uiController.noteInfoCardInteraction()
+                            if (switchToRecent(item)) uiController.focusInfoCard(0)
+                        }
+                    } else {
+                        actions.getOrNull(idx - recentShownCount)?.let { act ->
+                            latestTriggerQuickAction.value(act.id)
+                        }
                     }
                 }
                 InfoCardPolicy.FocusedKeyAction.EXIT_FOCUS -> uiController.unfocusInfoCard()
@@ -1482,6 +1670,7 @@ fun VideoPlayerScreen(
             true
         }
         onDispose {
+            playback.setOnExtraBack(null)
             playback.setOnNumberJump(null)
             playback.setOnChannelStep(null)
             playback.setOnPlayLastChannel(null)
@@ -2063,6 +2252,18 @@ fun VideoPlayerScreen(
             onClose = { uiController.closeAudioDialog() },
         )
 
+        SubtitleTrackDialog(
+            visible = subtitleDialogOpen && !playback.isInPipMode,
+            items = SubtitleTrackUi.buildItems(subtitleTracks, subtitleDisabled, subtitleOverrideGroup, subtitleOverrideTrack, appLanguage),
+            hasSubtitles = subtitleTracks.isNotEmpty(),
+            onSelect = { item ->
+                applySubtitleOverride(item)
+                subtitleDialogOpen = false
+                uiController.showInfoCard(focused = false, manual = true)
+            },
+            onClose = { subtitleDialogOpen = false },
+        )
+
         RecentChannelsDialog(
             visible = recentChannelsOpen,
             items = recentResolved,
@@ -2127,8 +2328,9 @@ fun VideoPlayerScreen(
             val fpsResolution = FrameRateEstimator.resolve(videoFormat?.frameRate ?: -1f, inferredFrameRate)
 
             ChannelInfoBanner(
-                state = infoCardState,
-                seekOverlayVisible = isSeekOverlayVisible,
+                state = if (playback.isInPipMode) InfoCardPolicy.State.HIDDEN else infoCardState,
+                manual = infoCardOverlay?.manual == true,
+                seekOverlayVisible = isSeekOverlayVisible && !playback.isInPipMode,
                 channel = bannerChannel,
                 programTitle = displayTitle,
                 programProgress = displayProgress,
@@ -2143,14 +2345,19 @@ fun VideoPlayerScreen(
                 nowMillis = nowMillis,
                 groupLabel = bannerGroup?.let { ChannelGrouper.displayGroupName(it) },
                 recentCards = cardRecentItems,
+                quickActions = bannerQuickActions,
                 focusIndex = infoCardFocusIndex,
-                onMoveFocus = { delta -> uiController.moveInfoCardFocus(delta, cardRecentItems.size) },
-                onSwitchRecent = { _ ->
-                    InfoCardPolicy.resolveRecentTarget(cardRecentItems, infoCardFocusIndex)?.let { item ->
+                onMoveFocus = { delta ->
+                    val recentShownCount = if (catchupRequest == null && !isSeekOverlayVisible) cardRecentItems.size else 0
+                    uiController.moveInfoCardFocus(delta, recentShownCount + bannerQuickActions.size)
+                },
+                onSwitchRecent = { index ->
+                    InfoCardPolicy.resolveRecentTarget(cardRecentItems, index)?.let { item ->
                         uiController.noteInfoCardInteraction()
                         if (switchToRecent(item)) uiController.focusInfoCard(0)
                     }
                 },
+                onTriggerQuickAction = ::triggerQuickAction,
                 onExitFocus = { uiController.unfocusInfoCard() },
                 onFocusedChanged = { /* 单源状态已在 uiController，无需反向镜像 */ },
                 uiScale = uiScale,
@@ -2182,9 +2389,11 @@ private fun buildPrefetchLogoUrls(channels: List<Channel>, currentIndex: Int): L
 
 private fun clearAudioOverride(player: Player) {
     val params = player.trackSelectionParameters
-    if (params.overrides.isEmpty()) return
+    if (params.overrides.isEmpty() && !params.disabledTrackTypes.contains(C.TRACK_TYPE_TEXT)) return
     player.trackSelectionParameters = params.buildUpon()
         .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
+        .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+        .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
         .build()
 }
 

@@ -67,4 +67,24 @@ object TracksFlattening {
         }
         return select(candidates)
     }
+
+    fun subtitleTracks(tracks: Tracks): List<SubtitleTrackUi.Raw> {
+        val out = ArrayList<SubtitleTrackUi.Raw>()
+        tracks.groups.forEachIndexed { groupIndex, group ->
+            if (group.type != C.TRACK_TYPE_TEXT) return@forEachIndexed
+            for (trackIndex in 0 until group.length) {
+                if (!group.isTrackSupported(trackIndex)) continue
+                val format = group.getTrackFormat(trackIndex)
+                out += SubtitleTrackUi.Raw(
+                    groupIndex = groupIndex,
+                    trackIndex = trackIndex,
+                    language = format.language,
+                    label = format.label,
+                    mime = format.sampleMimeType,
+                    selected = group.isTrackSelected(trackIndex),
+                )
+            }
+        }
+        return out
+    }
 }
