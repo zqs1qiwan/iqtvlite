@@ -14,4 +14,5 @@ data class Channel(
     val id: Long = 0,
     val userAgent: String? = null,
     val referrer: String? = null,
+    val customHeaders: Map<String, String> = emptyMap(),
 )

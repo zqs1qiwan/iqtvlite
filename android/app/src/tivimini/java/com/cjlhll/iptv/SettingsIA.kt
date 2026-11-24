@@ -64,7 +64,10 @@ object SettingsIA {
             "settings_audio_track",
         ),
         SettingsPage.DATA to listOf(
+            "settings_source_manage",
             "settings_source_config",
+            "settings_global_ua",
+            "settings_global_headers",
             "settings_auto_playlist",
             "settings_refresh_playlist",
             "settings_auto_epg",

@@ -578,7 +578,8 @@ class PlayerActivity : ComponentActivity() {
             return RemoteBindings.resolveRight(
                 resolved = resolved,
                 selectedGroup = sidebarController.value.selectedGroup,
-                inGroupColumn = sidebarController.value.activeColumn == DrawerColumn.Groups,
+                inGroupColumn = sidebarController.value.activeColumn == DrawerColumn.Groups ||
+                    sidebarController.value.activeColumn == DrawerColumn.Sources,
                 rightCustomBound = RemoteBindings.isKeyCustomBound(remoteBindings, RemoteBindings.KEY_DPAD_RIGHT),
             )
         }
@@ -722,6 +723,13 @@ fun VideoPlayerScreen(
     var jingcaiExperiment by remember { mutableStateOf(JingcaiExperiment.parse(Prefs.getJingcaiExperiment(context))) }
     var infoOkMode by remember { mutableStateOf(Prefs.getInfoOkMode(context)) }
     var uiScale by remember { mutableStateOf(Prefs.getUiScale(context)) }
+    var sources by remember { mutableStateOf(Prefs.getSources(context)) }
+    var activeSourceId by remember { mutableStateOf(Prefs.getActiveSourceId(context)) }
+    var globalUserAgent by remember { mutableStateOf(Prefs.getGlobalUserAgent(context)) }
+    var globalCustomHeaders by remember { mutableStateOf(Prefs.getGlobalCustomHeaders(context)) }
+    val visibleSources = remember(sources) { PlaylistSources.visibleSources(sources) }
+    var sourceSwitchJob by remember { mutableStateOf<Job?>(null) }
+    DisposableEffect(Unit) { onDispose { sourceSwitchJob?.cancel() } }
 
     var catchupRequest by remember { mutableStateOf<CatchupPlayRequest?>(null) }
     var catchupPositionMs by remember { mutableLongStateOf(0L) }
@@ -887,8 +895,29 @@ fun VideoPlayerScreen(
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_START) initializePlayer()
-            else if (event == Lifecycle.Event.ON_STOP) releasePlayer()
+            when (event) {
+                Lifecycle.Event.ON_START -> initializePlayer()
+                Lifecycle.Event.ON_RESUME -> {
+                    // 从扫码配置页或后台返回时同步所有可能被 Web 控制台修改的配置
+                    sources = Prefs.getSources(context)
+                    activeSourceId = Prefs.getActiveSourceId(context)
+                    globalUserAgent = Prefs.getGlobalUserAgent(context)
+                    globalCustomHeaders = Prefs.getGlobalCustomHeaders(context)
+                    uiScale = Prefs.getUiScale(context)
+                    infoOkMode = Prefs.getInfoOkMode(context)
+                    playbackBufferMin = Prefs.getPlaybackBufferMin(context)
+                    autoUpdatePlaylist = Prefs.getAutoUpdatePlaylist(context)
+                    autoUpdateEpg = Prefs.getAutoUpdateEpg(context)
+                    logoPrefetchEnabled = Prefs.isLogoPrefetchEnabled(context)
+                    logoLoadEnabled = Prefs.isLogoLoadEnabled(context)
+                    LogoLoader.setLogoLoadEnabledRuntime(logoLoadEnabled)
+                    remoteHabits = Prefs.getRemoteSettings(context)
+                    remoteCbs.onRemoteSettingsChanged(remoteHabits)
+                    remoteCbs.onBindingsChanged(Prefs.getRemoteBindings(context))
+                }
+                Lifecycle.Event.ON_STOP -> releasePlayer()
+                else -> Unit
+            }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
@@ -1446,6 +1475,82 @@ fun VideoPlayerScreen(
         } else ""
     }
 
+    // ── 多源热切换（支持选台抽屉播放源列 & 设置多源管理） ──────────────────
+    fun switchToSource(source: PlaylistSource, closeSettingsAfter: Boolean = false) {
+        if (source.url.isBlank()) return
+        sourceSwitchJob?.cancel()
+        val prevEpg = Prefs.getEpgSource(context)
+        Prefs.setActiveSource(context, source.id)
+        sources = Prefs.getSources(context)
+        activeSourceId = source.id
+        Toast.makeText(context, "正在切换播放源：${source.name}…", Toast.LENGTH_SHORT).show()
+
+        sourceSwitchJob = scope.launch {
+            try {
+                val fileName = PlaylistCache.fileNameForSource(source.url)
+                var content = withContext(Dispatchers.IO) { PlaylistCache.read(context, fileName) }
+                if (content.isNullOrBlank()) {
+                    val expectedVersion = SourceStore.beginChange(context)
+                    val client = NetUtil.ipv4OkHttpClient.newBuilder()
+                        .callTimeout(25, java.util.concurrent.TimeUnit.SECONDS)
+                        .build()
+                    val ua = source.userAgent.ifBlank { globalUserAgent }.ifBlank { HttpStreamAddress.DEFAULT_USER_AGENT }
+                    val req = okhttp3.Request.Builder().url(source.url).header("User-Agent", ua).build()
+                    val fetched = withContext(Dispatchers.IO) {
+                        client.newCall(req).execute().use { resp ->
+                            if (!resp.isSuccessful) throw java.io.IOException("HTTP ${resp.code}")
+                            resp.body?.string() ?: throw java.io.IOException("empty response")
+                        }
+                    }
+                    val detectedEpg = HttpStreamAddress.extractM3uExtras(fetched).headerEpgUrl.orEmpty()
+                    val effectiveEpg = source.epgUrl.ifBlank { detectedEpg }.ifBlank { prevEpg }
+                    withContext(Dispatchers.IO) {
+                        SourceStore.commitSource(context, source.url, effectiveEpg, fetched, expectedVersion)
+                    }
+                    content = fetched
+                } else {
+                    val detectedEpg = withContext(Dispatchers.Default) {
+                        HttpStreamAddress.extractM3uExtras(content!!).headerEpgUrl.orEmpty()
+                    }
+                    val effectiveEpg = source.epgUrl.ifBlank { detectedEpg }.ifBlank { prevEpg }
+                    Prefs.setLiveSource(context, source.url)
+                    Prefs.setPlaylistFileName(context, fileName)
+                    if (effectiveEpg.isNotBlank()) Prefs.setEpgSource(context, effectiveEpg)
+                }
+
+                val parsedGroups = parsePlaylist(content!!, source.url)
+                if (parsedGroups.isEmpty()) {
+                    Toast.makeText(context, "「${source.name}」未找到有效频道", Toast.LENGTH_SHORT).show()
+                    return@launch
+                }
+
+                SourceLatencyProber.updateChannels(ChannelGrouper.allChannels(parsedGroups))
+                channelGroups = parsedGroups
+                currentGroupIndex = 0
+                currentVariantIndex = 0
+                sidebarController.selectGroup(SidebarState.ALL_GROUP, resetFocus = true)
+                val firstChannel = parsedGroups.first().defaultChannel
+                catchupRequest = null
+                playbackIntent.beginSelection()
+                val activePlayer = ensureHardwarePlayerForNewZap()
+                if (activePlayer != null) {
+                    prepareRequest(activePlayer, MediaPlaybackRequest(firstChannel))
+                }
+                Prefs.setLastChannel(context, firstChannel.url, firstChannel.title)
+                if (closeSettingsAfter) uiController.closeSettings()
+                Toast.makeText(context, "已切换至「${source.name}」（${parsedGroups.size} 台）", Toast.LENGTH_SHORT).show()
+                if (Prefs.getEpgSource(context) != prevEpg) {
+                    requestManualEpg()
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w("PlayerActivity", "switchToSource failed: ${e.message}")
+                Toast.makeText(context, "切换「${source.name}」失败：${e.message ?: "网络异常"}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
     // ── 原生 RecyclerView 选台抽屉绑定（仅数据变化或开合时同步，翻台 0 重组） ────
     val selectedDrawerChannelUrl = if (currentLive.retainedOutsideList) null
         else channelGroups.getOrNull(currentGroupIndex)?.defaultChannel?.url
@@ -1453,8 +1558,12 @@ fun VideoPlayerScreen(
     val latestPlayChannel = rememberUpdatedState(::playChannel)
     val latestAllChannels = rememberUpdatedState(allChannels)
     val latestStartPlayback = rememberUpdatedState(::startPlayback)
+    val latestSwitchSource = rememberUpdatedState<(PlaylistSource) -> Unit>({ src -> switchToSource(src, closeSettingsAfter = false) })
     DisposableEffect(nativeDrawer) {
         nativeDrawer.listener = object : NativeChannelDrawerView.Listener {
+            override fun onSelectSource(source: PlaylistSource) {
+                latestSwitchSource.value(source)
+            }
             override fun onSelectGroup(group: String, resetFocus: Boolean) {
                 sidebarController.selectGroup(group, resetFocus = resetFocus)
             }
@@ -1486,6 +1595,8 @@ fun VideoPlayerScreen(
     }
 
     LaunchedEffect(
+        visibleSources,
+        activeSourceId,
         groups,
         selectedGroup,
         filteredChannels,
@@ -1501,6 +1612,8 @@ fun VideoPlayerScreen(
     ) {
         nativeDrawer.updateSnapshot(
             NativeChannelDrawerView.Snapshot(
+                sources = visibleSources,
+                activeSourceId = activeSourceId,
                 groups = groups,
                 selectedGroup = selectedGroup,
                 channels = filteredChannels,
@@ -1563,12 +1676,20 @@ fun VideoPlayerScreen(
             autoUpdatePlaylist = autoUpdatePlaylist,
             autoUpdateEpg = autoUpdateEpg,
             lastUpdateSummary = lastUpdateSummary,
+            sources = sources,
+            activeSourceId = activeSourceId,
+            globalUserAgent = globalUserAgent,
+            globalCustomHeaders = globalCustomHeaders,
         )
 
         val settingsActions = remember(
             remoteCbs.remoteBindings,
             remoteHabits,
             uiScale,
+            sources,
+            activeSourceId,
+            globalUserAgent,
+            globalCustomHeaders,
             playbackBufferMin,
             zapPreconnectEnabled,
             multicastPrewarmEnabled,
@@ -1631,6 +1752,37 @@ fun VideoPlayerScreen(
                     remoteCbs.onRemoteSettingsChanged(remoteHabits)
                 },
                 onSourceConfigClick = { context.startActivity(Intent(context, MainActivity::class.java)) },
+                onSwitchSource = { src -> switchToSource(src, closeSettingsAfter = true) },
+                onToggleSourceEnabled = { id ->
+                    val target = sources.firstOrNull { it.id == id }
+                    if (target != null) {
+                        val visibleCount = sources.count { it.enabled }
+                        if (target.enabled && visibleCount <= 1) {
+                            Toast.makeText(context, "至少保留 1 个在选台列表显示的播放源", Toast.LENGTH_SHORT).show()
+                        } else {
+                            val updated = PlaylistSources.toggleEnabled(sources, id)
+                            Prefs.saveSources(context, updated, activeSourceId)
+                            sources = Prefs.getSources(context)
+                            val nowEnabled = sources.firstOrNull { it.id == id }?.enabled == true
+                            Toast.makeText(
+                                context,
+                                if (nowEnabled) "已在选台列表显示「${target.name}」" else "已在选台列表隐藏「${target.name}」",
+                                Toast.LENGTH_SHORT,
+                            ).show()
+                        }
+                    }
+                },
+                onSelectGlobalUserAgent = { ua ->
+                    Prefs.setGlobalUserAgent(context, ua)
+                    globalUserAgent = ua
+                    val label = ua.ifBlank { "自动（默认 VLC）" }
+                    Toast.makeText(context, "全局 User-Agent：$label（下次切台生效）", Toast.LENGTH_SHORT).show()
+                },
+                onClearGlobalCustomHeaders = {
+                    Prefs.setGlobalCustomHeaders(context, "")
+                    globalCustomHeaders = ""
+                    Toast.makeText(context, "已清空全部全局自定义 Header", Toast.LENGTH_SHORT).show()
+                },
                 onQualityMenuClick = { uiController.openQualityDialog(playingGroupIndex) },
                 onCheckUpdateClick = {
                     uiController.closeSettings()

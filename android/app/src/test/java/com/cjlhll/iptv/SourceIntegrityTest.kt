@@ -50,12 +50,24 @@ class SourceIntegrityTest {
         assertFalse(repo.commitSource("old", "epg-old", "old", first))
     }
     @Test fun streamHeaderSuffixDoesNotReachRequestPathOrPolluteNextChannel() {
-        val suffix = HttpStreamAddress.resolve("http://stream/live.ts|User-Agent=VLC&Referer=https%3A%2F%2Fref.example%2F", null, null)
+        val suffix = HttpStreamAddress.resolve("http://stream/live.ts|User-Agent=VLC&Referer=https%3A%2F%2Fref.example%2F&Origin=https%3A%2F%2Forigin.example", null, null)
         assertEquals("http://stream/live.ts", suffix.url)
         assertEquals("VLC/3.0.20 LibVLC/3.0.20", suffix.userAgent)
         assertEquals("https://ref.example/", suffix.referrer)
+        assertEquals("https://origin.example", suffix.headers["Origin"])
         assertNull(HttpStreamAddress.resolve("http://other/live.ts", null, null).userAgent)
-        assertEquals("Custom/2", HttpStreamAddress.resolve("http://stream/live.ts|User-Agent=VLC", "Custom/2", null).userAgent)
+        // 当播放 URL `|` 后参数与 #EXTINF 同时存在时，优先使用 URL 中的匹配值
+        assertEquals("aliplayer", HttpStreamAddress.resolve("http://stream/live.ts|User-Agent=aliplayer", "Custom/2", null).userAgent)
+        assertEquals("https://url.ref/", HttpStreamAddress.resolve("http://stream/live.ts|Referer=https://url.ref/", null, "https://ext.ref/").referrer)
+        // 无 URL `|` 参数时回退到 #EXTINF，仍支持全局自定义 UA & Header 兜底
+        val fromExtinf = HttpStreamAddress.resolve("http://stream/live.ts", "Custom/2", "https://ext.ref/")
+        assertEquals("Custom/2", fromExtinf.userAgent)
+        assertEquals("https://ext.ref/", fromExtinf.referrer)
+        val req = MediaPlaybackRequest(Channel("test", "http://stream/live.ts"))
+        val globalMerged = req.httpHeaders(globalUserAgent = "MyGlobalUA/1.0", globalCustomHeaders = mapOf("X-Token" to "abc", "Referer" to "https://g.ref/"))
+        assertEquals("MyGlobalUA/1.0", globalMerged["User-Agent"])
+        assertEquals("abc", globalMerged["X-Token"])
+        assertEquals("https://g.ref/", globalMerged["Referer"])
     }
     @Test fun globalNumberSurvivesGroupFiltering() {
         val groups = ChannelGrouper.group(listOf(Channel("央视频道A", "http://a", group="央视频道"), Channel("卫视频道B", "http://b", group="卫视频道")))

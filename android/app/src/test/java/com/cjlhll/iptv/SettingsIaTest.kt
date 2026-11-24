@@ -42,11 +42,11 @@ class SettingsIaTest {
 
     @Test
     fun everyPageStaysWithinTheFirstScreenBudget() {
-        // 每个二级页保持精简（含条件项与新增界面缩放档位在内 ≤7 行）。
+        // 每个二级页保持精简（含多源管理与全局请求头在内 ≤9 行）。
         SettingsPage.entries.forEach { page ->
             assertTrue(
-                "$page 有 ${SettingsIA.itemTags(page).size} 行，超过 7 行预算",
-                SettingsIA.itemTags(page).size <= 7,
+                "$page 有 ${SettingsIA.itemTags(page).size} 行，超过 9 行预算",
+                SettingsIA.itemTags(page).size <= 9,
             )
         }
     }

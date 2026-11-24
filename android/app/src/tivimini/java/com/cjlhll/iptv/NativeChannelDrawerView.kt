@@ -52,6 +52,8 @@ import kotlin.math.roundToInt
 class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
 
     data class Snapshot(
+        val sources: List<PlaylistSource> = emptyList(),
+        val activeSourceId: String? = null,
         val groups: List<String> = emptyList(),
         val selectedGroup: String = SidebarState.ALL_GROUP,
         val channels: List<Channel> = emptyList(),
@@ -68,6 +70,7 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
     )
 
     interface Listener {
+        fun onSelectSource(source: PlaylistSource)
         fun onSelectGroup(group: String, resetFocus: Boolean)
         fun onSelectChannel(channel: Channel)
         fun onPlayProgram(request: CatchupPlayRequest)
@@ -86,6 +89,7 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
     private var showGroups = false
     private var showDates = false
 
+    private var focusedSourceIndex = 0
     private var focusedGroupIndex = 0
     private var focusedChannelIndex = 0
     private var focusedProgramIndex = 0
@@ -123,6 +127,12 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
     private val channelLogoHeightPx: Int get() = dp((36f * logoScale).roundToInt())
 
     // 视图组件
+    private val sourcesPanel: LinearLayout
+    private val sourcesCountView: TextView
+    private val sourcesRecycler: RecyclerView
+    private val sourcesLm = LinearLayoutManager(context, RecyclerView.VERTICAL, false)
+    private val sourcesAdapter = SourcesAdapter()
+
     private val groupsPanel: LinearLayout
     private val groupsCountView: TextView
     private val groupsRecycler: RecyclerView
@@ -162,6 +172,24 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
         isFocusable = false
         descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
         contentDescription = "native_channel_drawer"
+
+        // ── 0. 播放源列（多源 ≥2 时随分组列自动展示在左侧，按 LEFT 切入换源） ──
+        sourcesPanel = LinearLayout(context).apply {
+            orientation = VERTICAL
+            setBackgroundColor(COLOR_SURFACE_DEEP)
+            visibility = GONE
+            layoutParams = LayoutParams(dp(148), ViewGroup.LayoutParams.MATCH_PARENT)
+        }
+        val sourcesHeader = buildColumnHeader("播放源", "").also {
+            sourcesCountView = it.second
+        }
+        sourcesPanel.addView(sourcesHeader.first)
+        sourcesRecycler = buildRecycler(sourcesLm, sourcesAdapter).apply {
+            contentDescription = "drawer_sources_list"
+            setPadding(0, dp(6), 0, dp(6))
+        }
+        sourcesPanel.addView(sourcesRecycler, LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+        addView(sourcesPanel)
 
         // ── 1. 分组列（按 LEFT 展开，展开时自动收起右侧节目单） ───────────────
         groupsPanel = LinearLayout(context).apply {
@@ -327,6 +355,11 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
 
     private fun applyUiScale(scale: UiScalePreset) {
         appliedUiScale = scale
+        val sourcesW = when (scale) {
+            UiScalePreset.SMALL -> dp(136)
+            UiScalePreset.MEDIUM -> dp(148)
+            UiScalePreset.LARGE -> dp(168)
+        }
         val groupsW = when (scale) {
             UiScalePreset.SMALL -> dp(148)
             UiScalePreset.MEDIUM -> dp(158)
@@ -347,6 +380,7 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
             UiScalePreset.MEDIUM -> dp(106)
             UiScalePreset.LARGE -> dp(120)
         }
+        (sourcesPanel.layoutParams as? LayoutParams)?.width = sourcesW
         (groupsPanel.layoutParams as? LayoutParams)?.width = groupsW
         (channelsPanel.layoutParams as? LayoutParams)?.width = channelsW
         (programsPanel.layoutParams as? LayoutParams)?.width = programsW
@@ -357,10 +391,12 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
         programsSubtitleView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f * scale.textScale)
 
         // 清空复用池并重绑适配器，确保所有行高、台标与字号立即切换至新档位
+        sourcesRecycler.recycledViewPool.clear()
         groupsRecycler.recycledViewPool.clear()
         channelsRecycler.recycledViewPool.clear()
         programsRecycler.recycledViewPool.clear()
         datesRecycler.recycledViewPool.clear()
+        sourcesRecycler.adapter = sourcesAdapter
         groupsRecycler.adapter = groupsAdapter
         channelsRecycler.adapter = channelsAdapter
         programsRecycler.adapter = programsAdapter
@@ -388,10 +424,23 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
             loadedEpgChannelUrl = null
         }
 
+        val sourcesChanged = prev.sources != newSnapshot.sources || prev.activeSourceId != newSnapshot.activeSourceId
         val groupsChanged = prev.groups != newSnapshot.groups || prev.selectedGroup != newSnapshot.selectedGroup
         val channelsChanged = prev.channels !== newSnapshot.channels && prev.channels != newSnapshot.channels
         val playingChanged = prev.selectedChannelUrl != newSnapshot.selectedChannelUrl
         val nowProgramsChanged = prev.nowProgramByChannelUrl !== newSnapshot.nowProgramByChannelUrl
+
+        if (sourcesChanged) {
+            focusedSourceIndex = newSnapshot.sources.indexOfFirst { it.id == newSnapshot.activeSourceId }.coerceAtLeast(0)
+            sourcesCountView.text = "${newSnapshot.sources.size}"
+            if (isOpen) {
+                sourcesPanel.visibility = if (showGroups && newSnapshot.sources.size >= 2) VISIBLE else GONE
+                if (activeColumn == DrawerColumn.Sources && newSnapshot.sources.size < 2) {
+                    setActiveColumnInternal(DrawerColumn.Groups)
+                }
+                sourcesAdapter.notifyDataSetChanged()
+            }
+        }
 
         if (groupsChanged) {
             focusedGroupIndex = newSnapshot.groups.indexOf(newSnapshot.selectedGroup).coerceAtLeast(0)
@@ -435,6 +484,7 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
             visibility = GONE
             showGroups = false
             showDates = false
+            sourcesPanel.visibility = GONE
             groupsPanel.visibility = GONE
             programsPanel.visibility = VISIBLE
             datesPanel.visibility = GONE
@@ -446,11 +496,14 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
         perfOpenAtMs = SystemClock.elapsedRealtime()
         showGroups = false
         showDates = false
+        sourcesPanel.visibility = GONE
         groupsPanel.visibility = GONE
         programsPanel.visibility = VISIBLE
         datesPanel.visibility = GONE
         setActiveColumnInternal(DrawerColumn.Channels)
 
+        focusedSourceIndex = snapshot.sources.indexOfFirst { it.id == snapshot.activeSourceId }.coerceAtLeast(0)
+        sourcesCountView.text = "${snapshot.sources.size}"
         focusedGroupIndex = snapshot.groups.indexOf(snapshot.selectedGroup).coerceAtLeast(0)
         groupsCountView.text = "${snapshot.groups.size}"
         channelsTitleView.text = snapshot.selectedGroup
@@ -468,6 +521,7 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
         } else 0
 
         visibility = VISIBLE
+        sourcesAdapter.notifyDataSetChanged()
         groupsAdapter.notifyDataSetChanged()
         channelsAdapter.notifyDataSetChanged()
         updateChannelCounter()
@@ -494,10 +548,55 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
     fun handleKeyEvent(keyCode: Int): Boolean {
         if (!isOpen) return false
         return when (activeColumn) {
+            DrawerColumn.Sources -> handleSourcesKey(keyCode)
             DrawerColumn.Groups -> handleGroupsKey(keyCode)
             DrawerColumn.Channels -> handleChannelsKey(keyCode)
             DrawerColumn.Programs -> handleProgramsKey(keyCode)
             DrawerColumn.Dates -> handleDatesKey(keyCode)
+        }
+    }
+
+    private fun handleSourcesKey(keyCode: Int): Boolean {
+        val sources = snapshot.sources
+        return when (keyCode) {
+            KeyEvent.KEYCODE_DPAD_UP -> {
+                if (sources.isEmpty()) return true
+                val prev = focusedSourceIndex
+                focusedSourceIndex = if (prev <= 0) sources.lastIndex else prev - 1
+                notifyFocusMove(sourcesAdapter, prev, focusedSourceIndex)
+                scrollSourceBounded(focusedSourceIndex)
+                true
+            }
+            KeyEvent.KEYCODE_DPAD_DOWN -> {
+                if (sources.isEmpty()) return true
+                val prev = focusedSourceIndex
+                focusedSourceIndex = if (prev >= sources.lastIndex) 0 else prev + 1
+                notifyFocusMove(sourcesAdapter, prev, focusedSourceIndex)
+                scrollSourceBounded(focusedSourceIndex)
+                true
+            }
+            KeyEvent.KEYCODE_DPAD_CENTER,
+            KeyEvent.KEYCODE_ENTER,
+            KeyEvent.KEYCODE_NUMPAD_ENTER -> {
+                val chosen = sources.getOrNull(focusedSourceIndex) ?: return true
+                if (chosen.id == snapshot.activeSourceId) {
+                    setActiveColumnInternal(DrawerColumn.Groups)
+                    refreshColumnHighlights()
+                } else {
+                    listener?.onSelectSource(chosen)
+                }
+                true
+            }
+            KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                setActiveColumnInternal(DrawerColumn.Groups)
+                refreshColumnHighlights()
+                true
+            }
+            KeyEvent.KEYCODE_DPAD_LEFT -> {
+                listener?.onClose()
+                true
+            }
+            else -> false
         }
     }
 
@@ -527,6 +626,7 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
             KeyEvent.KEYCODE_ENTER,
             KeyEvent.KEYCODE_NUMPAD_ENTER -> {
                 showGroups = false
+                sourcesPanel.visibility = GONE
                 groupsPanel.visibility = GONE
                 programsPanel.visibility = VISIBLE
                 setActiveColumnInternal(DrawerColumn.Channels)
@@ -535,7 +635,16 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
                 true
             }
             KeyEvent.KEYCODE_DPAD_LEFT -> {
-                listener?.onClose()
+                if (snapshot.sources.size >= 2) {
+                    sourcesPanel.visibility = VISIBLE
+                    focusedSourceIndex = snapshot.sources.indexOfFirst { it.id == snapshot.activeSourceId }.coerceAtLeast(0)
+                    setActiveColumnInternal(DrawerColumn.Sources)
+                    sourcesAdapter.notifyDataSetChanged()
+                    scrollSourceBounded(focusedSourceIndex)
+                    refreshColumnHighlights()
+                } else {
+                    listener?.onClose()
+                }
                 true
             }
             else -> false
@@ -565,14 +674,17 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
             }
             KeyEvent.KEYCODE_DPAD_LEFT -> {
                 if (snapshot.groups.isNotEmpty()) {
-                    // 往左进入分组列时收起节目单与日期列，避免选台浮层占用过大画面
+                    // 往左进入分组列时收起节目单与日期列，多源（≥2）时在分组旁自动露出播放源列方便一键换源
                     showGroups = true
                     showDates = false
+                    sourcesPanel.visibility = if (snapshot.sources.size >= 2) VISIBLE else GONE
                     groupsPanel.visibility = VISIBLE
                     programsPanel.visibility = GONE
                     datesPanel.visibility = GONE
+                    focusedSourceIndex = snapshot.sources.indexOfFirst { it.id == snapshot.activeSourceId }.coerceAtLeast(0)
                     focusedGroupIndex = snapshot.groups.indexOf(snapshot.selectedGroup).coerceAtLeast(0)
                     setActiveColumnInternal(DrawerColumn.Groups)
+                    if (snapshot.sources.size >= 2) sourcesAdapter.notifyDataSetChanged()
                     groupsAdapter.notifyDataSetChanged()
                     scrollGroupBounded(focusedGroupIndex)
                     refreshColumnHighlights()
@@ -729,6 +841,9 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
     }
 
     private fun refreshColumnHighlights() {
+        if (focusedSourceIndex in snapshot.sources.indices) {
+            sourcesAdapter.notifyItemChanged(focusedSourceIndex, PAYLOAD_FOCUS)
+        }
         if (focusedGroupIndex in snapshot.groups.indices) {
             groupsAdapter.notifyItemChanged(focusedGroupIndex, PAYLOAD_FOCUS)
         }
@@ -771,6 +886,15 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
 
     private fun estimatedListViewportH(): Int =
         (resources.displayMetrics.heightPixels - dp(52) - dp(12)).coerceAtLeast(channelRowHeightPx)
+
+    private fun scrollSourceBounded(index: Int) {
+        val count = snapshot.sources.size
+        if (count == 0) return
+        val measured = sourcesRecycler.height - sourcesRecycler.paddingTop - sourcesRecycler.paddingBottom
+        val viewportH = if (measured > 0) measured else estimatedListViewportH()
+        val offset = boundedCenterOffset(index, count, groupRowHeightPx, viewportH)
+        sourcesLm.scrollToPositionWithOffset(index.coerceIn(0, count - 1), offset)
+    }
 
     private fun scrollGroupBounded(index: Int) {
         val count = snapshot.groups.size
@@ -991,6 +1115,89 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
             }
         }
     }
+
+    // ── Adapter 0: Sources（多源切换，对称高亮焦点 + 品牌蓝当前源标记） ──────
+
+    private inner class SourcesAdapter : RecyclerView.Adapter<SourceVH>() {
+        override fun getItemCount(): Int = snapshot.sources.size
+
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): SourceVH {
+            val rowBg = newRowBgDrawable()
+            val row = LinearLayout(context).apply {
+                orientation = HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                background = rowBg
+                setPadding(dp(11), 0, dp(11), 0)
+                layoutParams = RecyclerView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, groupRowHeightPx).apply {
+                    marginStart = dp(7)
+                    marginEnd = dp(7)
+                }
+            }
+            val dot = TextView(context).apply {
+                text = "●"
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 9f * textScale)
+                layoutParams = LayoutParams(dp(14), ViewGroup.LayoutParams.WRAP_CONTENT)
+            }
+            val label = TextView(context).apply {
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 13.5f * textScale)
+                isSingleLine = true
+                ellipsize = TextUtils.TruncateAt.END
+                layoutParams = LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            }
+            row.addView(dot)
+            row.addView(label)
+            return SourceVH(row, rowBg, dot, label)
+        }
+
+        override fun onBindViewHolder(holder: SourceVH, position: Int) {
+            val src = snapshot.sources[position]
+            holder.label.text = src.name
+            bindVisual(holder, position, src)
+        }
+
+        override fun onBindViewHolder(holder: SourceVH, position: Int, payloads: MutableList<Any>) {
+            if (payloads.isEmpty()) {
+                onBindViewHolder(holder, position)
+            } else {
+                bindVisual(holder, position, snapshot.sources[position])
+            }
+        }
+
+        private fun bindVisual(holder: SourceVH, position: Int, src: PlaylistSource) {
+            val isFocused = activeColumn == DrawerColumn.Sources && position == focusedSourceIndex
+            val isActive = src.id == snapshot.activeSourceId
+            holder.rowBg.setColor(
+                when {
+                    isFocused -> COLOR_FOCUS_BG
+                    isActive -> COLOR_INACTIVE_SELECTED_BG
+                    else -> Color.TRANSPARENT
+                }
+            )
+            holder.dot.visibility = if (isActive) VISIBLE else INVISIBLE
+            holder.dot.setTextColor(COLOR_ACCENT_BLUE)
+            holder.label.setTextColor(
+                when {
+                    isActive -> COLOR_ACCENT_BLUE
+                    isFocused -> COLOR_TEXT_PRIMARY
+                    else -> COLOR_TEXT_SECONDARY
+                }
+            )
+            holder.label.typeface = if (isFocused || isActive) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
+            applyFocusedMarquee(holder.label, isFocused)
+        }
+
+        override fun onViewRecycled(holder: SourceVH) {
+            holder.label.isSelected = false
+            super.onViewRecycled(holder)
+        }
+    }
+
+    private class SourceVH(
+        root: View,
+        val rowBg: GradientDrawable,
+        val dot: TextView,
+        val label: TextView,
+    ) : RecyclerView.ViewHolder(root)
 
     // ── Adapter 1: Groups（对称高亮焦点） ────────────────────────────────────
 
@@ -1503,6 +1710,7 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
         private val TIME_FMT: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
         private val DATE_FMT: DateTimeFormatter = DateTimeFormatter.ofPattern("MM-dd")
 
+        private const val COLOR_SURFACE_DEEP = 0xF40A0E14.toInt()        // #F40A0E14 deepest obsidian for sources
         private const val COLOR_SURFACE_SOLID = 0xEE0D1118.toInt()       // #EE0D1118 deep obsidian
         private const val COLOR_SURFACE_TRANSLUCENT = 0xC80D1118.toInt() // #C80D1118 smoked glass
         private const val COLOR_FOCUS_BG = 0x36FFFFFF                    // #36FFFFFF crisp symmetric highlight

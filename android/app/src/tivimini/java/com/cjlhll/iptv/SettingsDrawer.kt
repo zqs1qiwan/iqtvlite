@@ -95,6 +95,10 @@ data class SettingsUiState(
     val autoUpdatePlaylist: AutoUpdateConfig.Interval,
     val autoUpdateEpg: AutoUpdateConfig.Interval,
     val lastUpdateSummary: String,
+    val sources: List<PlaylistSource> = emptyList(),
+    val activeSourceId: String? = null,
+    val globalUserAgent: String = "",
+    val globalCustomHeaders: String = "",
 )
 
 /** 设置抽屉动作集合。 */
@@ -115,6 +119,10 @@ data class SettingsActions(
     val onSelectRemoteOk: (RemoteHabits.Ok) -> Unit,
     val onSelectRemoteDigits: (RemoteHabits.Digits) -> Unit,
     val onSourceConfigClick: () -> Unit,
+    val onSwitchSource: (PlaylistSource) -> Unit,
+    val onToggleSourceEnabled: (String) -> Unit,
+    val onSelectGlobalUserAgent: (String) -> Unit,
+    val onClearGlobalCustomHeaders: () -> Unit,
     val onQualityMenuClick: () -> Unit,
     val onCheckUpdateClick: () -> Unit,
     val onOpenRecent: () -> Unit,
@@ -264,10 +272,14 @@ fun SettingsDrawer(
                 .testTag(SettingsIA.ROOT_CONTAINER_TAG)
                 .onPreviewKeyEvent { event ->
                     if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
-                    // 三级选择器内按 LEFT / BACK 返回二级页，绝不关掉整个设置抽屉
+                    // 三级选择器内按 LEFT / BACK 返回上一级（子详情回到播放源列表，其余回二级页）
                     if (picker != null) {
                         if (event.key == Key.DirectionLeft || event.key == Key.Back) {
-                            actions.onClosePicker()
+                            if (picker.startsWith(PICKER_SOURCE_DETAIL_PREFIX)) {
+                                actions.onOpenPicker(PICKER_SOURCES_MANAGE)
+                            } else {
+                                actions.onClosePicker()
+                            }
                             return@onPreviewKeyEvent true
                         }
                         return@onPreviewKeyEvent false
@@ -383,7 +395,14 @@ fun SettingsDrawer(
                         onFocused = { pageLastFocus[SettingsPage.AUDIO.id] = it },
                     )
                     page == SettingsPage.DATA -> SettingsDataPage(
+                        sources = state.sources,
+                        activeSourceId = state.activeSourceId,
+                        globalUserAgent = state.globalUserAgent,
+                        globalCustomHeaders = state.globalCustomHeaders,
+                        onOpenSourceManage = { actions.onOpenPicker(PICKER_SOURCES_MANAGE) },
                         onSourceConfigClick = actions.onSourceConfigClick,
+                        onOpenGlobalUaPicker = { actions.onOpenPicker(PICKER_GLOBAL_UA) },
+                        onOpenGlobalHeadersPicker = { actions.onOpenPicker(PICKER_GLOBAL_HEADERS) },
                         autoUpdatePlaylistLabel = state.autoUpdatePlaylist.label,
                         autoUpdateEpgLabel = state.autoUpdateEpg.label,
                         lastUpdateSummary = state.lastUpdateSummary,
@@ -436,6 +455,18 @@ private const val PICKER_REMOTE_UPDOWN = "remote_updown"
 private const val PICKER_REMOTE_OK = "remote_ok"
 private const val PICKER_REMOTE_DIGITS = "remote_digits"
 private const val PICKER_REMOTE_ACTION_PREFIX = "remote_action:"
+private const val PICKER_SOURCES_MANAGE = "sources_manage"
+private const val PICKER_SOURCE_DETAIL_PREFIX = "source_detail:"
+private const val PICKER_GLOBAL_UA = "global_ua"
+private const val PICKER_GLOBAL_HEADERS = "global_headers"
+
+private val GLOBAL_UA_PRESETS: List<Triple<String, String, String>> = listOf(
+    Triple("auto", "自动（跟随源 / 默认 VLC）", "优先使用地址 | 参数与 #EXTINF，未指定时使用默认 VLC"),
+    Triple("VLC/3.0.20 LibVLC/3.0.20", "VLC 播放器", "VLC/3.0.20 LibVLC/3.0.20（通用 IPTV 推荐）"),
+    Triple("aliplayer", "阿里云播放器 (aliplayer)", "适配老白专享源等 aliplayer 鉴权线路"),
+    Triple("AptvPlayer/1.4.2", "APTV 播放器", "AptvPlayer/1.4.2"),
+    Triple("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36", "Chrome 桌面端", "兼容校验浏览器 UA 的直链"),
+)
 
 @Composable
 private fun SettingsPickerRouter(
@@ -448,6 +479,49 @@ private fun SettingsPickerRouter(
     scroll: ScrollState,
     requesterOf: (String) -> FocusRequester,
 ) {
+    if (pickerId == PICKER_SOURCES_MANAGE) {
+        SettingsSourcesManageView(
+            sources = state.sources,
+            activeSourceId = state.activeSourceId,
+            textScale = textScale,
+            scroll = scroll,
+            requesterOf = requesterOf,
+            onOpenDetail = { src -> actions.onOpenPicker("$PICKER_SOURCE_DETAIL_PREFIX${src.id}") },
+            onOpenWebConfig = actions.onSourceConfigClick,
+        )
+        return
+    }
+    if (pickerId.startsWith(PICKER_SOURCE_DETAIL_PREFIX)) {
+        val id = pickerId.removePrefix(PICKER_SOURCE_DETAIL_PREFIX)
+        val source = state.sources.firstOrNull { it.id == id }
+        if (source != null) {
+            SettingsSourceDetailView(
+                source = source,
+                isActive = source.id == state.activeSourceId,
+                textScale = textScale,
+                scroll = scroll,
+                requesterOf = requesterOf,
+                onSwitchActive = {
+                    actions.onSwitchSource(source)
+                    actions.onClosePicker()
+                },
+                onToggleEnabled = { actions.onToggleSourceEnabled(source.id) },
+                onOpenWebConfig = actions.onSourceConfigClick,
+            )
+            return
+        }
+    }
+    if (pickerId == PICKER_GLOBAL_HEADERS) {
+        SettingsGlobalHeadersView(
+            rawHeaders = state.globalCustomHeaders,
+            textScale = textScale,
+            scroll = scroll,
+            requesterOf = requesterOf,
+            onOpenWebConfig = actions.onSourceConfigClick,
+            onClearAll = actions.onClearGlobalCustomHeaders,
+        )
+        return
+    }
     if (pickerId.startsWith(PICKER_REMOTE_ACTION_PREFIX)) {
         val actionName = pickerId.removePrefix(PICKER_REMOTE_ACTION_PREFIX)
         val action = RemoteAction.entries.firstOrNull { it.name == actionName }
@@ -588,6 +662,36 @@ private fun SettingsPickerRouter(
                 },
             )
         }
+        PICKER_GLOBAL_UA -> {
+            val current = state.globalUserAgent.trim()
+            val presetValues = GLOBAL_UA_PRESETS.map { if (it.first == "auto") "" else it.first }
+            val isCustom = current.isNotEmpty() && current !in presetValues
+            val baseOpts = GLOBAL_UA_PRESETS.map { (value, label, desc) ->
+                val actual = if (value == "auto") "" else value
+                SettingsPickerOption(
+                    id = "ua_$value",
+                    title = label,
+                    description = desc,
+                    selected = current == actual,
+                    onSelect = {
+                        actions.onSelectGlobalUserAgent(actual)
+                        actions.onClosePicker()
+                    },
+                )
+            }
+            val allOpts = if (isCustom) {
+                listOf(
+                    SettingsPickerOption(
+                        id = "ua_custom",
+                        title = "自定义：$current",
+                        description = "通过扫码网页配置的全局 User-Agent",
+                        selected = true,
+                        onSelect = { actions.onClosePicker() },
+                    )
+                ) + baseOpts
+            } else baseOpts
+            "全局 User-Agent" to allOpts
+        }
         else -> "选项" to emptyList()
     }
 
@@ -627,6 +731,150 @@ private fun SettingsOptionPickerView(
             )
             if (index != options.lastIndex) RowGap()
         }
+    }
+}
+
+/** TiviMate 风格：多播放源管理列表（查看当前源、隐藏/展示状态、点进配置或扫码新增）。 */
+@Composable
+private fun SettingsSourcesManageView(
+    sources: List<PlaylistSource>,
+    activeSourceId: String?,
+    textScale: Float,
+    scroll: ScrollState,
+    requesterOf: (String) -> FocusRequester,
+    onOpenDetail: (PlaylistSource) -> Unit,
+    onOpenWebConfig: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(scroll)
+            .testTag(SETTINGS_LIST_TAG)
+    ) {
+        SettingsTopTitle(title = "播放源管理", tag = "settings_picker_title", textScale = textScale)
+        sources.forEachIndexed { index, src ->
+            val isActive = src.id == activeSourceId
+            val statusText = buildString {
+                if (isActive) append("● 当前播放 · ")
+                append(if (src.enabled) "选台列表显示" else "已在选台列表隐藏")
+            }
+            SettingsChoiceRow(
+                title = src.name,
+                value = statusText,
+                valueColor = if (isActive) BrandFocus.BlueColor else null,
+                textScale = textScale,
+                focusRequester = requesterOf("picker_opt_$index"),
+                tag = "picker_opt_$index",
+                onClick = { onOpenDetail(src) },
+            )
+            RowGap()
+        }
+        SettingsItem(
+            text = "扫码网页添加 / 编辑播放源",
+            textScale = textScale,
+            focusRequester = requesterOf("picker_opt_${sources.size}"),
+            tag = "picker_opt_${sources.size}",
+            onClick = onOpenWebConfig,
+        )
+        HelpText("多源启用 ≥2 个时，在选台列表按 ← 进入分组即可在左侧切换播放源。")
+    }
+}
+
+/** 单个播放源详情操作页（设为当前源 / 选台列表展示或隐藏）。 */
+@Composable
+private fun SettingsSourceDetailView(
+    source: PlaylistSource,
+    isActive: Boolean,
+    textScale: Float,
+    scroll: ScrollState,
+    requesterOf: (String) -> FocusRequester,
+    onSwitchActive: () -> Unit,
+    onToggleEnabled: () -> Unit,
+    onOpenWebConfig: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(scroll)
+            .testTag(SETTINGS_LIST_TAG)
+    ) {
+        SettingsTopTitle(title = source.name, tag = "settings_picker_title", textScale = textScale)
+        SettingsRadioRow(
+            title = if (isActive) "当前正在使用此源" else "切换为此播放源",
+            description = source.url,
+            selected = isActive,
+            textScale = textScale,
+            focusRequester = requesterOf("picker_opt_0"),
+            tag = "picker_opt_0",
+            onClick = onSwitchActive,
+        )
+        RowGap()
+        SettingsChoiceRow(
+            title = "在选台列表显示",
+            value = if (source.enabled) "已展示（可在选台分组旁切换）" else "已隐藏（仅在设置中可见）",
+            valueColor = if (source.enabled) BrandFocus.BlueColor else null,
+            showChevron = false,
+            textScale = textScale,
+            focusRequester = requesterOf("picker_opt_1"),
+            tag = "picker_opt_1",
+            onClick = onToggleEnabled,
+        )
+        RowGap()
+        SettingsItem(
+            text = "在扫码网页编辑或删除",
+            textScale = textScale,
+            focusRequester = requesterOf("picker_opt_2"),
+            tag = "picker_opt_2",
+            onClick = onOpenWebConfig,
+        )
+        if (source.epgUrl.isNotBlank()) {
+            HelpText("EPG：${source.epgUrl}")
+        }
+    }
+}
+
+/** 全局自定义 HTTP Header 管理页（查看生效条数、扫码编辑或清空）。 */
+@Composable
+private fun SettingsGlobalHeadersView(
+    rawHeaders: String,
+    textScale: Float,
+    scroll: ScrollState,
+    requesterOf: (String) -> FocusRequester,
+    onOpenWebConfig: () -> Unit,
+    onClearAll: () -> Unit,
+) {
+    val parsed = remember(rawHeaders) { PlaylistSources.parseCustomHeaders(rawHeaders) }
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(scroll)
+            .testTag(SETTINGS_LIST_TAG)
+    ) {
+        SettingsTopTitle(title = "全局自定义 Header", tag = "settings_picker_title", textScale = textScale)
+        SettingsItem(
+            text = "扫码网页编辑自定义 Header",
+            textScale = textScale,
+            focusRequester = requesterOf("picker_opt_0"),
+            tag = "picker_opt_0",
+            onClick = onOpenWebConfig,
+        )
+        if (parsed.isNotEmpty()) {
+            RowGap()
+            SettingsItem(
+                text = "清空全部全局 Header（当前 ${parsed.size} 条）",
+                textScale = textScale,
+                focusRequester = requesterOf("picker_opt_1"),
+                tag = "picker_opt_1",
+                onClick = onClearAll,
+            )
+            SettingsGroupHeader("当前已配置")
+            parsed.forEach { (k, v) ->
+                HelpText("$k: $v")
+            }
+        } else {
+            HelpText("当前未配置全局自定义 Header。")
+        }
+        HelpText("优先级：播放地址 | 后参数 > #EXTINF 属性 > 全局 Header。支持 Referer、Origin、Cookie 等任意字段。")
     }
 }
 
@@ -1122,7 +1370,14 @@ private fun SettingsAudioPage(
 
 @Composable
 private fun SettingsDataPage(
+    sources: List<PlaylistSource>,
+    activeSourceId: String?,
+    globalUserAgent: String,
+    globalCustomHeaders: String,
+    onOpenSourceManage: () -> Unit,
     onSourceConfigClick: () -> Unit,
+    onOpenGlobalUaPicker: () -> Unit,
+    onOpenGlobalHeadersPicker: () -> Unit,
     autoUpdatePlaylistLabel: String,
     autoUpdateEpgLabel: String,
     lastUpdateSummary: String,
@@ -1137,6 +1392,20 @@ private fun SettingsDataPage(
     requesterOf: (String) -> FocusRequester,
     onFocused: (String) -> Unit,
 ) {
+    val activeSourceName = sources.firstOrNull { it.id == activeSourceId }?.name
+        ?: sources.firstOrNull()?.name ?: "未配置"
+    val visibleCount = sources.count { it.enabled }
+    val sourceManageSummary = if (sources.size > 1) {
+        "$activeSourceName · 显示 $visibleCount/${sources.size}"
+    } else {
+        activeSourceName
+    }
+    val globalUaSummary = globalUserAgent.trim().ifBlank { "自动（默认 VLC）" }
+    val customHeadersCount = remember(globalCustomHeaders) {
+        PlaylistSources.parseCustomHeaders(globalCustomHeaders).size
+    }
+    val globalHeadersSummary = if (customHeadersCount > 0) "已配置 $customHeadersCount 条" else "未配置（扫码网页编辑）"
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -1144,16 +1413,47 @@ private fun SettingsDataPage(
             .testTag(SETTINGS_LIST_TAG)
     ) {
         SettingsPageHeader(SettingsPage.DATA, textScale)
-        SettingsGroupHeader(text = "播放列表")
-        SettingsItem(
-            text = "源配置",
+        SettingsGroupHeader(text = "播放源与请求头")
+        SettingsChoiceRow(
+            title = "播放源管理与显示",
+            value = sourceManageSummary,
+            textScale = textScale,
+            focusRequester = requesterOf("settings_source_manage"),
+            tag = "settings_source_manage",
+            onFocused = onFocused,
+            onClick = onOpenSourceManage,
+        )
+        RowGap()
+        SettingsChoiceRow(
+            title = "扫码与多源控制台",
+            value = "手机扫码管理多源、请求头与遥控设置",
             textScale = textScale,
             focusRequester = requesterOf("settings_source_config"),
             tag = "settings_source_config",
             onFocused = onFocused,
-            onClick = onSourceConfigClick
+            onClick = onSourceConfigClick,
         )
         RowGap()
+        SettingsChoiceRow(
+            title = "全局 User-Agent",
+            value = globalUaSummary,
+            textScale = textScale,
+            focusRequester = requesterOf("settings_global_ua"),
+            tag = "settings_global_ua",
+            onFocused = onFocused,
+            onClick = onOpenGlobalUaPicker,
+        )
+        RowGap()
+        SettingsChoiceRow(
+            title = "全局自定义 Header",
+            value = globalHeadersSummary,
+            textScale = textScale,
+            focusRequester = requesterOf("settings_global_headers"),
+            tag = "settings_global_headers",
+            onFocused = onFocused,
+            onClick = onOpenGlobalHeadersPicker,
+        )
+        SettingsGroupHeader(text = "自动更新")
         SettingsChoiceRow(
             title = "自动更新列表",
             value = autoUpdatePlaylistLabel,

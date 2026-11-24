@@ -30,12 +30,21 @@ object SourceLatencyProber {
     private val channels = ConcurrentHashMap<String, Channel>()
     fun updateChannels(values: List<Channel>) {
         val updated = values.associateBy { it.url }
-        for ((url, old) in channels) if (updated[url]?.userAgent != old.userAgent || updated[url]?.referrer != old.referrer) cache.remove(url)
+        for ((url, old) in channels) {
+            val next = updated[url]
+            if (next?.userAgent != old.userAgent || next?.referrer != old.referrer || next?.customHeaders != old.customHeaders) {
+                cache.remove(url)
+            }
+        }
         channels.clear(); channels.putAll(updated)
     }
     private fun request(url: String): Request.Builder {
         val channel = channels[url]
-        return Request.Builder().url(url).header("User-Agent", channel?.userAgent ?: "VLC/3.0.20 LibVLC/3.0.20").apply {
+        return Request.Builder().url(url).apply {
+            channel?.customHeaders?.forEach { (k, v) ->
+                if (k.isNotBlank() && v.isNotBlank()) header(k, v)
+            }
+            header("User-Agent", channel?.userAgent ?: HttpStreamAddress.DEFAULT_USER_AGENT)
             channel?.referrer?.let { header("Referer", it) }
         }
     }

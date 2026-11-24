@@ -2,9 +2,34 @@ package com.cjlhll.iptv
 
 /** Owner and address are one value: a catch-up address can never inherit another live row's headers. */
 data class MediaPlaybackRequest(val channel: Channel, val streamUrl: String = channel.url, val isCatchup: Boolean = false) {
-    fun httpHeaders(): Map<String, String> = buildMap {
-        put("User-Agent", channel.userAgent ?: "VLC/3.0.20 LibVLC/3.0.20")
-        channel.referrer?.let { put("Referer", it) }
+    /**
+     * 完整请求头合并优先级：
+     * 频道级（已按 URL `|` > #EXTINF 决议） > 源级/全局自定义 UA 与 Header > 默认兜底 UA。
+     */
+    fun httpHeaders(
+        globalUserAgent: String? = null,
+        globalCustomHeaders: Map<String, String> = emptyMap(),
+    ): Map<String, String> = buildMap {
+        // 1. 先铺全局自定义 Header
+        for ((k, v) in globalCustomHeaders) {
+            val ck = PlaylistSources.canonicalHeaderName(k)
+            val cv = v.trim()
+            if (ck.isNotEmpty() && cv.isNotEmpty()) put(ck, cv)
+        }
+        // 2. 确定 User-Agent（频道 > 全局自定义 > 默认兜底）
+        val resolvedUa = HttpStreamAddress.normalizeUserAgent(channel.userAgent)
+            ?: HttpStreamAddress.normalizeUserAgent(globalUserAgent)
+            ?: HttpStreamAddress.normalizeUserAgent(this["User-Agent"])
+            ?: HttpStreamAddress.DEFAULT_USER_AGENT
+        put("User-Agent", resolvedUa)
+        // 3. 频道级自定义 Header 覆盖全局同名头
+        for ((k, v) in channel.customHeaders) {
+            val ck = PlaylistSources.canonicalHeaderName(k)
+            val cv = v.trim()
+            if (ck.isNotEmpty() && cv.isNotEmpty()) put(ck, cv)
+        }
+        // 4. 频道级 Referer 覆盖全局 Referer
+        channel.referrer?.trim()?.takeIf { it.isNotEmpty() }?.let { put("Referer", it) }
     }
 }
 data class PreparedPlayback(val revision: Long, val mediaId: String, val request: MediaPlaybackRequest)

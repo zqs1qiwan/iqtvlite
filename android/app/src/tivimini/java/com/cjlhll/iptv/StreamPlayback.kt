@@ -99,7 +99,10 @@ object StreamPlayback {
         }
         val channelId = channel.id.takeIf { it != 0L } ?: RustBridge.stableId(RustBridge.stableId(0, Prefs.getLiveSource(context)), channel.tvgId ?: channel.url)
         val id = "c${channelId}-l${channel.url.hashCode().toUInt()}-s${sequence.incrementAndGet()}"
-        val headers = request.httpHeaders()
+        val activeSrcUa = Prefs.getActiveSource(context)?.userAgent?.takeIf { it.isNotBlank() }
+        val globalUa = activeSrcUa ?: Prefs.getGlobalUserAgent(context).takeIf { it.isNotBlank() }
+        val globalHeaders = PlaylistSources.parseCustomHeaders(Prefs.getGlobalCustomHeaders(context))
+        val headers = request.httpHeaders(globalUserAgent = globalUa, globalCustomHeaders = globalHeaders)
         // t231: one at a time, all default OFF (see JingcaiExperiment).
         val experiment = JingcaiExperiment.parse(Prefs.getJingcaiExperiment(context))
         val http: androidx.media3.datasource.DataSource.Factory =

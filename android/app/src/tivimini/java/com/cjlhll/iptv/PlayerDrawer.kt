@@ -83,6 +83,7 @@ import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 
 enum class DrawerColumn {
+    Sources,
     Groups,
     Channels,
     Programs,
@@ -174,7 +175,7 @@ fun PlayerDrawer(
         if (activeColumn != target) {
             activeColumn = target
             when (target) {
-                DrawerColumn.Groups -> pendingFocusToGroups = true
+                DrawerColumn.Sources, DrawerColumn.Groups -> pendingFocusToGroups = true
                 DrawerColumn.Channels -> pendingFocusToChannels = true
                 DrawerColumn.Programs -> pendingFocusToPrograms = true
                 DrawerColumn.Dates -> pendingFocusToDates = true
@@ -653,10 +654,10 @@ fun PlayerDrawer(
                     pendingFocusToPrograms = true
                     true
                 }
-                DrawerColumn.Groups -> true // 左边界消费，不穿透
+                DrawerColumn.Sources, DrawerColumn.Groups -> true // 左边界消费，不穿透
             }
             android.view.KeyEvent.KEYCODE_DPAD_RIGHT -> when (activeColumn) {
-                DrawerColumn.Groups -> {
+                DrawerColumn.Sources, DrawerColumn.Groups -> {
                     showGroups = false
                     activeColumn = DrawerColumn.Channels
                     pendingFocusToChannels = true

@@ -44,6 +44,11 @@ object Prefs {
     private const val KEY_INFO_OK_MODE = "pref_info_ok_mode"
     // TiviMate 风格文字+台标全局缩放档位（小 / 中[默认] / 大）。
     private const val KEY_UI_SCALE = "pref_ui_scale"
+    // 多播放源列表、当前激活源 ID、全局自定义 UA 与自定义 HTTP Header。
+    private const val KEY_PLAYLIST_SOURCES = "playlist_sources_v1"
+    private const val KEY_ACTIVE_SOURCE_ID = "active_source_id_v1"
+    private const val KEY_GLOBAL_USER_AGENT = "pref_global_user_agent"
+    private const val KEY_GLOBAL_CUSTOM_HEADERS = "pref_global_custom_headers"
 
     private fun getPrefs(context: Context): SharedPreferences {
         return context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
@@ -318,6 +323,77 @@ object Prefs {
 
     fun setUiScale(context: Context, preset: UiScalePreset) {
         getPrefs(context).edit().putString(KEY_UI_SCALE, preset.id).apply()
+    }
+
+    // ---- 多播放源管理（自动无缝迁移老单源配置） ----
+    fun getSources(context: Context): List<PlaylistSource> {
+        val p = getPrefs(context)
+        val parsed = PlaylistSources.parse(p.getString(KEY_PLAYLIST_SOURCES, null))
+        if (parsed.isNotEmpty()) return parsed
+        val legacyLive = p.getString(KEY_LIVE_SOURCE, "").orEmpty().trim()
+        if (legacyLive.isEmpty()) return emptyList()
+        val legacyEpg = p.getString(KEY_EPG_SOURCE, "").orEmpty().trim()
+        val migrated = listOf(
+            PlaylistSource(
+                id = PlaylistSources.newId(legacyLive),
+                name = PlaylistSources.defaultNameForUrl(legacyLive),
+                url = legacyLive,
+                epgUrl = legacyEpg,
+                enabled = true,
+            )
+        )
+        saveSources(context, migrated, migrated.first().id)
+        return migrated
+    }
+
+    fun getActiveSourceId(context: Context): String? =
+        getPrefs(context).getString(KEY_ACTIVE_SOURCE_ID, null)?.takeIf { it.isNotBlank() }
+
+    fun getActiveSource(context: Context): PlaylistSource? {
+        val list = getSources(context)
+        return PlaylistSources.activeSource(list, getActiveSourceId(context))
+    }
+
+    fun saveSources(context: Context, sources: List<PlaylistSource>, activeId: String? = getActiveSourceId(context)) {
+        val resolvedActive = PlaylistSources.activeSource(sources, activeId)
+        val editor = getPrefs(context).edit()
+            .putString(KEY_PLAYLIST_SOURCES, PlaylistSources.serialize(sources))
+        if (resolvedActive != null) {
+            editor.putString(KEY_ACTIVE_SOURCE_ID, resolvedActive.id)
+                .putString(KEY_LIVE_SOURCE, resolvedActive.url)
+                .putString(KEY_EPG_SOURCE, resolvedActive.epgUrl)
+        } else {
+            editor.remove(KEY_ACTIVE_SOURCE_ID)
+        }
+        editor.apply()
+    }
+
+    fun setActiveSource(context: Context, sourceId: String): PlaylistSource? {
+        val list = getSources(context)
+        val target = list.firstOrNull { it.id == sourceId } ?: return null
+        val fileName = PlaylistCache.fileNameForSource(target.url)
+        getPrefs(context).edit()
+            .putString(KEY_ACTIVE_SOURCE_ID, target.id)
+            .putString(KEY_LIVE_SOURCE, target.url)
+            .putString(KEY_EPG_SOURCE, target.epgUrl)
+            .putString(KEY_PLAYLIST_FILE_NAME, fileName)
+            .apply()
+        return target
+    }
+
+    // ---- 全局自定义 User-Agent 与 HTTP Header ----
+    fun getGlobalUserAgent(context: Context): String =
+        getPrefs(context).getString(KEY_GLOBAL_USER_AGENT, "").orEmpty().trim()
+
+    fun setGlobalUserAgent(context: Context, ua: String) {
+        getPrefs(context).edit().putString(KEY_GLOBAL_USER_AGENT, ua.trim()).apply()
+    }
+
+    fun getGlobalCustomHeaders(context: Context): String =
+        getPrefs(context).getString(KEY_GLOBAL_CUSTOM_HEADERS, "").orEmpty().trim()
+
+    fun setGlobalCustomHeaders(context: Context, headersRaw: String) {
+        getPrefs(context).edit().putString(KEY_GLOBAL_CUSTOM_HEADERS, headersRaw.trim()).apply()
     }
 
     /** t189: write the EPG failure state in one step (single source: AutoUpdateConfig). */

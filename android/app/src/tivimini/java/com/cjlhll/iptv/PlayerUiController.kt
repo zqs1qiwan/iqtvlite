@@ -172,12 +172,13 @@ class PlayerUiController(
         }
     }
 
-    /** 三级逐层回退：选项选择器 → 二级页 → 设置根页。 */
+    /** 逐层回退：源详情 → 源列表 → 二级页 → 设置根页。 */
     fun settingsBackToRoot(): Boolean {
         val cur = _overlay.value as? PlayerOverlay.Settings ?: return false
         if (cur.picker != null) {
             _captureRequest.value = null
-            _overlay.value = cur.copy(picker = null)
+            val parentPicker = if (cur.picker.startsWith("source_detail:")) "sources_manage" else null
+            _overlay.value = cur.copy(picker = parentPicker)
             return true
         }
         if (cur.page == null) return false
