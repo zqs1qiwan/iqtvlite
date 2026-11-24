@@ -13,11 +13,14 @@ import android.widget.FrameLayout
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -34,12 +37,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color as ComposeColor
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.lifecycleScope
@@ -280,26 +287,27 @@ class PlayerActivity : ComponentActivity() {
                     val digitState by uiController.digitOsd.collectAsState()
                     if (digitState.visible) {
                         val osdDigitColor = if (digitState.confirmed) BrandFocus.BlueColor else TvDesignTokens.TextPrimary
-                        Column(
+                        val badgeShape = RoundedCornerShape(10.dp)
+                        Box(
                             modifier = Modifier
                                 .align(Alignment.TopEnd)
-                                .padding(top = 24.dp, end = 40.dp)
+                                .padding(top = 28.dp, end = 36.dp)
                                 .testTag("digit_osd")
-                                .background(TvDesignTokens.SurfaceObsidian.copy(alpha = 0.92f))
-                                .padding(horizontal = 28.dp, vertical = 14.dp),
-                            horizontalAlignment = Alignment.End
+                                .clip(badgeShape)
+                                .background(ComposeColor(0xFF0A0D12).copy(alpha = 0.62f))
+                                .border(1.dp, ComposeColor.White.copy(alpha = 0.14f), badgeShape)
+                                .defaultMinSize(minWidth = 84.dp)
+                                .padding(horizontal = 20.dp, vertical = 10.dp),
+                            contentAlignment = Alignment.Center,
                         ) {
                             Text(
-                                text = tr("频道号跳转", "Channel Jump"),
-                                color = TvDesignTokens.TextSecondary,
-                                style = MaterialTheme.typography.labelLarge
-                            )
-                            Text(
-                                text = if (digitState.confirmed) digitState.digits else "${digitState.digits}_",
+                                text = digitState.digits,
                                 color = osdDigitColor,
-                                style = MaterialTheme.typography.headlineLarge.copy(
-                                    fontWeight = if (digitState.confirmed) FontWeight.Bold else FontWeight.SemiBold
-                                )
+                                fontSize = 36.sp,
+                                lineHeight = 40.sp,
+                                fontWeight = if (digitState.confirmed) FontWeight.Bold else FontWeight.SemiBold,
+                                letterSpacing = 2.sp,
+                                style = TextStyle(fontFeatureSettings = "tnum"),
                             )
                         }
                     }

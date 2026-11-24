@@ -450,13 +450,8 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
     }
 
     private fun updateGroupsRightHint() {
-        if (snapshot.sources.size >= 2) {
-            groupsCountView.text = t("← 源", "← Src")
-            groupsCountView.setTextColor(COLOR_ACCENT_SOFT)
-        } else {
-            groupsCountView.text = "${snapshot.groups.size}"
-            groupsCountView.setTextColor(COLOR_TEXT_MUTED)
-        }
+        groupsCountView.text = "${snapshot.groups.size}"
+        groupsCountView.setTextColor(COLOR_TEXT_MUTED)
     }
 
     fun updateSnapshot(newSnapshot: Snapshot) {

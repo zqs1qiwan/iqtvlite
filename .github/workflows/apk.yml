@@ -6,14 +6,29 @@ permissions:
 on:
   push:
     branches: [main]
-    tags: ['v*']
   pull_request:
   workflow_dispatch:
     inputs:
       isolated_test_package:
-        description: Build separate validation applicationId without replacing installed data
+        description: Build separate validation applicationId for instrumentation checks
         type: boolean
         default: true
+      build_release_apk:
+        description: Build official production APK (tv.iqtvlite.app) and upload as artifact
+        type: boolean
+        default: true
+      release_version:
+        description: Production versionName (e.g. 0.1.0, 0.2.0)
+        type: string
+        default: '0.1.0'
+      release_version_code:
+        description: Production versionCode integer (e.g. 100, 101)
+        type: string
+        default: '100'
+      publish_github_release:
+        description: Also publish GitHub Releases (v<version> & latest; requires RELEASE_KEYSTORE_* secrets)
+        type: boolean
+        default: false
       build_ffmpeg_audio:
         description: Also build the Media3 FFmpeg audio-only decoder AAR (MP2/MP3 fallback), upload as artifact
         type: boolean
@@ -64,49 +79,50 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x android/gradlew
 
-      # 稳定签名（跨 run 同证书，设备可一直 `adb install -r` 覆盖升级、永不卸载）。
-      # 首选 VALIDATION_* secrets，兼容旧名 ANDROID_SIGNING_*；四个都配才启用，
-      # 一个都不配则回退 runner 临时 debug keystore（CI 仍然成功，只是签名每 run 变）。
-      # 详见 docs/CI_STABLE_SIGNING.md。
-      - name: Prepare stable validation signing (optional)
+      # 稳定签名（同证书可覆盖升级；正式发版推荐配 RELEASE_KEYSTORE_*，并兼容 VALIDATION_* / ANDROID_SIGNING_*）。
+      - name: Prepare stable release / validation signing (optional)
         id: signing
         env:
+          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
           VALIDATION_KEYSTORE_BASE64: ${{ secrets.VALIDATION_KEYSTORE_BASE64 }}
           LEGACY_KEYSTORE_BASE64: ${{ secrets.ANDROID_SIGNING_KEYSTORE_BASE64 }}
+          RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
           VALIDATION_KEYSTORE_PASSWORD: ${{ secrets.VALIDATION_KEYSTORE_PASSWORD }}
           LEGACY_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_SIGNING_STORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
           VALIDATION_KEY_ALIAS: ${{ secrets.VALIDATION_KEY_ALIAS }}
           LEGACY_KEY_ALIAS: ${{ secrets.ANDROID_SIGNING_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
           VALIDATION_KEY_PASSWORD: ${{ secrets.VALIDATION_KEY_PASSWORD }}
           LEGACY_KEY_PASSWORD: ${{ secrets.ANDROID_SIGNING_KEY_PASSWORD }}
         run: |
           set -u
-          keystore_b64="${VALIDATION_KEYSTORE_BASE64:-${LEGACY_KEYSTORE_BASE64:-}}"
-          store_password="${VALIDATION_KEYSTORE_PASSWORD:-${LEGACY_KEYSTORE_PASSWORD:-}}"
-          key_alias="${VALIDATION_KEY_ALIAS:-${LEGACY_KEY_ALIAS:-}}"
-          key_password="${VALIDATION_KEY_PASSWORD:-${LEGACY_KEY_PASSWORD:-}}"
+          keystore_b64="${RELEASE_KEYSTORE_BASE64:-${VALIDATION_KEYSTORE_BASE64:-${LEGACY_KEYSTORE_BASE64:-}}}"
+          store_password="${RELEASE_KEYSTORE_PASSWORD:-${VALIDATION_KEYSTORE_PASSWORD:-${LEGACY_KEYSTORE_PASSWORD:-}}}"
+          key_alias="${RELEASE_KEY_ALIAS:-${VALIDATION_KEY_ALIAS:-${LEGACY_KEY_ALIAS:-}}}"
+          key_password="${RELEASE_KEY_PASSWORD:-${VALIDATION_KEY_PASSWORD:-${LEGACY_KEY_PASSWORD:-}}}"
 
           if [ -z "$keystore_b64" ] && [ -z "$store_password" ] && [ -z "$key_alias" ] && [ -z "$key_password" ]; then
-            echo "::notice::No validation signing secrets configured -> runner ephemeral debug keystore (APK certificate changes every run)."
+            echo "::notice::No signing secrets configured -> runner ephemeral debug keystore (ephemeral certificate)."
             echo "stable_signing=false" >> "$GITHUB_OUTPUT"
             {
               echo "### APK signing"
               echo ""
-              echo "- Secrets: **not configured** (VALIDATION_KEYSTORE_BASE64 / VALIDATION_KEYSTORE_PASSWORD / VALIDATION_KEY_ALIAS / VALIDATION_KEY_PASSWORD)"
+              echo "- Secrets: **not configured** (RELEASE_KEYSTORE_BASE64 / RELEASE_KEYSTORE_PASSWORD / RELEASE_KEY_ALIAS / RELEASE_KEY_PASSWORD)"
               echo "- Keystore: ephemeral Android debug keystore, regenerated on every run"
-              echo "- In-place upgrade with \`adb install -r\` across runs: **not possible** (\`INSTALL_FAILED_UPDATE_INCOMPATIBLE\`)"
+              echo "- In-place upgrade across runs: **not possible** (\`INSTALL_FAILED_UPDATE_INCOMPATIBLE\`)"
             } >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
 
           # 部分配置 = 配置错误；宁可红也不要静默回退到每次都会变的 debug keystore。
           missing=""
-          [ -n "$keystore_b64" ]   || missing="$missing VALIDATION_KEYSTORE_BASE64"
-          [ -n "$store_password" ] || missing="$missing VALIDATION_KEYSTORE_PASSWORD"
-          [ -n "$key_alias" ]      || missing="$missing VALIDATION_KEY_ALIAS"
-          [ -n "$key_password" ]   || missing="$missing VALIDATION_KEY_PASSWORD"
+          [ -n "$keystore_b64" ]   || missing="$missing RELEASE_KEYSTORE_BASE64"
+          [ -n "$store_password" ] || missing="$missing RELEASE_KEYSTORE_PASSWORD"
+          [ -n "$key_alias" ]      || missing="$missing RELEASE_KEY_ALIAS"
+          [ -n "$key_password" ]   || missing="$missing RELEASE_KEY_PASSWORD"
           if [ -n "$missing" ]; then
-            echo "::error::Validation signing is partially configured. Missing:$missing (set all four secrets or none)."
+            echo "::error::Signing is partially configured. Missing:$missing (set all four secrets or none)."
             exit 1
           fi
 
@@ -241,25 +257,72 @@ jobs:
           retention-days: 90
           if-no-files-found: warn
 
-      - name: Build official release APK (tag push only)
-        if: startsWith(github.ref, 'refs/tags/v')
-        working-directory: android
+      - name: Ensure signing secrets configured before official release build
+        if: github.event_name == 'workflow_dispatch' && inputs.build_release_apk
         run: |
-          TAG="${GITHUB_REF_NAME#v}"
-          ./gradlew :app:assembleRelease -PISOLATED_TEST_PACKAGE=false -PAPP_VERSION_NAME="$TAG" --stacktrace
-          REL_APK="app/build/outputs/apk/release/app-release.apk"
+          if [ "${{ steps.signing.outputs.stable_signing }}" != "true" ]; then
+            echo "::error::Missing release signing secrets. Configure RELEASE_KEYSTORE_BASE64, RELEASE_KEYSTORE_PASSWORD, RELEASE_KEY_ALIAS, and RELEASE_KEY_PASSWORD in GitHub Settings -> Secrets and variables -> Actions."
+            exit 1
+          fi
+
+      - name: Build official release APK (manual dispatch)
+        id: release_build
+        if: github.event_name == 'workflow_dispatch' && inputs.build_release_apk
+        run: |
+          set -eu
+          VER_NAME="${{ inputs.release_version }}"
+          VER_NAME="${VER_NAME#v}"
+          VER_CODE="${{ inputs.release_version_code }}"
+          echo "version=$VER_NAME" >> "$GITHUB_OUTPUT"
+          (cd android && ./gradlew :app:assembleRelease -PISOLATED_TEST_PACKAGE=false -PAPP_VERSION_NAME="$VER_NAME" -PAPP_VERSION_CODE="$VER_CODE" --stacktrace)
+          REL_APK="android/app/build/outputs/apk/release/app-release.apk"
+          test -s "$REL_APK"
+          python3 scripts/verify_apk.py "$REL_APK"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs "$REL_APK"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$REL_APK" | grep -E 'package:|native-code:|sdkVersion|targetSdkVersion|application-label:'
           mkdir -p "$RUNNER_TEMP/release-assets"
-          cp "$REL_APK" "$RUNNER_TEMP/release-assets/IQTV-Lite-${GITHUB_REF_NAME}.apk"
+          cp "$REL_APK" "$RUNNER_TEMP/release-assets/IQTV-Lite-v${VER_NAME}.apk"
           cp "$REL_APK" "$RUNNER_TEMP/release-assets/IQTV-Lite-latest.apk"
 
-      - name: Create GitHub Release (tag push only)
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Upload official release APK artifact (manual dispatch)
+        if: github.event_name == 'workflow_dispatch' && inputs.build_release_apk
+        uses: actions/upload-artifact@v4
+        with:
+          name: iqtvlite-release-apk
+          path: |
+            ${{ runner.temp }}/release-assets/IQTV-Lite-*.apk
+          retention-days: 90
+          if-no-files-found: error
+
+      - name: Move rolling latest tag to released commit
+        if: github.event_name == 'workflow_dispatch' && inputs.build_release_apk && inputs.publish_github_release
+        run: |
+          git tag -f latest "$GITHUB_SHA"
+          git push origin refs/tags/latest --force
+
+      - name: Publish GitHub Release v<version> (manual dispatch)
+        if: github.event_name == 'workflow_dispatch' && inputs.build_release_apk && inputs.publish_github_release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: v${{ steps.release_build.outputs.version }}
+          name: IQTV Lite v${{ steps.release_build.outputs.version }}
           make_latest: true
           files: |
-            ${{ runner.temp }}/release-assets/IQTV-Lite-${{ github.ref_name }}.apk
+            ${{ runner.temp }}/release-assets/IQTV-Lite-v${{ steps.release_build.outputs.version }}.apk
             ${{ runner.temp }}/release-assets/IQTV-Lite-latest.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish GitHub Release latest (manual dispatch)
+        if: github.event_name == 'workflow_dispatch' && inputs.build_release_apk && inputs.publish_github_release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: IQTV Lite Latest (v${{ steps.release_build.outputs.version }})
+          make_latest: false
+          files: |
+            ${{ runner.temp }}/release-assets/IQTV-Lite-latest.apk
+            ${{ runner.temp }}/release-assets/IQTV-Lite-v${{ steps.release_build.outputs.version }}.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
