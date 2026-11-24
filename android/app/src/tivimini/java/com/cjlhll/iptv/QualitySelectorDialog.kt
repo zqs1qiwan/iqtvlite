@@ -164,15 +164,6 @@ private fun SourceOptionItem(
             .padding(horizontal = 14.dp, vertical = 13.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        if (focused) {
-            Box(
-                modifier = Modifier
-                    .width(TvDesignTokens.AccentBarWidth)
-                    .height(18.dp)
-                    .background(TvDesignTokens.AccentPlaying)
-            )
-            Spacer(modifier = Modifier.width(10.dp))
-        }
         Text(
             text = if (selected) "$label · 当前" else label,
             style = MaterialTheme.typography.titleMedium.copy(

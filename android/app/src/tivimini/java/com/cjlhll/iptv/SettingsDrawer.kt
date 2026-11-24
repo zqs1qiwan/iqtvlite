@@ -446,15 +446,6 @@ private fun SettingsRootItem(
             .padding(horizontal = 14.dp, vertical = 11.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        if (focused) {
-            Box(
-                modifier = Modifier
-                    .width(TvDesignTokens.AccentBarWidth)
-                    .height(26.dp)
-                    .background(TvDesignTokens.AccentPlaying)
-            )
-            Spacer(modifier = Modifier.width(10.dp))
-        }
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = entry.page.title,
@@ -966,15 +957,6 @@ private fun SettingsItem(
             .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        if (focused) {
-            Box(
-                modifier = Modifier
-                    .width(TvDesignTokens.AccentBarWidth)
-                    .height(18.dp)
-                    .background(TvDesignTokens.AccentPlaying)
-            )
-            Spacer(modifier = Modifier.width(10.dp))
-        }
         Text(
             text = text,
             style = MaterialTheme.typography.titleMedium.copy(

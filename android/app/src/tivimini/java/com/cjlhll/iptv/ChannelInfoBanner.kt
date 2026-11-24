@@ -430,15 +430,6 @@ private fun RecentStrip(
                         fontWeight = if (isHighlighted) FontWeight.Bold else FontWeight.Medium
                     )
                 }
-                if (isHighlighted) {
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .fillMaxWidth()
-                            .height(2.dp)
-                            .background(TvDesignTokens.AccentPlaying)
-                    )
-                }
             }
             if (index != items.lastIndex) Spacer(modifier = Modifier.width(8.dp))
         }

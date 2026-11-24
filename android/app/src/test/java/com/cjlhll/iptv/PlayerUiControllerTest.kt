@@ -143,4 +143,24 @@ class PlayerUiControllerTest {
             RemoteBindings.resolveWith(bLong, RemoteBindings.KEY_DPAD_CENTER, false, UiContext.PLAYER_ONLY),
         )
     }
+
+    @Test
+    fun boundedCenterOffsetEliminatesTopAndBottomBlankSpaceWhileCenteringMiddle() {
+        val viewportH = 980
+        val rowH = 96
+        val count = 147
+        val idealY = (viewportH - rowH) / 2 // 442
+
+        // 顶部前几台紧贴顶部，绝不留上方一片空白
+        assertEquals(0, NativeChannelDrawerView.boundedCenterOffset(0, count, rowH, viewportH))
+        assertEquals(96, NativeChannelDrawerView.boundedCenterOffset(1, count, rowH, viewportH))
+        assertEquals(192, NativeChannelDrawerView.boundedCenterOffset(2, count, rowH, viewportH))
+
+        // 中段频道精确居中
+        assertEquals(idealY, NativeChannelDrawerView.boundedCenterOffset(21, count, rowH, viewportH))
+        assertEquals(idealY, NativeChannelDrawerView.boundedCenterOffset(70, count, rowH, viewportH))
+
+        // 末台紧贴视口底部，绝不留下方一片空白
+        assertEquals(viewportH - rowH, NativeChannelDrawerView.boundedCenterOffset(146, count, rowH, viewportH))
+    }
 }

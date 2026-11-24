@@ -845,17 +845,7 @@ fun PlayerDrawer(
                                     else TvDesignTokens.FocusSurface.copy(alpha = 0.08f)
                                 )
                                 .testTag("drawer_center_focus_highlight")
-                        ) {
-                            if (inChannelCol) {
-                                Box(
-                                    modifier = Modifier
-                                        .align(Alignment.CenterStart)
-                                        .width(TvDesignTokens.AccentBarWidth)
-                                        .fillMaxHeight(0.62f)
-                                        .background(TvDesignTokens.AccentPlaying)
-                                )
-                            }
-                        }
+                        )
                     }
 
                     LazyColumn(
@@ -1114,15 +1104,6 @@ private fun DrawerGroupItem(
             }
             .padding(horizontal = 12.dp, vertical = 11.dp)
     ) {
-        if (focused) {
-            Box(
-                modifier = Modifier
-                    .width(TvDesignTokens.AccentBarWidth)
-                    .height(18.dp)
-                    .background(TvDesignTokens.AccentPlaying)
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-        }
         Text(
             text = name,
             maxLines = 1,

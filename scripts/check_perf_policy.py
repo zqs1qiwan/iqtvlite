@@ -72,8 +72,8 @@ def main() -> int:
         problems.append("NativeChannelDrawerView.kt: must use native RecyclerView for 60fps weak-device scrolling")
     if "itemAnimator = null" not in native_drawer_code:
         problems.append("NativeChannelDrawerView.kt: must disable itemAnimator for zero-jank focus updates")
-    if "scrollToPositionWithOffset" not in native_drawer_code or "clipToPadding = false" not in native_drawer_code:
-        problems.append("NativeChannelDrawerView.kt: must use clipToPadding=false + scrollToPositionWithOffset for 0px center focus")
+    if "scrollToPositionWithOffset" not in native_drawer_code or "boundedCenterOffset" not in native_drawer_code:
+        problems.append("NativeChannelDrawerView.kt: must use boundedCenterOffset + scrollToPositionWithOffset for natural bounded center scroll")
     if "ZoneId.systemDefault()" not in native_drawer_code:
         problems.append("NativeChannelDrawerView.kt: must format EPG times/dates in ZoneId.systemDefault()")
     if "channels.subList(0, revealedRows" in drawer_code:

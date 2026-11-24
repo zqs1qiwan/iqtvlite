@@ -42,12 +42,10 @@ object TvDesignTokens {
     val TextMuted = Color(0xFF6E7A8D)
 
     // ── 焦点与强调 ───────────────────────────────────────────────────────────
-    /** 清晰可读的灰白磨砂焦点底（比早期 8% 白更易在客厅 3 米远距辨识）。 */
+    /** 清晰可读的对称灰白磨砂焦点底（全局纯高亮表达焦点，不附带多余蓝色聚焦竖标）。 */
     val FocusSurface = BrandFocus.FocusBgColor
     /** 品牌强调蓝：仅用于正在播放的频道名、当前直播节目与进度条。 */
     val AccentPlaying = BrandFocus.BlueColor
-    /** 左侧极细 3dp 状态条，给居中焦点/当前播放提供克制的高级层次。 */
-    val AccentBarWidth = 3.dp
 
     // ── 面板透明度（配合静态 graphicsLayer，单次 GPU 合成） ──────────────────
     const val ALPHA_DRAWER = 0.92f

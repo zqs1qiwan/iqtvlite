@@ -151,15 +151,6 @@ private fun AudioRow(
             .clickable { onClick() }
             .padding(horizontal = 14.dp, vertical = 11.dp)
     ) {
-        if (focused) {
-            Box(
-                modifier = Modifier
-                    .width(TvDesignTokens.AccentBarWidth)
-                    .height(18.dp)
-                    .background(TvDesignTokens.AccentPlaying)
-            )
-            Spacer(modifier = Modifier.width(10.dp))
-        }
         Text(
             text = if (item.selected) "▶ ${item.text}" else item.text,
             style = MaterialTheme.typography.bodyLarge.copy(

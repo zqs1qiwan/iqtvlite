@@ -35,17 +35,19 @@ import kotlin.math.roundToInt
 /**
  * 原生 Android [RecyclerView] 4 列 TiviMate 选台抽屉（60fps 弱机性能底座）。
  *
- * 从根源解决 Compose LazyColumn 在 Android 9 / ARMv7 机顶盒上 61ms–200ms UI 线程掉帧的问题：
- * 1. **零 Compose diff、零 relayout**：RecyclerView 原生 ViewHolder 复用 + `itemAnimator = null` +
- *    局部 `PAYLOAD_FOCUS` 仅更新 2 个 ViewHolder 背景，单次上下按键耗时 < 1ms；
- * 2. **真·0px 恒定居中**：通过 `clipToPadding = false` + 动态上下半屏 `padding = (viewportH - rowH)/2`
- *    + `scrollToPositionWithOffset(focusIndex, 0)`，让第 0 项至末项每一行都精确落于可视区几何正中；
- *    少于一屏的小分组自动退化为顶对齐，不留空白断层；
- * 3. **严格本地时区 EPG**：所有节目时间（`HH:mm`）与日期（`今天` / `MM-dd`）统一按设备本地时区
- *    [ZoneId.systemDefault] 格式化，彻底修复 XMLTV `+0000` 显示 UTC 时间的偏差；
- * 4. **统一曜石极简视觉**：左区 `#EB0F131A` + 右 EPG 区 `#9E0F131A`（无生硬分割线）+ 右缘柔光过渡，
- *    磨砂灰白焦点底 `#24FFFFFF` + 3dp 品牌蓝左指示条 `#2F6BFF`；
- * 5. **确定性遥控闭环**：由 `PlayerActivity.dispatchKeyEvent` 同步直达 [handleKeyEvent]，零焦锁、零透传。
+ * 设计要点：
+ * 1. **自然有界居中滚动（无首尾大段空白）**：
+ *    通过 [boundedCenterOffset] 计算自然滚动偏移：首屏前几台紧贴顶部、末屏最后几台紧贴底部、
+ *    中段频道自动保持在视口正中；彻底消除顶部空白，兼具 TiviMate 舒适视野与居中浏览体验；
+ * 2. **紧凑克制的布局与干净边界**：
+ *    频道列 260dp、节目单列 216dp、分组列 156dp、日期列 104dp；往左切入分组列时自动收起节目单，
+ *    避免占用过多画面；面板右缘干净利落，无渐变拖尾；
+ * 3. **对称高亮焦点（无冗余蓝色竖标）**：
+ *    所有行左右完全对称，仅以清晰的磨砂高亮底色表达焦点；品牌蓝仅用于正在播放的频道与直播节目；
+ * 4. **聚焦长名跑马灯**：
+ *    过长的节目名/频道名在被聚焦时按 [PerfPolicy.MARQUEE_ITERATIONS] 有界水平滚动，失焦即停；
+ * 5. **严格本地时区 EPG + 零重组**：
+ *    统一按 [ZoneId.systemDefault] 格式化时刻与日期；由 `PlayerActivity.dispatchKeyEvent` 同步直达 [handleKeyEvent]。
  */
 class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
 
@@ -104,15 +106,14 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
     private var prefetchJob: Job? = null
     private var perfOpenAtMs = 0L
 
-    // 尺寸与色彩常量（与 TvDesignTokens 100% 统一）
     private val density = resources.displayMetrics.density
     private fun dp(v: Int): Int = (v * density).roundToInt()
     private fun dpF(v: Float): Float = v * density
 
-    private val channelRowHeightPx = dp(68)
-    private val groupRowHeightPx = dp(48)
-    private val programRowHeightPx = dp(60)
-    private val dateRowHeightPx = dp(46)
+    private val channelRowHeightPx = dp(64)
+    private val groupRowHeightPx = dp(46)
+    private val programRowHeightPx = dp(58)
+    private val dateRowHeightPx = dp(44)
 
     // 视图组件
     private val groupsPanel: LinearLayout
@@ -141,18 +142,10 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
     private val datesLm = LinearLayoutManager(context, RecyclerView.VERTICAL, false)
     private val datesAdapter = DatesAdapter()
 
-    private val edgeScrim: View
-
     private fun newRowBgDrawable(): GradientDrawable = GradientDrawable().apply {
         shape = GradientDrawable.RECTANGLE
-        cornerRadius = dpF(8f)
+        cornerRadius = dpF(6f)
         setColor(Color.TRANSPARENT)
-    }
-
-    private fun newAccentPillDrawable(): GradientDrawable = GradientDrawable().apply {
-        shape = GradientDrawable.RECTANGLE
-        cornerRadius = dpF(2f)
-        setColor(COLOR_ACCENT_BLUE)
     }
 
     init {
@@ -163,14 +156,14 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
         descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
         contentDescription = "native_channel_drawer"
 
-        // ── 1. 分组列（按 LEFT 展开） ──────────────────────────────────────────
+        // ── 1. 分组列（按 LEFT 展开，展开时自动收起右侧节目单） ───────────────
         groupsPanel = LinearLayout(context).apply {
             orientation = VERTICAL
             setBackgroundColor(COLOR_SURFACE_SOLID)
             visibility = GONE
-            layoutParams = LayoutParams(dp(184), ViewGroup.LayoutParams.MATCH_PARENT)
+            layoutParams = LayoutParams(dp(156), ViewGroup.LayoutParams.MATCH_PARENT)
         }
-        val groupsHeader = buildColumnHeader("频道分组", "").also {
+        val groupsHeader = buildColumnHeader("分组", "").also {
             groupsCountView = it.second
         }
         groupsPanel.addView(groupsHeader.first)
@@ -180,50 +173,50 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
         groupsPanel.addView(groupsRecycler, LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         addView(groupsPanel)
 
-        // ── 2. 频道列（常显，真·0px 焦点恒定居中） ────────────────────────────
+        // ── 2. 频道列（紧凑 260dp，自然有界居中滚动，顶部/底部零空白） ────────
         channelsPanel = LinearLayout(context).apply {
             orientation = VERTICAL
             setBackgroundColor(COLOR_SURFACE_SOLID)
-            layoutParams = LayoutParams(dp(316), ViewGroup.LayoutParams.MATCH_PARENT)
+            layoutParams = LayoutParams(dp(260), ViewGroup.LayoutParams.MATCH_PARENT)
         }
-        val channelsHeader = buildColumnHeader("全部频道", "0/0")
+        val channelsHeader = buildColumnHeader("全部", "0/0")
         channelsTitleView = channelsHeader.first.getChildAt(0) as TextView
         channelsCountView = channelsHeader.second
         channelsPanel.addView(channelsHeader.first)
         channelsRecycler = buildRecycler(channelsLm, channelsAdapter).apply {
             contentDescription = "drawer_channels_list"
+            setPadding(0, dp(6), 0, dp(6))
             addOnLayoutChangeListener { _, _, top, _, bottom, _, oldTop, _, oldBottom ->
                 if (bottom - top != oldBottom - oldTop) {
-                    applyChannelCenterPadding(bottom - top)
-                    scrollChannelToCenter(focusedChannelIndex)
+                    post { if (isOpen) scrollChannelBounded(focusedChannelIndex) }
                 }
             }
         }
         channelsPanel.addView(channelsRecycler, LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         addView(channelsPanel)
 
-        // ── 3. 节目单列（半透明曜石玻璃，无生硬分割线） ───────────────────────
+        // ── 3. 节目单列（紧凑 216dp，干净边界，无右缘渐变拖尾） ───────────────
         programsPanel = LinearLayout(context).apply {
             orientation = VERTICAL
             setBackgroundColor(COLOR_SURFACE_TRANSLUCENT)
-            layoutParams = LayoutParams(dp(276), ViewGroup.LayoutParams.MATCH_PARENT)
+            layoutParams = LayoutParams(dp(216), ViewGroup.LayoutParams.MATCH_PARENT)
         }
         val programsHeader = LinearLayout(context).apply {
             orientation = VERTICAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(14), dp(10), dp(14), dp(8))
-            layoutParams = LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(56))
+            setPadding(dp(12), dp(10), dp(12), dp(6))
+            layoutParams = LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(52))
         }
         programsChannelTitleView = TextView(context).apply {
             setTextColor(COLOR_TEXT_PRIMARY)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14.5f)
             typeface = Typeface.DEFAULT_BOLD
             isSingleLine = true
             ellipsize = TextUtils.TruncateAt.END
         }
         programsSubtitleView = TextView(context).apply {
             setTextColor(COLOR_TEXT_SECONDARY)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11.5f)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
             isSingleLine = true
             ellipsize = TextUtils.TruncateAt.END
             setPadding(0, dp(2), 0, 0)
@@ -237,17 +230,17 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
         }
         programsRecycler = buildRecycler(programsLm, programsAdapter).apply {
             contentDescription = "drawer_programs_list"
+            setPadding(0, dp(6), 0, dp(6))
             addOnLayoutChangeListener { _, _, top, _, bottom, _, oldTop, _, oldBottom ->
                 if (bottom - top != oldBottom - oldTop) {
-                    applyProgramCenterPadding(bottom - top)
-                    scrollProgramToCenter(focusedProgramIndex)
+                    post { if (isOpen) scrollProgramBounded(focusedProgramIndex) }
                 }
             }
         }
         programsEmptyView = TextView(context).apply {
             text = "暂无节目单"
             setTextColor(COLOR_TEXT_MUTED)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13.5f)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
             gravity = Gravity.CENTER
             visibility = GONE
         }
@@ -262,12 +255,12 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
         programsPanel.addView(programsContentBox)
         addView(programsPanel)
 
-        // ── 4. 日期列（在节目列按 RIGHT 展开） ────────────────────────────────
+        // ── 4. 日期列（在节目列按 RIGHT 展开，干净边界） ──────────────────────
         datesPanel = LinearLayout(context).apply {
             orientation = VERTICAL
             setBackgroundColor(COLOR_SURFACE_TRANSLUCENT)
             visibility = GONE
-            layoutParams = LayoutParams(dp(128), ViewGroup.LayoutParams.MATCH_PARENT)
+            layoutParams = LayoutParams(dp(104), ViewGroup.LayoutParams.MATCH_PARENT)
         }
         datesPanel.addView(buildColumnHeader("日期", "").first)
         datesRecycler = buildRecycler(datesLm, datesAdapter).apply {
@@ -275,29 +268,19 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
         }
         datesPanel.addView(datesRecycler, LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         addView(datesPanel)
-
-        // ── 5. 右缘柔光过渡（融入播放画面） ────────────────────────────────────
-        edgeScrim = View(context).apply {
-            background = GradientDrawable(
-                GradientDrawable.Orientation.LEFT_RIGHT,
-                intArrayOf(COLOR_SURFACE_TRANSLUCENT, Color.TRANSPARENT),
-            )
-            layoutParams = LayoutParams(dp(36), ViewGroup.LayoutParams.MATCH_PARENT)
-        }
-        addView(edgeScrim)
     }
 
     private fun buildColumnHeader(title: String, rightText: String): Pair<LinearLayout, TextView> {
         val header = LinearLayout(context).apply {
             orientation = HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(16), dp(12), dp(14), dp(8))
-            layoutParams = LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(56))
+            setPadding(dp(14), dp(10), dp(12), dp(6))
+            layoutParams = LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(52))
         }
         val titleTv = TextView(context).apply {
             text = title
             setTextColor(COLOR_TEXT_PRIMARY)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
             typeface = Typeface.DEFAULT_BOLD
             isSingleLine = true
             ellipsize = TextUtils.TruncateAt.END
@@ -306,7 +289,7 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
         val rightTv = TextView(context).apply {
             text = rightText
             setTextColor(COLOR_TEXT_MUTED)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11.5f)
             isSingleLine = true
         }
         header.addView(titleTv)
@@ -369,17 +352,16 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
                 newSnapshot.channels.indexOfFirst { it.url == anchorUrl }.coerceAtLeast(0)
             } else 0
             if (isOpen) {
-                applyChannelCenterPadding(channelsRecycler.height)
                 channelsAdapter.notifyDataSetChanged()
-                scrollChannelToCenter(focusedChannelIndex)
+                scrollChannelBounded(focusedChannelIndex)
                 updateChannelCounter()
-                scheduleEpgLoad(immediate = true)
+                if (!showGroups) scheduleEpgLoad(immediate = true)
             }
         } else if (isOpen && (playingChanged || nowProgramsChanged)) {
             channelsAdapter.notifyItemRangeChanged(0, newSnapshot.channels.size, PAYLOAD_NOW_OR_PLAYING)
         }
 
-        if (isOpen && prev.epgVersion != newSnapshot.epgVersion) {
+        if (isOpen && !showGroups && prev.epgVersion != newSnapshot.epgVersion) {
             scheduleEpgLoad(immediate = true)
         }
     }
@@ -396,6 +378,7 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
             showGroups = false
             showDates = false
             groupsPanel.visibility = GONE
+            programsPanel.visibility = VISIBLE
             datesPanel.visibility = GONE
             setActiveColumnInternal(DrawerColumn.Channels)
             PerfTrace.d { "drawer_close ms=${SystemClock.elapsedRealtime() - tClose}" }
@@ -406,6 +389,7 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
         showGroups = false
         showDates = false
         groupsPanel.visibility = GONE
+        programsPanel.visibility = VISIBLE
         datesPanel.visibility = GONE
         setActiveColumnInternal(DrawerColumn.Channels)
 
@@ -430,16 +414,11 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
         channelsAdapter.notifyDataSetChanged()
         updateChannelCounter()
 
-        // 在当前帧或布局完成后即刻精确居中落位（0px 误差）
         if (channelsRecycler.height > 0) {
-            applyChannelCenterPadding(channelsRecycler.height)
-            scrollChannelToCenter(focusedChannelIndex)
+            scrollChannelBounded(focusedChannelIndex)
         } else {
             channelsRecycler.post {
-                if (isOpen) {
-                    applyChannelCenterPadding(channelsRecycler.height)
-                    scrollChannelToCenter(focusedChannelIndex)
-                }
+                if (isOpen) scrollChannelBounded(focusedChannelIndex)
             }
         }
 
@@ -478,7 +457,7 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
                 val prev = focusedGroupIndex
                 focusedGroupIndex = if (prev <= 0) groups.lastIndex else prev - 1
                 notifyFocusMove(groupsAdapter, prev, focusedGroupIndex)
-                groupsLm.scrollToPositionWithOffset(focusedGroupIndex, (groupsRecycler.height / 3).coerceAtLeast(0))
+                scrollGroupBounded(focusedGroupIndex)
                 listener?.onSelectGroup(groups[focusedGroupIndex], true)
                 true
             }
@@ -487,7 +466,7 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
                 val prev = focusedGroupIndex
                 focusedGroupIndex = if (prev >= groups.lastIndex) 0 else prev + 1
                 notifyFocusMove(groupsAdapter, prev, focusedGroupIndex)
-                groupsLm.scrollToPositionWithOffset(focusedGroupIndex, (groupsRecycler.height / 3).coerceAtLeast(0))
+                scrollGroupBounded(focusedGroupIndex)
                 listener?.onSelectGroup(groups[focusedGroupIndex], true)
                 true
             }
@@ -497,8 +476,10 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
             KeyEvent.KEYCODE_NUMPAD_ENTER -> {
                 showGroups = false
                 groupsPanel.visibility = GONE
+                programsPanel.visibility = VISIBLE
                 setActiveColumnInternal(DrawerColumn.Channels)
                 refreshColumnHighlights()
+                scheduleEpgLoad(immediate = true)
                 true
             }
             KeyEvent.KEYCODE_DPAD_LEFT -> {
@@ -532,12 +513,16 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
             }
             KeyEvent.KEYCODE_DPAD_LEFT -> {
                 if (snapshot.groups.isNotEmpty()) {
+                    // 往左进入分组列时收起节目单与日期列，避免选台浮层占用过大画面
                     showGroups = true
+                    showDates = false
                     groupsPanel.visibility = VISIBLE
+                    programsPanel.visibility = GONE
+                    datesPanel.visibility = GONE
                     focusedGroupIndex = snapshot.groups.indexOf(snapshot.selectedGroup).coerceAtLeast(0)
                     setActiveColumnInternal(DrawerColumn.Groups)
                     groupsAdapter.notifyDataSetChanged()
-                    groupsLm.scrollToPositionWithOffset(focusedGroupIndex, (groupsRecycler.height / 3).coerceAtLeast(0))
+                    scrollGroupBounded(focusedGroupIndex)
                     refreshColumnHighlights()
                 }
                 true
@@ -546,7 +531,7 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
                 if (visibleDatePrograms.isNotEmpty()) {
                     setActiveColumnInternal(DrawerColumn.Programs)
                     refreshColumnHighlights()
-                    scrollProgramToCenter(focusedProgramIndex)
+                    scrollProgramBounded(focusedProgramIndex)
                 } else if (epgLoading) {
                     scheduleEpgLoad(immediate = true)
                 } else {
@@ -567,7 +552,7 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
                     val prev = focusedProgramIndex
                     focusedProgramIndex = prev - 1
                     notifyFocusMove(programsAdapter, prev, focusedProgramIndex)
-                    scrollProgramToCenter(focusedProgramIndex)
+                    scrollProgramBounded(focusedProgramIndex)
                 }
                 true
             }
@@ -577,7 +562,7 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
                     val prev = focusedProgramIndex
                     focusedProgramIndex = prev + 1
                     notifyFocusMove(programsAdapter, prev, focusedProgramIndex)
-                    scrollProgramToCenter(focusedProgramIndex)
+                    scrollProgramBounded(focusedProgramIndex)
                 }
                 true
             }
@@ -680,7 +665,7 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
         }
     }
 
-    // ── 内部定位与 EPG 加载 ──────────────────────────────────────────────────
+    // ── 自然有界居中滚动与 EPG 加载 ──────────────────────────────────────────
 
     private fun currentFocusedChannel(): Channel? = snapshot.channels.getOrNull(focusedChannelIndex)
 
@@ -718,12 +703,12 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
         val prev = focusedChannelIndex
         focusedChannelIndex = clamped
         notifyFocusMove(channelsAdapter, prev, clamped)
-        scrollChannelToCenter(clamped)
+        scrollChannelBounded(clamped)
         updateChannelCounter()
         channels.getOrNull(clamped)?.let { ch ->
             listener?.onFocusedChannelChanged(ch.url)
         }
-        scheduleEpgLoad(immediate = false)
+        if (!showGroups) scheduleEpgLoad(immediate = false)
         scheduleUrgentLogoPrefetch()
     }
 
@@ -732,49 +717,36 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
         channelsCountView.text = if (total == 0) "0/0" else "${focusedChannelIndex + 1}/$total"
     }
 
-    private fun applyChannelCenterPadding(viewportH: Int) {
-        if (viewportH <= 0) return
-        val count = snapshot.channels.size
-        val useCenter = count * channelRowHeightPx > viewportH
-        val pad = if (useCenter) ((viewportH - channelRowHeightPx) / 2).coerceAtLeast(0) else dp(8)
-        if (channelsRecycler.paddingTop != pad || channelsRecycler.paddingBottom != pad) {
-            channelsRecycler.setPadding(0, pad, 0, pad)
-        }
+    private fun scrollGroupBounded(index: Int) {
+        val count = snapshot.groups.size
+        if (count == 0) return
+        val viewportH = (groupsRecycler.height - groupsRecycler.paddingTop - groupsRecycler.paddingBottom).coerceAtLeast(0)
+        val offset = boundedCenterOffset(index, count, groupRowHeightPx, viewportH)
+        groupsLm.scrollToPositionWithOffset(index.coerceIn(0, count - 1), offset)
     }
 
-    private fun scrollChannelToCenter(index: Int) {
+    private fun scrollChannelBounded(index: Int) {
         val count = snapshot.channels.size
         if (count == 0) return
-        val h = channelsRecycler.height
-        val useCenter = h > 0 && count * channelRowHeightPx > h
-        if (useCenter) {
-            // 因为 paddingTop == (h - rowH) / 2，offset = 0 即让该行精确落于几何中心（0px 偏差）
-            channelsLm.scrollToPositionWithOffset(index.coerceIn(0, count - 1), 0)
-        } else {
+        val viewportH = (channelsRecycler.height - channelsRecycler.paddingTop - channelsRecycler.paddingBottom).coerceAtLeast(0)
+        if (viewportH <= 0 || count * channelRowHeightPx <= viewportH) {
             channelsLm.scrollToPositionWithOffset(0, 0)
+            return
         }
+        val offset = boundedCenterOffset(index, count, channelRowHeightPx, viewportH)
+        channelsLm.scrollToPositionWithOffset(index.coerceIn(0, count - 1), offset)
     }
 
-    private fun applyProgramCenterPadding(viewportH: Int) {
-        if (viewportH <= 0) return
-        val count = visibleDatePrograms.size
-        val useCenter = count * programRowHeightPx > viewportH
-        val pad = if (useCenter) ((viewportH - programRowHeightPx) / 2).coerceAtLeast(0) else dp(6)
-        if (programsRecycler.paddingTop != pad || programsRecycler.paddingBottom != pad) {
-            programsRecycler.setPadding(0, pad, 0, pad)
-        }
-    }
-
-    private fun scrollProgramToCenter(index: Int) {
+    private fun scrollProgramBounded(index: Int) {
         val count = visibleDatePrograms.size
         if (count == 0) return
-        val h = programsRecycler.height
-        val useCenter = h > 0 && count * programRowHeightPx > h
-        if (useCenter) {
-            programsLm.scrollToPositionWithOffset(index.coerceIn(0, count - 1), 0)
-        } else {
+        val viewportH = (programsRecycler.height - programsRecycler.paddingTop - programsRecycler.paddingBottom).coerceAtLeast(0)
+        if (viewportH <= 0 || count * programRowHeightPx <= viewportH) {
             programsLm.scrollToPositionWithOffset(0, 0)
+            return
         }
+        val offset = boundedCenterOffset(index, count, programRowHeightPx, viewportH)
+        programsLm.scrollToPositionWithOffset(index.coerceIn(0, count - 1), offset)
     }
 
     private fun scheduleEpgLoad(immediate: Boolean) {
@@ -795,7 +767,6 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
 
         epgLoading = true
         if (loadedEpgChannelUrl != ch.url) {
-            // 切换频道时立即清空上一频道的旧节目列表，绝不残留错台 EPG
             loadedEpgChannelUrl = null
             loadedEpgAllPrograms = emptyList()
             visibleDatePrograms = emptyList()
@@ -822,7 +793,6 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
             }
             if (!isOpen || currentFocusedChannel()?.url != ch.url) return@launch
             epgLoading = false
-            // 仅在 EPG 版本已就绪或查到数据时写缓存，避免冷启 EPG 未载完时误缓存空列表
             if (programs.isNotEmpty() || snapshot.epgVersion > 0) {
                 epgCache[ch.url] = programs
             }
@@ -846,7 +816,6 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
             return
         }
 
-        // 严格采用设备本地时区分组日期（修复 UTC+0 偏移导致日期与时刻全部错位 8 小时的问题）
         val localZone = ZoneId.systemDefault()
         val today = LocalDate.now(localZone)
         val dates = programs
@@ -891,9 +860,8 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
             ?: dayPrograms.indexOfFirst { it.startMillis > now }.takeIf { it >= 0 }
             ?: dayPrograms.lastIndex.coerceAtLeast(0)
 
-        applyProgramCenterPadding(programsRecycler.height)
         programsAdapter.notifyDataSetChanged()
-        scrollProgramToCenter(focusedProgramIndex)
+        scrollProgramBounded(focusedProgramIndex)
     }
 
     private fun renderEpgEmpty(message: String) {
@@ -951,7 +919,22 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
         return if (clean.length <= 2) clean else clean.substring(0, 2)
     }
 
-    // ── Adapter 1: Groups ────────────────────────────────────────────────────
+    private fun applyFocusedMarquee(tv: TextView, active: Boolean) {
+        if (active && PerfPolicy.MARQUEE_ITERATIONS > 0) {
+            if (tv.ellipsize != TextUtils.TruncateAt.MARQUEE) {
+                tv.ellipsize = TextUtils.TruncateAt.MARQUEE
+                tv.marqueeRepeatLimit = PerfPolicy.MARQUEE_ITERATIONS
+            }
+            if (!tv.isSelected) tv.isSelected = true
+        } else {
+            if (tv.isSelected) tv.isSelected = false
+            if (tv.ellipsize != TextUtils.TruncateAt.END) {
+                tv.ellipsize = TextUtils.TruncateAt.END
+            }
+        }
+    }
+
+    // ── Adapter 1: Groups（对称高亮焦点） ────────────────────────────────────
 
     private inner class GroupsAdapter : RecyclerView.Adapter<GroupVH>() {
         override fun getItemCount(): Int = snapshot.groups.size
@@ -962,25 +945,20 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
                 orientation = HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
                 background = rowBg
-                setPadding(dp(8), 0, dp(12), 0)
+                setPadding(dp(12), 0, dp(12), 0)
                 layoutParams = RecyclerView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, groupRowHeightPx).apply {
                     marginStart = dp(8)
                     marginEnd = dp(8)
                 }
             }
-            val bar = View(context).apply {
-                background = newAccentPillDrawable()
-                layoutParams = LayoutParams(dp(3), dp(22)).apply { marginEnd = dp(10) }
-            }
             val label = TextView(context).apply {
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 14.5f)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
                 isSingleLine = true
                 ellipsize = TextUtils.TruncateAt.END
                 layoutParams = LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
             }
-            row.addView(bar)
             row.addView(label)
-            return GroupVH(row, rowBg, bar, label)
+            return GroupVH(row, rowBg, label)
         }
 
         override fun onBindViewHolder(holder: GroupVH, position: Int) {
@@ -1007,7 +985,6 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
                     else -> Color.TRANSPARENT
                 }
             )
-            holder.bar.visibility = if (isFocused) VISIBLE else INVISIBLE
             holder.label.setTextColor(
                 when {
                     isSelected -> COLOR_ACCENT_BLUE
@@ -1016,17 +993,22 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
                 }
             )
             holder.label.typeface = if (isFocused || isSelected) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
+            applyFocusedMarquee(holder.label, isFocused)
+        }
+
+        override fun onViewRecycled(holder: GroupVH) {
+            holder.label.isSelected = false
+            super.onViewRecycled(holder)
         }
     }
 
     private class GroupVH(
         root: View,
         val rowBg: GradientDrawable,
-        val bar: View,
         val label: TextView,
     ) : RecyclerView.ViewHolder(root)
 
-    // ── Adapter 2: Channels（零 relayout 60fps 核心） ─────────────────────────
+    // ── Adapter 2: Channels（对称高亮焦点 + 聚焦跑马灯） ─────────────────────
 
     private inner class ChannelsAdapter : RecyclerView.Adapter<ChannelVH>() {
         override fun getItemCount(): Int = snapshot.channels.size
@@ -1037,40 +1019,35 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
                 orientation = HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
                 background = rowBg
-                setPadding(dp(6), dp(6), dp(12), dp(6))
+                setPadding(dp(10), dp(6), dp(10), dp(6))
                 layoutParams = RecyclerView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, channelRowHeightPx).apply {
                     marginStart = dp(8)
                     marginEnd = dp(8)
                 }
             }
 
-            val bar = View(context).apply {
-                background = newAccentPillDrawable()
-                layoutParams = LayoutParams(dp(3), dp(36)).apply { marginEnd = dp(8) }
-            }
-
             val numTv = TextView(context).apply {
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 13.5f)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
                 gravity = Gravity.END or Gravity.CENTER_VERTICAL
                 isSingleLine = true
-                layoutParams = LayoutParams(dp(34), ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginEnd = dp(10) }
+                layoutParams = LayoutParams(dp(28), ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginEnd = dp(8) }
             }
 
             val logoBox = FrameLayout(context).apply {
                 background = GradientDrawable().apply {
                     shape = GradientDrawable.RECTANGLE
-                    cornerRadius = dpF(6f)
+                    cornerRadius = dpF(5f)
                     setColor(COLOR_LOGO_PLATE)
                 }
-                layoutParams = LayoutParams(dp(44), dp(28)).apply { marginEnd = dp(10) }
+                layoutParams = LayoutParams(dp(38), dp(24)).apply { marginEnd = dp(9) }
             }
             val logoImg = ImageView(context).apply {
                 scaleType = ImageView.ScaleType.FIT_CENTER
-                setPadding(dp(3), dp(3), dp(3), dp(3))
+                setPadding(dp(2), dp(2), dp(2), dp(2))
             }
             val logoFallback = TextView(context).apply {
                 setTextColor(COLOR_TEXT_SECONDARY)
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 9.5f)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 9f)
                 typeface = Typeface.DEFAULT_BOLD
                 gravity = Gravity.CENTER
                 isSingleLine = true
@@ -1084,12 +1061,12 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
                 layoutParams = LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f)
             }
             val titleTv = TextView(context).apply {
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 15.5f)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 14.5f)
                 isSingleLine = true
                 ellipsize = TextUtils.TruncateAt.END
             }
             val programTv = TextView(context).apply {
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 11.5f)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
                 isSingleLine = true
                 ellipsize = TextUtils.TruncateAt.END
                 setPadding(0, dp(2), 0, 0)
@@ -1100,7 +1077,7 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
                     cornerRadius = dpF(1.5f)
                     setColor(COLOR_PROGRESS_TRACK)
                 }
-                layoutParams = LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(3)).apply {
+                layoutParams = LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(2.5f)).apply {
                     topMargin = dp(4)
                 }
             }
@@ -1121,12 +1098,13 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
             textCol.addView(programTv)
             textCol.addView(progressTrack)
 
-            row.addView(bar)
             row.addView(numTv)
             row.addView(logoBox)
             row.addView(textCol)
-            return ChannelVH(row, rowBg, bar, numTv, logoImg, logoFallback, titleTv, programTv, progressTrack, progressFill)
+            return ChannelVH(row, rowBg, numTv, logoImg, logoFallback, titleTv, programTv, progressTrack, progressFill)
         }
+
+        private fun dp(v: Float): Int = (v * density).roundToInt()
 
         override fun onBindViewHolder(holder: ChannelVH, position: Int) {
             val ch = snapshot.channels[position]
@@ -1226,19 +1204,22 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
             } else {
                 "drawer_channel:${ch.title}"
             }
-            holder.bar.visibility = if (isActiveFocus) VISIBLE else INVISIBLE
 
             val accentText = if (isPlaying) COLOR_ACCENT_BLUE else COLOR_TEXT_PRIMARY
             holder.titleTv.setTextColor(accentText)
             holder.titleTv.typeface = if (isPlaying || isActiveFocus) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
             holder.numTv.setTextColor(if (isPlaying) COLOR_ACCENT_BLUE else if (isActiveFocus) COLOR_TEXT_PRIMARY else COLOR_TEXT_MUTED)
             holder.programTv.setTextColor(if (isActiveFocus) COLOR_TEXT_SECONDARY else COLOR_TEXT_MUTED)
+            applyFocusedMarquee(holder.titleTv, isActiveFocus)
+            applyFocusedMarquee(holder.programTv, isActiveFocus)
         }
 
         override fun onViewRecycled(holder: ChannelVH) {
             holder.logoJob?.cancel()
             holder.logoJob = null
             holder.boundLogoUrl = ""
+            holder.titleTv.isSelected = false
+            holder.programTv.isSelected = false
             super.onViewRecycled(holder)
         }
     }
@@ -1246,7 +1227,6 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
     private class ChannelVH(
         root: View,
         val rowBg: GradientDrawable,
-        val bar: View,
         val numTv: TextView,
         val logoImg: ImageView,
         val logoFallback: TextView,
@@ -1259,7 +1239,7 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
         var logoJob: Job? = null
     }
 
-    // ── Adapter 3: Programs（严格本地时区显示） ──────────────────────────────
+    // ── Adapter 3: Programs（严格本地时区 + 对称高亮 + 聚焦长名滚动） ─────────
 
     private inner class ProgramsAdapter : RecyclerView.Adapter<ProgramVH>() {
         override fun getItemCount(): Int = visibleDatePrograms.size
@@ -1267,35 +1247,26 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ProgramVH {
             val rowBg = newRowBgDrawable()
             val row = LinearLayout(context).apply {
-                orientation = HORIZONTAL
+                orientation = VERTICAL
                 gravity = Gravity.CENTER_VERTICAL
                 background = rowBg
-                setPadding(dp(6), dp(6), dp(12), dp(6))
+                setPadding(dp(10), dp(6), dp(10), dp(6))
                 layoutParams = RecyclerView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, programRowHeightPx).apply {
                     marginStart = dp(8)
                     marginEnd = dp(8)
                 }
-            }
-            val bar = View(context).apply {
-                background = newAccentPillDrawable()
-                layoutParams = LayoutParams(dp(3), dp(30)).apply { marginEnd = dp(8) }
-            }
-            val col = LinearLayout(context).apply {
-                orientation = VERTICAL
-                gravity = Gravity.CENTER_VERTICAL
-                layoutParams = LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f)
             }
             val metaRow = LinearLayout(context).apply {
                 orientation = HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
             }
             val timeTv = TextView(context).apply {
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 11.5f)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
                 isSingleLine = true
                 layoutParams = LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
             }
             val badgeTv = TextView(context).apply {
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 10.5f)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
                 typeface = Typeface.DEFAULT_BOLD
                 isSingleLine = true
             }
@@ -1303,16 +1274,14 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
             metaRow.addView(badgeTv)
 
             val titleTv = TextView(context).apply {
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 13.5f)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
                 isSingleLine = true
                 ellipsize = TextUtils.TruncateAt.END
                 setPadding(0, dp(2), 0, 0)
             }
-            col.addView(metaRow)
-            col.addView(titleTv)
-            row.addView(bar)
-            row.addView(col)
-            return ProgramVH(row, rowBg, bar, timeTv, badgeTv, titleTv)
+            row.addView(metaRow)
+            row.addView(titleTv)
+            return ProgramVH(row, rowBg, timeTv, badgeTv, titleTv)
         }
 
         override fun onBindViewHolder(holder: ProgramVH, position: Int) {
@@ -1369,7 +1338,6 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
                     else -> Color.TRANSPARENT
                 }
             )
-            holder.bar.visibility = if (isFocused) VISIBLE else INVISIBLE
             holder.timeTv.setTextColor(if (isLive) COLOR_ACCENT_SOFT else if (isFocused) COLOR_TEXT_PRIMARY else COLOR_TEXT_MUTED)
             holder.titleTv.setTextColor(
                 when {
@@ -1380,19 +1348,24 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
                 }
             )
             holder.titleTv.typeface = if (isFocused || isLive) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
+            applyFocusedMarquee(holder.titleTv, isFocused)
+        }
+
+        override fun onViewRecycled(holder: ProgramVH) {
+            holder.titleTv.isSelected = false
+            super.onViewRecycled(holder)
         }
     }
 
     private class ProgramVH(
         root: View,
         val rowBg: GradientDrawable,
-        val bar: View,
         val timeTv: TextView,
         val badgeTv: TextView,
         val titleTv: TextView,
     ) : RecyclerView.ViewHolder(root)
 
-    // ── Adapter 4: Dates ─────────────────────────────────────────────────────
+    // ── Adapter 4: Dates（对称高亮焦点） ─────────────────────────────────────
 
     private inner class DatesAdapter : RecyclerView.Adapter<DateVH>() {
         override fun getItemCount(): Int = availableDates.size
@@ -1403,24 +1376,19 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
                 orientation = HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
                 background = rowBg
-                setPadding(dp(8), 0, dp(10), 0)
+                setPadding(dp(12), 0, dp(12), 0)
                 layoutParams = RecyclerView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dateRowHeightPx).apply {
                     marginStart = dp(6)
                     marginEnd = dp(6)
                 }
             }
-            val bar = View(context).apply {
-                background = newAccentPillDrawable()
-                layoutParams = LayoutParams(dp(3), dp(22)).apply { marginEnd = dp(8) }
-            }
             val label = TextView(context).apply {
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 13.5f)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
                 isSingleLine = true
                 layoutParams = LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
             }
-            row.addView(bar)
             row.addView(label)
-            return DateVH(row, rowBg, bar, label)
+            return DateVH(row, rowBg, label)
         }
 
         override fun onBindViewHolder(holder: DateVH, position: Int) {
@@ -1447,7 +1415,6 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
                     else -> Color.TRANSPARENT
                 }
             )
-            holder.bar.visibility = if (isFocused) VISIBLE else INVISIBLE
             holder.label.setTextColor(
                 when {
                     isSelected -> COLOR_ACCENT_BLUE
@@ -1462,7 +1429,6 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
     private class DateVH(
         root: View,
         val rowBg: GradientDrawable,
-        val bar: View,
         val label: TextView,
     ) : RecyclerView.ViewHolder(root)
 
@@ -1474,18 +1440,41 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
         private val TIME_FMT: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
         private val DATE_FMT: DateTimeFormatter = DateTimeFormatter.ofPattern("MM-dd")
 
-        private val COLOR_SURFACE_SOLID = Color.argb(238, 13, 17, 24)       // #EE0D1118 deep obsidian
-        private val COLOR_SURFACE_TRANSLUCENT = Color.argb(200, 13, 17, 24) // #C80D1118 smoked glass (legible over bright daylight scenes)
-        private val COLOR_FOCUS_BG = Color.argb(52, 255, 255, 255)          // #34FFFFFF crisp TV glass focus
-        private val COLOR_INACTIVE_SELECTED_BG = Color.argb(24, 255, 255, 255)
-        private val COLOR_PLAYING_BG = Color.argb(34, 47, 107, 255)         // refined brand blue tint
-        private val COLOR_LOGO_PLATE = Color.argb(26, 255, 255, 255)
-        private val COLOR_PROGRESS_TRACK = Color.argb(46, 255, 255, 255)
-        private val COLOR_ACCENT_BLUE = Color.rgb(92, 152, 255)             // #5C98FF vivid luminous blue on obsidian
-        private val COLOR_ACCENT_SOFT = Color.rgb(148, 194, 255)            // #94C2FF soft sky accent
-        private val COLOR_CATCHUP_MINT = Color.rgb(138, 230, 184)           // #8AE6B8
-        private val COLOR_TEXT_PRIMARY = Color.rgb(245, 248, 252)           // #F5F8FC
-        private val COLOR_TEXT_SECONDARY = Color.rgb(197, 206, 222)         // #C5CEDE
-        private val COLOR_TEXT_MUTED = Color.rgb(154, 166, 188)             // #9AA6BC
+        private const val COLOR_SURFACE_SOLID = 0xEE0D1118.toInt()       // #EE0D1118 deep obsidian
+        private const val COLOR_SURFACE_TRANSLUCENT = 0xC80D1118.toInt() // #C80D1118 smoked glass
+        private const val COLOR_FOCUS_BG = 0x36FFFFFF                    // #36FFFFFF crisp symmetric highlight
+        private const val COLOR_INACTIVE_SELECTED_BG = 0x18FFFFFF
+        private const val COLOR_PLAYING_BG = 0x222F6BFF                  // subtle playing tint
+        private const val COLOR_LOGO_PLATE = 0x1AFFFFFF
+        private const val COLOR_PROGRESS_TRACK = 0x2EFFFFFF
+        private const val COLOR_ACCENT_BLUE = 0xFF5C98FF.toInt()         // #5C98FF playing accent
+        private const val COLOR_ACCENT_SOFT = 0xFF94C2FF.toInt()         // #94C2FF live badge
+        private const val COLOR_CATCHUP_MINT = 0xFF8AE6B8.toInt()        // #8AE6B8 catchup badge
+        private const val COLOR_TEXT_PRIMARY = 0xFFF5F8FC.toInt()        // #F5F8FC
+        private const val COLOR_TEXT_SECONDARY = 0xFFC5CEDE.toInt()      // #C5CEDE
+        private const val COLOR_TEXT_MUTED = 0xFF9AA6BC.toInt()          // #9AA6BC
+
+        /**
+         * 自然有界居中滚动偏移计算：
+         * - 列表总高 <= 视口高：紧贴顶部（无空白）；
+         * - 顶部前几台：紧贴顶部（第 0 项 offset = 0，消除上方一片空白）；
+         * - 中段频道：精确居中于 `(viewportH - rowH) / 2`；
+         * - 末尾几台：紧贴底部（末项底部与视口底齐平，消除下方一片空白）。
+         */
+        internal fun boundedCenterOffset(
+            index: Int,
+            count: Int,
+            rowHeightPx: Int,
+            viewportHeightPx: Int,
+        ): Int {
+            if (count <= 0 || rowHeightPx <= 0 || viewportHeightPx <= 0) return 0
+            val clamped = index.coerceIn(0, count - 1)
+            val totalH = count * rowHeightPx
+            if (totalH <= viewportHeightPx) return clamped * rowHeightPx
+            val idealY = ((viewportHeightPx - rowHeightPx) / 2).coerceAtLeast(0)
+            val maxScrollY = (totalH - viewportHeightPx).coerceAtLeast(0)
+            val targetScrollY = (clamped * rowHeightPx - idealY).coerceIn(0, maxScrollY)
+            return clamped * rowHeightPx - targetScrollY
+        }
     }
 }

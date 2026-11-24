@@ -184,15 +184,6 @@ private fun RecentRow(
             .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        if (focused) {
-            Box(
-                modifier = Modifier
-                    .width(TvDesignTokens.AccentBarWidth)
-                    .height(24.dp)
-                    .background(TvDesignTokens.AccentPlaying)
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-        }
         ChannelLogo(
             logoUrl = item.logoUrl,
             fallbackTitle = item.title,
@@ -238,15 +229,6 @@ private fun RecentActionRow(
             .clickable { onClick() }
             .padding(horizontal = 12.dp, vertical = 10.dp)
     ) {
-        if (focused) {
-            Box(
-                modifier = Modifier
-                    .width(TvDesignTokens.AccentBarWidth)
-                    .height(16.dp)
-                    .background(TvDesignTokens.AccentPlaying)
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-        }
         Text(
             text = text,
             style = MaterialTheme.typography.bodyMedium.copy(
