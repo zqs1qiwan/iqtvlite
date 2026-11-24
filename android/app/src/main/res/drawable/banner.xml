@@ -1,20 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Android TV banner 320x180：深色底 + 青蓝播放标 + iqtv lite 字标，极简统一 -->
-<vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="320dp" android:height="180dp"
-    android:viewportWidth="320" android:viewportHeight="180">
-
-    <!-- 深色背景 -->
-    <path android:fillColor="#FF121212" android:pathData="M0,0h320v180h-320z" />
-
-    <!-- 青蓝圆角屏幕 + 白色播放三角 -->
-    <path android:fillColor="@color/tm_focus"
-        android:pathData="M28,60 L92,60 A10,10 0 0 1 102,70 L102,110 A10,10 0 0 1 92,120 L28,120 A10,10 0 0 1 18,110 L18,70 A10,10 0 0 1 28,60 Z" />
-    <path android:fillColor="#FFFFFFFF" android:pathData="M44,72 L76,90 L44,108 Z" />
-
-    <!-- 字标 iqtv（白） + lite（青蓝）-->
-    <path android:fillColor="#FFFFFFFF"
-        android:pathData="M124,72 L124,108 L132,108 L132,84 L140,84 L140,78 L124,78 Z M144,78 L152,78 L152,108 L144,108 Z M156,78 L164,78 L164,84 C166,80 170,78 174,78 L174,86 C168,86 164,89 164,96 L164,108 L156,108 Z M178,86 L186,86 L186,108 L178,108 Z M182,74 A5,5 0 1 1 182,84 A5,5 0 1 1 182,74 Z" />
-    <path android:fillColor="@color/tm_focus"
-        android:pathData="M196,86 L204,86 L204,108 L196,108 Z M200,74 A5,5 0 1 1 200,84 A5,5 0 1 1 200,74 Z M212,86 L220,86 L220,90 C222,87 226,85 230,85 L230,94 C224,94 220,97 220,103 L220,108 L212,108 Z" />
-</vector>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <!-- 保持一个16:9的透明占位，确保Banner尺寸正确 -->
+        <shape android:shape="rectangle">
+            <size android:width="320dp" android:height="180dp"/>
+            <solid android:color="@android:color/transparent"/>
+        </shape>
+    </item>
+    <!-- 居中放置图片，不强制拉伸，保持原比例 -->
+    <item android:gravity="center">
+        <bitmap android:src="@drawable/banner_bitmap" android:gravity="center"/>
+    </item>
+</layer-list>

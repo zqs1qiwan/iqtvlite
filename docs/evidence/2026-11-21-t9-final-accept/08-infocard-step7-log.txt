@@ -1,7 +1,0 @@
---------- beginning of system
---------- beginning of main
-11-21 20:45:09.282 10088 10088 D IQTV-INFOCARD: focus index=0
---- after UP ---
---------- beginning of system
---------- beginning of main
-11-21 20:45:09.282 10088 10088 D IQTV-INFOCARD: focus index=0

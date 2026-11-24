@@ -74,7 +74,7 @@ class SettingsSummaryTest {
     @Test
     fun clampTruncatesOnCharacterBoundaries() {
         // 39 个半角单位 → 超过 44 的只有更长的串；用版本名 + 额外尾巴确保触发截断。
-        val long = "版本 2.2.0-tivimini-1a7697f6-validation" + "-额外尾巴"
+        val long = "版本 0.1.0-iqtv-1a7697f6-beta-build" + "-额外尾巴超长字符串"
         assertTrue("样本必须超宽才能测截断", SettingsSummary.displayUnits(long) > SettingsSummary.MAX_DISPLAY_UNITS)
         val clamped = SettingsSummary.clamp(long)
         assertTrue(SettingsSummary.fullWidthLength(clamped) <= 22)

@@ -26,7 +26,7 @@ class SettingsIaTest {
             SettingsIA.ROOT_ORDER,
         )
         assertEquals(
-            listOf("播放与画面", "遥控器与操作", "音频与字幕", "数据与更新", "台标与缓存", "关于"),
+            listOf("播放与画面", "遥控器与操作", "音频与字幕", "播放列表及节目单", "台标与缓存", "关于"),
             SettingsIA.ROOT_ORDER.map { it.title },
         )
     }

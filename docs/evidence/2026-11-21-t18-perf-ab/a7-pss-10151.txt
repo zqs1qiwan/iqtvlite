@@ -1,3 +1,0 @@
-A-play-stable :: Native Heap    15684    15640        0        0    66304    36631    29672 | TOTAL    61570    49512     4572        0    83060    45009    38050 | Java Heap:    14844 | Native Heap:    15640 | TOTAL:    61570       TOTAL SWAP PSS:        0
-B-drawer :: Native Heap    15968    15924        0        0    66304    36962    29341 | TOTAL    60427    48336     4572        0    83469    45545    37923 | Java Heap:    13288 | Native Heap:    15924 | TOTAL:    60427       TOTAL SWAP PSS:        0
-C-settings :: Native Heap    16276    16232        0        0    66304    37370    28933 | TOTAL    62110    50008     4572        0    83389    45913    37475 | Java Heap:    14472 | Native Heap:    16232 | TOTAL:    62110       TOTAL SWAP PSS:        0

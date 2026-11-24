@@ -1,6 +1,6 @@
 //! EPG 时间轴网格生成器。
 //!
-//! 这是 TiviMate 的招牌功能的核心数据层：给定 XMLTV 文本、频道列表（tvg-id）
+//! 这是 IQTV Lite 节目单的核心数据层：给定 XMLTV 文本、频道列表（tvg-id）
 //! 和时间窗口，生成「频道 × 时间片」的网格结构，供 UI 直接渲染。
 //!
 //! # 设计原则（见 docs/04-data-model.md §4 / docs/09-protocols.md §4）
@@ -27,7 +27,7 @@ pub struct GridConfig {
     pub window_start: i64,
     /// 窗口终点（Unix 秒，UTC）
     pub window_end: i64,
-    /// 时间片宽度（分钟）。TiviMate 常用 30。
+    /// 时间片宽度（分钟），常用 30 分钟。
     pub slot_minutes: i32,
     /// 需要的频道 tvg-id 列表（视口内的）。空 = 所有指南频道。
     pub tvg_ids: Vec<String>,

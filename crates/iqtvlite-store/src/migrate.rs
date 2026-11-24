@@ -33,7 +33,7 @@ pub const MIGRATIONS: &[&str] = &[
         max_connections   INTEGER,
         active_cons       INTEGER,
         exp_date          INTEGER,
-        user_agent        TEXT NOT NULL DEFAULT 'TiviMate/5.1.6 (Android 12)',
+        user_agent        TEXT NOT NULL DEFAULT 'VLC/3.0.20 LibVLC/3.0.20',
         referrer          TEXT,
         sync_interval_hours     INTEGER NOT NULL DEFAULT 24,
         epg_sync_interval_hours INTEGER NOT NULL DEFAULT 6,

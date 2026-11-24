@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+﻿#!/usr/bin/env python
 """t11 (P0): static guard for the logo disk-cache write format.
 
 Background: on the target device (TR100-G9 / API 28) `Bitmap.compress(WEBP)` crashed with
@@ -15,7 +15,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-SRC = ROOT / "android/app/src/tivimini/java/com/cjlhll/iptv"
+SRC = ROOT / "android/app/src/main/java/com/cjlhll/iptv"
 LOADER = SRC / "LogoLoader.kt"
 STORE = SRC / "LogoDiskStore.kt"
 TEST = ROOT / "android/app/src/test/java/com/cjlhll/iptv/LogoWriteFormatTest.kt"

@@ -1,24 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 配色对齐 tivimini / TiviMate：极简灰阶 + 唯一青蓝强调色，避免自创颜色导致混乱 -->
 <resources>
-    <!-- 背景层级：近黑 → 面板灰（tivimini: #121212 / #1E1E1E） -->
-    <color name="tm_bg">#FF121212</color>
-    <color name="tm_surface">#E61E1E1E</color>
-    <color name="tm_surface_2">#E6242424</color>
+    <color name="purple_200">#FFBB86FC</color>
+    <color name="purple_500">#FF6200EE</color>
+    <color name="purple_700">#FF3700B3</color>
+    <color name="teal_200">#FF03DAC5</color>
+    <color name="teal_700">#FF018786</color>
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+    <!-- V4 §9：全局焦点/确认态品牌蓝 -->
+    <color name="tm_focus">#FF2F6BFF</color>
+    <color name="tm_accent">#FF2F6BFF</color>
+    <color name="tm_progress">#FF2F6BFF</color>
+    <color name="tm_focus_bg">#222F6BFF</color>
     <color name="tm_panel">#E81E1E1E</color>
-
-    <!-- 唯一强调色：青蓝（tivimini 当前节目高亮 #40C4FF） -->
-    <color name="tm_focus">#FF40C4FF</color>
-    <color name="tm_focus_bg">#3340C4FF</color>
-    <color name="tm_accent">#FF40C4FF</color>
-
-    <!-- 文字：白 / 浅灰 / 灰 -->
-    <color name="tm_text">#FFFFFFFF</color>
-    <color name="tm_text_2">#FFB3B3B3</color>
-    <color name="tm_text_3">#FF757575</color>
-
-    <!-- 进度条 -->
-    <color name="tm_progress">#FF40C4FF</color>
-    <color name="tm_progress_bg">#FF3A3A3C</color>
-    <color name="focus_bg">#FF3A3A3C</color>
 </resources>

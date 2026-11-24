@@ -1,1 +1,0 @@
-11-22 07:50:04.375 15280 24718 D IQTV-JINGCAI-PROBE: pmt_pid=256 pcr_pid=4113 pcr=yes streams=1b@1011,03@1100 v_pid=4113 a_pid=4352 vpts=16555.482 apts=16555.626 av=-0.144 pid_top=1011:2585,1fff:106,1100:105,0000:1,0100:1 cc_err=0 cc_v=0 cc_a=0 cc_other=0 packets=2798 null_pct=3.79 pes_len_zero=13 pes_len_nonzero=21 pmt_interval=-1

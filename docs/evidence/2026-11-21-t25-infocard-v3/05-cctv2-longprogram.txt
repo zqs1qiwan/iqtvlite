@@ -1,8 +1,0 @@
-info_card_program_time = 21:30–22:16 · 剩余 15 分钟 @ [1030,781][1268,805]
-info_card_program = 对话-2026-45 @ [1030,732][1230,781]
-info_card_title = CCTV-2 财经 @ [336,728][620,803]
-info_card_logo =  @ [60,705][300,849]
-info_card_number = 频道 2 · 央视频道 · MPEG-L2 @ [336,803][559,827]
-info_card_progress =  @ [1030,811][1860,822]
-info_card_badges = FHD @ [1821,668][1860,689]
-info_card_tech = H.264  ·  MPEG-L2  ·  SDR @ [60,855][1860,879]

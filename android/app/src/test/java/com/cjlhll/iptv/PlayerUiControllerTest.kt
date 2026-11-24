@@ -1,5 +1,8 @@
 package com.cjlhll.iptv
 
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -194,5 +197,41 @@ class PlayerUiControllerTest {
             RemoteAction.CHANNEL_UP,
             RemoteBindings.resolveWith(cleared, RemoteBindings.KEY_DPAD_UP, false, UiContext.PLAYER_ONLY),
         )
+    }
+
+    @Test
+    fun showInfoCardAndOpenDrawerEmitTimestampAfterOverlayTransition() = runBlocking {
+        val now = 5_000L
+        val c = PlayerUiController(clockMs = { now })
+
+        val seenOverlayOnInfoTick = mutableListOf<PlayerOverlay>()
+        val seenOverlayOnDrawerTick = mutableListOf<PlayerOverlay>()
+
+        val job1 = launch(Dispatchers.Unconfined) {
+            c.infoCardLastInteractionMs.collect { ms ->
+                if (ms > 0L) seenOverlayOnInfoTick += c.currentOverlay
+            }
+        }
+        val job2 = launch(Dispatchers.Unconfined) {
+            c.drawerLastInteractionMs.collect { ms ->
+                if (ms > 0L) seenOverlayOnDrawerTick += c.currentOverlay
+            }
+        }
+
+        try {
+            c.showInfoCard(focused = false, manual = false)
+            assertTrue(seenOverlayOnInfoTick.lastOrNull() is PlayerOverlay.InfoCard)
+            assertFalse((seenOverlayOnInfoTick.last() as PlayerOverlay.InfoCard).manual)
+
+            // 同 1ms 连续换台仍触发新时间戳，不会因 StateFlow 去重漏触发定时器
+            c.showInfoCard(focused = false, manual = false)
+            assertEquals(5_001L, c.currentInfoCardInteractionMs)
+
+            c.openDrawer()
+            assertEquals(PlayerOverlay.Drawer, seenOverlayOnDrawerTick.lastOrNull())
+        } finally {
+            job1.cancel()
+            job2.cancel()
+        }
     }
 }

@@ -11,11 +11,9 @@ android {
         applicationId = if (providers.gradleProperty("ISOLATED_TEST_PACKAGE").orNull == "true") "tv.iqtvlite.app.validation" else "tv.iqtvlite.app"
         minSdk = 24
         targetSdk = 35
-        resValue("string", "app_name", if (providers.gradleProperty("ISOLATED_TEST_PACKAGE").orNull == "true") "IQTV Lite 验证版" else "IQTV Lite")
-        versionCode = providers.gradleProperty("APP_VERSION_CODE").orNull?.toInt()
-            ?: (10000 + (System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1))
-        versionName = (providers.gradleProperty("APP_VERSION_NAME").orNull
-            ?: "2.2.0-tivimini-${System.getenv("GITHUB_SHA")?.take(8) ?: "local"}") +
+        resValue("string", "app_name", if (providers.gradleProperty("ISOLATED_TEST_PACKAGE").orNull == "true") "IQTV Lite Validation" else "IQTV Lite")
+        versionCode = providers.gradleProperty("APP_VERSION_CODE").orNull?.toInt() ?: 100
+        versionName = (providers.gradleProperty("APP_VERSION_NAME").orNull ?: "0.1.0") +
             (if (providers.gradleProperty("ISOLATED_TEST_PACKAGE").orNull == "true") "-validation" else "")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
@@ -81,15 +79,15 @@ android {
     buildFeatures { compose = true; buildConfig = true }
     sourceSets {
         getByName("main") {
-            manifest.srcFile("src/tivimini/AndroidManifest.xml")
-            java.setSrcDirs(listOf("src/tivimini/java", "src/bridge/kotlin"))
-            res.setSrcDirs(listOf("src/tivimini/res"))
+            manifest.srcFile("src/main/AndroidManifest.xml")
+            java.setSrcDirs(listOf("src/main/java", "src/bridge/kotlin"))
+            res.setSrcDirs(listOf("src/main/res"))
             jniLibs.srcDirs("src/main/jniLibs")
         }
     }
     packaging { jniLibs.useLegacyPackaging = false }
 }
-kotlin.sourceSets.getByName("main").kotlin.setSrcDirs(listOf("src/tivimini/java", "src/bridge/kotlin"))
+kotlin.sourceSets.getByName("main").kotlin.setSrcDirs(listOf("src/main/java", "src/bridge/kotlin"))
 
 dependencies {
     implementation("androidx.media3:media3-exoplayer:1.11.1")

@@ -20,6 +20,10 @@ class InfoCardPolicyTest {
         // t52 §⑦：FOCUSED 也 7s 静止自动收起（不再 null 常驻）
         assertEquals(7000L, InfoCardPolicy.autoHideMs(InfoCardPolicy.State.FOCUSED))
         assertNull(InfoCardPolicy.autoHideMs(InfoCardPolicy.State.HIDDEN))
+        // 换台触发较快自动收起（4s），手动 OK 确认停留更久（7s）
+        assertEquals(4000L, InfoCardPolicy.autoHideTimeoutMs(manual = false, focused = false))
+        assertEquals(7000L, InfoCardPolicy.autoHideTimeoutMs(manual = true, focused = false))
+        assertEquals(7000L, InfoCardPolicy.autoHideTimeoutMs(manual = false, focused = true))
     }
 
     @Test

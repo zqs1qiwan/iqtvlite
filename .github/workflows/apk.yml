@@ -1,13 +1,12 @@
-name: Build Test APK
+name: IQTV Lite Build & Release
 
 permissions:
   contents: write   # 允许 push tag 时创建 Release 并上传 APK
 
 on:
   push:
-    # t11: 迭代分支也自动构建，避免每次手动 workflow_dispatch（main 语义不变）。
-    branches: [main, integration/tivimini-baseline]
-    tags: ['v*']          # push v* tag 时构建并自动创建 Release
+    branches: [main]
+    tags: ['v*']
   pull_request:
   workflow_dispatch:
     inputs:
@@ -22,7 +21,7 @@ on:
 
 jobs:
   build-apk:
-    name: Build iqtvlite test APK
+    name: Build IQTV Lite APK
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -140,14 +139,11 @@ jobs:
         run: |
           APK=android/app/build/outputs/apk/debug/app-debug.apk
           python3 scripts/verify_apk.py "$APK"
-          # t11 (P0): 台标写盘必须走 PNG，禁止 WEBP 编码器（本机 Skia SIGSEGV）。
+          python3 scripts/check_brand_assets.py
           python3 scripts/check_logo_webp.py
-          # t4: 信息卡 v2 结构/焦点/默认值门禁。
           python3 scripts/check_info_card.py
-          # t13: 设置二级 IA 结构/零丢失/Back 层级门禁。
           python3 scripts/check_settings_ia.py
           python3 scripts/check_settings_scroll.py
-          # t7: 性能开关门禁（有限跑马灯 / 预取截断 / EPG 延迟 / trace）。
           python3 scripts/check_perf_policy.py
           python3 scripts/check_jingcai_timeline.py
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs "$APK"
@@ -245,11 +241,25 @@ jobs:
           retention-days: 90
           if-no-files-found: warn
 
+      - name: Build official release APK (tag push only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        working-directory: android
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          ./gradlew :app:assembleRelease -PISOLATED_TEST_PACKAGE=false -PAPP_VERSION_NAME="$TAG" --stacktrace
+          REL_APK="app/build/outputs/apk/release/app-release.apk"
+          mkdir -p "$RUNNER_TEMP/release-assets"
+          cp "$REL_APK" "$RUNNER_TEMP/release-assets/IQTV-Lite-${GITHUB_REF_NAME}.apk"
+          cp "$REL_APK" "$RUNNER_TEMP/release-assets/IQTV-Lite-latest.apk"
+
       - name: Create GitHub Release (tag push only)
-        if: startsWith(github.ref, 'refs/tags/')
+        if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: android/app/build/outputs/apk/debug/app-debug.apk
+          make_latest: true
+          files: |
+            ${{ runner.temp }}/release-assets/IQTV-Lite-${{ github.ref_name }}.apk
+            ${{ runner.temp }}/release-assets/IQTV-Lite-latest.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

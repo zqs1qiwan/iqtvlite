@@ -1,9 +1,0 @@
-=== OFF2 ch117 : firstFrame=True state3=True ===
-  ZAP: 11-22 04:36:22.535 30531 30531 D IQTV-ZAP: zap=1310ms prepare=209ms firstFrame=1101ms fmt=1028ms dec=0ms render=73ms
-OFF2 ch117 firstFrame=True state3=True
-=== OFF2 ch118 : firstFrame=True state3=True ===
-  ZAP: 11-22 04:37:13.569 30531 30531 D IQTV-ZAP: zap=842ms prepare=24ms firstFrame=818ms fmt=500ms dec=0ms render=318ms
-OFF2 ch118 firstFrame=True state3=True
-=== OFF2 ch119 : firstFrame=True state3=True ===
-  ZAP: 11-22 04:38:02.976 30531 30531 D IQTV-ZAP: zap=1140ms prepare=191ms firstFrame=949ms fmt=824ms dec=0ms render=125ms
-OFF2 ch119 firstFrame=True state3=True

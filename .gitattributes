@@ -1,4 +1,4 @@
-# 统一行尾 —— 消除 Windows 上的 CRLF 噪音
+﻿# 统一行尾 —— 消除 Windows 上的 CRLF 噪音
 * text=auto eol=lf
 
 # PowerShell 脚本必须是 CRLF（Windows 传统）
@@ -19,4 +19,3 @@
 *.jpg binary
 
 # Fixed upstream evidence keeps its original trailing whitespace for traceability.
-docs/evidence/tivimini-upstream-8c93e1b/*.kt -whitespace

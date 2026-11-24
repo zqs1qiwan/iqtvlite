@@ -1,11 +1,3 @@
-<?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">iqtvlite</string>
-    <string name="loading">正在加载播放列表…</string>
-    <string name="empty">没有频道</string>
-    <string name="now_playing">正在播放</string>
-    <string name="settings">设置</string>
-    <string name="source_1">老白直播 · 主线路</string>
-    <string name="source_2">老白直播 · 备用线路</string>
-    <string name="version">iqtvlite 0.1.0-test</string>
+    <!-- app_name is generated per applicationId by Gradle for safe test-package identification. -->
 </resources>

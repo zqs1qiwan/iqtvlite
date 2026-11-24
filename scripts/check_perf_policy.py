@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+﻿#!/usr/bin/env python
 """Static guard for performance, weak-device rendering, and true center-locked drawer invariants."""
 
 import re
@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-SRC = ROOT / "android/app/src/tivimini/java/com/cjlhll/iptv"
+SRC = ROOT / "android/app/src/main/java/com/cjlhll/iptv"
 POLICY = SRC / "PerfPolicy.kt"
 TRACE = SRC / "PerfTrace.kt"
 DRAWER = SRC / "PlayerDrawer.kt"

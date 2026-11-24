@@ -14,7 +14,7 @@ except ImportError:
     Image = None
 
 ROOT = Path(__file__).resolve().parents[1]
-RES = ROOT / "android/app/src/tivimini/res"
+RES = ROOT / "android/app/src/main/res"
 ASSETS = ROOT.parent / "iqtvlite-logo-assets/icon/icon-512.png"
 
 # expected reference properties
@@ -85,12 +85,14 @@ def main():
             if sp.size != splash_ref.size or ImageChopsMaxDiff(sp, splash_ref) > 6:
                 problems.append("splash_mark.png differs from wordmark-generated reference (t55)")
 
-    # adaptive foreground must equal icon-512 (centered, no +10/+35), scaled to 512
+    # adaptive foreground must equal official safe-zone ic_launcher_foreground-512.png
+    fg_src = ROOT.parent / "iqtvlite-logo-assets/icon/ic_launcher_foreground-512.png"
     fg = RES / "mipmap-xxxhdpi/ic_launcher_foreground.png"
-    if fg.exists():
+    if fg_src.exists() and fg.exists():
+        fg_ref = Image.open(fg_src).convert("RGBA")
         im = Image.open(fg).convert("RGBA")
-        if ImageChopsMaxDiff(im, ref) > 6:
-            problems.append("ic_launcher_foreground.png differs from centered icon-512")
+        if ImageChopsMaxDiff(im, fg_ref) > 6:
+            problems.append("ic_launcher_foreground.png differs from ic_launcher_foreground-512.png")
 
     if problems:
         for p in problems:

@@ -1,6 +1,6 @@
 //! 多 EPG 源叠加 / 优先级合并。
 //!
-//! TiviMate 支持为一个播放列表挂多个 EPG 源，按优先级覆盖：
+//! IQTV Lite 支持为一个播放列表挂多个 EPG 源，按优先级覆盖：
 //!   数字越小优先级越高（manual=10 < m3u_header=20 < xtream=30）。
 //!
 //! 合并规则（见 docs/09-protocols.md §4.3）：

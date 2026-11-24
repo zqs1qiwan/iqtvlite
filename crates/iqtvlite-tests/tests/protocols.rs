@@ -20,7 +20,7 @@ use iqtvlite_core::parse::xtream;
 /// 时移属性、UA 覆盖、备用线路、裸 URL、中文名、空的 `#EXTINF`。
 const NASTY_M3U: &str = r#"#EXTM3U url-tvg="http://epg.example.com/guide.xml;http://epg2.example.com/g.xml" x-tvg-url="http://epg3.example.com/g.xml" catchup="shift" catchup-days="7" user-agent="PlaylistUA/1.0"
 #EXTINF:-1 tvg-id="BBCOne.uk" tvg-name="BBC One" tvg-logo="http://logos/bbc.png" tvg-chno="1" group-title="UK;HD",BBC One HD
-#EXTVLCOPT:http-user-agent=TiviMate/5.1.6 (Android 12)
+#EXTVLCOPT:http-user-agent=IQTV-Lite/0.1.0 (Android TV)
 #EXTVLCOPT:http-referrer=http://ref.example.com/
 http://live.example.com/bbc.ts
 http://backup.example.com/bbc.ts
@@ -134,7 +134,7 @@ fn nasty_m3u_vlc_opts_become_headers() {
         .unwrap();
     assert_eq!(
         bbc.user_agent.as_deref(),
-        Some("TiviMate/5.1.6 (Android 12)")
+        Some("IQTV-Lite/0.1.0 (Android TV)")
     );
     assert_eq!(bbc.referrer.as_deref(), Some("http://ref.example.com/"));
 }

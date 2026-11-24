@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+﻿#!/usr/bin/env python
 """t15: static guard for the 睛彩 PCR/PTS timeline experiments (docs/JINGCAI_TIMELINE_DIAGNOSIS.md).
 
 Asserts from the real sources that:
@@ -14,7 +14,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-SRC = ROOT / "android/app/src/tivimini/java/com/cjlhll/iptv"
+SRC = ROOT / "android/app/src/main/java/com/cjlhll/iptv"
 TIMELINE = SRC / "JingcaiTimeline.kt"
 PIPELINE = SRC / "JingcaiTsPipeline.kt"
 DS = SRC / "JingcaiTsDataSource.kt"

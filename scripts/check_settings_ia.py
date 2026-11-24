@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-SRC = ROOT / "android/app/src/tivimini/java/com/cjlhll/iptv"
+SRC = ROOT / "android/app/src/main/java/com/cjlhll/iptv"
 MODEL = SRC / "SettingsIA.kt"
 DRAWER = SRC / "SettingsDrawer.kt"
 ACTIVITY = SRC / "PlayerActivity.kt"
@@ -14,7 +14,7 @@ CONTROLLER = SRC / "PlayerUiController.kt"
 TOKENS = SRC / "TvDesignTokens.kt"
 
 EXPECTED_ROOT = ["PLAYBACK", "REMOTE", "AUDIO", "DATA", "LOGO", "ABOUT"]
-EXPECTED_TITLES = ["播放与画面", "遥控器与操作", "音频与字幕", "数据与更新", "台标与缓存", "关于"]
+EXPECTED_TITLES = ["播放与画面", "遥控器与操作", "音频与字幕", "播放列表及节目单", "台标与缓存", "关于"]
 RETIRED = {"settings_epg_source", "settings_remote_back"}
 
 LEGACY_TAGS = [

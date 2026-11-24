@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+﻿#!/usr/bin/env python
 """t192: static guard for the settings drawer reachability fix.
 
 Asserts from the real source that the settings list can actually scroll and that every row keeps
@@ -18,7 +18,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-SRC = ROOT / "android/app/src/tivimini/java/com/cjlhll/iptv"
+SRC = ROOT / "android/app/src/main/java/com/cjlhll/iptv"
 DRAWER = SRC / "SettingsDrawer.kt"
 
 REQUIRED_TAGS = [

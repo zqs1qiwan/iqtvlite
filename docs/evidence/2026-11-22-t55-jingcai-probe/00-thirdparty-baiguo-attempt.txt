@@ -1,1 +1,0 @@
-I/CodecLooper( 9110): type=1400 audit(0.0:42983): avc: denied { use } for path="anon_inode:sync_file" dev="anon_inodefs" ino=1047 scontext=u:r:mediacodec:s0 tcontext=u:r:hal_hwgraphics:s0 tclass=fd permissive=1

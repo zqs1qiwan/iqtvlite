@@ -7,13 +7,13 @@
 //! ## 1. User-Agent 管理
 //!
 //! 部分供应商**只放行已知播放器**的 UA。必须能切换：
-//! TiviMate / VLC / OTT Navigator / 自定义。
+//! IQTV Lite / VLC / OTT Navigator / 自定义。
 //!
 //! ## 2. 连接池保温
 //!
 //! 换台速度的关键之一：TLS 握手占 200–500 ms。
 //! **同一个 `reqwest::Client` 会复用 keep-alive 连接**，所以 Client 必须是**长生命周期单例**。
-//! 反编译 TiviMate 确认它用了 OkHttp 的 `ConnectionPool(5, 5, TimeUnit.MINUTES)` —— 同样的思路。
+//! 使用持久连接池（5 分钟空闲保活）大幅减少重复 TLS 握手开销。
 
 use std::time::Duration;
 
@@ -22,8 +22,8 @@ use iqtvlite_core::error::{IptvError, Result};
 /// 预置的 User-Agent。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UserAgent {
-    /// TiviMate（对供应商兼容性最好）
-    TiviMate,
+    /// IQTV Lite 默认标识
+    IqtvLite,
     /// VLC
     Vlc,
     /// OTT Navigator
@@ -37,7 +37,7 @@ impl UserAgent {
     /// 实际 UA 字符串。
     pub fn as_str(&self) -> &str {
         match self {
-            UserAgent::TiviMate => "TiviMate/5.1.6 (Android 12)",
+            UserAgent::IqtvLite => "IQTV-Lite/0.1.0 (Android TV)",
             UserAgent::Vlc => "VLC/3.0.20 LibVLC/3.0.20",
             UserAgent::OttNavigator => {
                 "OTT Navigator/1.7.5.2 (Linux;Android 12; en) ExoPlayerLib/2.18.1"
@@ -53,7 +53,7 @@ impl UserAgent {
     /// 供 UI 显示的名字。
     pub fn label(&self) -> &str {
         match self {
-            UserAgent::TiviMate => "TiviMate",
+            UserAgent::IqtvLite => "IQTV Lite",
             UserAgent::Vlc => "VLC",
             UserAgent::OttNavigator => "OTT Navigator",
             UserAgent::Browser => "浏览器（诊断用）",
@@ -64,7 +64,7 @@ impl UserAgent {
     /// 从字符串还原（用于持久化设置）。
     pub fn from_stored(raw: &str) -> Self {
         match raw {
-            "tivimate" => UserAgent::TiviMate,
+            "iqtvlite" => UserAgent::IqtvLite,
             "vlc" => UserAgent::Vlc,
             "ott_navigator" => UserAgent::OttNavigator,
             "browser" => UserAgent::Browser,
@@ -75,7 +75,7 @@ impl UserAgent {
     /// 持久化表示。
     pub fn to_stored(&self) -> String {
         match self {
-            UserAgent::TiviMate => "tivimate".into(),
+            UserAgent::IqtvLite => "iqtvlite".into(),
             UserAgent::Vlc => "vlc".into(),
             UserAgent::OttNavigator => "ott_navigator".into(),
             UserAgent::Browser => "browser".into(),
@@ -229,7 +229,7 @@ mod tests {
     #[test]
     fn user_agent_roundtrips() {
         for ua in [
-            UserAgent::TiviMate,
+            UserAgent::IqtvLite,
             UserAgent::Vlc,
             UserAgent::OttNavigator,
             UserAgent::Browser,
@@ -242,8 +242,8 @@ mod tests {
 
     #[test]
     fn preset_uas_are_non_empty() {
-        assert!(!UserAgent::TiviMate.as_str().is_empty());
-        assert!(UserAgent::TiviMate.as_str().starts_with("TiviMate/"));
+        assert!(!UserAgent::IqtvLite.as_str().is_empty());
+        assert!(UserAgent::IqtvLite.as_str().starts_with("IQTV-Lite/"));
         assert!(UserAgent::Vlc.as_str().starts_with("VLC/"));
         assert!(UserAgent::Browser.as_str().starts_with("Mozilla/"));
     }
@@ -257,7 +257,7 @@ mod tests {
 
     #[test]
     fn switching_ua_rebuilds_client() {
-        let client = HttpClient::new(UserAgent::TiviMate, Duration::from_secs(10)).unwrap();
+        let client = HttpClient::new(UserAgent::IqtvLite, Duration::from_secs(10)).unwrap();
         let client = client
             .with_user_agent(UserAgent::Vlc, Duration::from_secs(10))
             .unwrap();

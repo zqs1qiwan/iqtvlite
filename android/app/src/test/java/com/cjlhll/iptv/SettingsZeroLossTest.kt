@@ -14,7 +14,7 @@ import java.io.File
 class SettingsZeroLossTest {
 
     private fun sourceDir(): File {
-        val relative = "src/tivimini/java/com/cjlhll/iptv"
+        val relative = "src/main/java/com/cjlhll/iptv"
         // Gradle 的 test working dir 通常是模块目录（android/app）；再兜底向上找几层。
         var base: File? = File("").absoluteFile
         repeat(5) {

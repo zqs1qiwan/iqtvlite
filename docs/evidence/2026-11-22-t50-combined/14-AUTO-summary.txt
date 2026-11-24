@@ -1,3 +1,0 @@
-AUTO ch117 ff=False s3=False autoActivated=no tl=-
-AUTO ch118 ff=False s3=False autoActivated=no tl=mode=auto pcr_pid=-1 drop_pcr_only=0 rewrite_pmt=0
-AUTO ch119 ff=True s3=True autoActivated=no tl=-

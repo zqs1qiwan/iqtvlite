@@ -226,4 +226,29 @@ class RemoteBindingsTest {
         val rebound = RemoteBindings.bind(RemoteBindings.DEFAULT, RemoteAction.CHANNEL_DOWN, RemoteBindings.KEY_DPAD_RIGHT, false)
         assertTrue(RemoteBindings.isKeyCustomBound(rebound, RemoteBindings.KEY_DPAD_RIGHT))
     }
+
+    @Test
+    fun seekDefaultsEmptyWithoutCollisionWhileCatchupStillSeeks() {
+        val seekBack = RemoteBindings.DEFAULT.first { it.action == RemoteAction.SEEK_BACK }
+        val seekForward = RemoteBindings.DEFAULT.first { it.action == RemoteAction.SEEK_FORWARD }
+        assertTrue(seekBack.shortPressKeycodes.isEmpty())
+        assertTrue(seekBack.longPressKeycodes.isEmpty())
+        assertTrue(seekForward.shortPressKeycodes.isEmpty())
+        assertTrue(seekForward.longPressKeycodes.isEmpty())
+
+        assertEquals(
+            RemoteAction.SEEK_BACK,
+            RemoteBindings.resolveWith(RemoteBindings.DEFAULT, RemoteBindings.KEY_DPAD_LEFT, false, UiContext.CATCHUP),
+        )
+        assertEquals(
+            RemoteAction.SEEK_FORWARD,
+            RemoteBindings.resolveWith(RemoteBindings.DEFAULT, RemoteBindings.KEY_DPAD_RIGHT, false, UiContext.CATCHUP),
+        )
+
+        val custom = RemoteBindings.bind(RemoteBindings.DEFAULT, RemoteAction.SEEK_BACK, 131, true)
+        assertEquals(
+            RemoteAction.SEEK_BACK,
+            RemoteBindings.resolveWith(custom, 131, true, UiContext.CATCHUP),
+        )
+    }
 }

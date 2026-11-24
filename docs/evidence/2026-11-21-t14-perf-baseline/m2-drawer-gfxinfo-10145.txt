@@ -1,9 +1,0 @@
-Total frames rendered: 33
-Janky frames: 33 (100.00%)
-50th percentile: 46ms
-90th percentile: 300ms
-95th percentile: 300ms
-99th percentile: 350ms
-Number Missed Vsync: 2
-Number Slow UI thread: 23
-Number Frame deadline missed: 23

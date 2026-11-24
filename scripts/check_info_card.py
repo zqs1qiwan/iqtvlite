@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+﻿#!/usr/bin/env python
 """Static guard for the refactored ChannelInfoBanner & InfoCardPolicy contract.
 
 Asserts from real sources that:
@@ -15,7 +15,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-SRC = ROOT / "android/app/src/tivimini/java/com/cjlhll/iptv"
+SRC = ROOT / "android/app/src/main/java/com/cjlhll/iptv"
 POLICY = SRC / "InfoCardPolicy.kt"
 BANNER = SRC / "ChannelInfoBanner.kt"
 ACTIVITY = SRC / "PlayerActivity.kt"

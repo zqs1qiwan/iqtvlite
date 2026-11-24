@@ -1,4 +1,4 @@
-# P0 修复：台标 WEBP 写盘导致冷启动 SIGSEGV（t11）
+﻿# P0 修复：台标 WEBP 写盘导致冷启动 SIGSEGV（t11）
 
 状态：已修复（写盘改 PNG；旧 `.webp` 仍可读；写盘失败只记日志）。真机复验由 acceptance 执行
 （冷启动 + 清 data/清缓存场景）。证据文件：`docs/evidence/2026-11-21-ci-10137-jingcai/crash-coldstart-logo-loader.txt`。
@@ -96,12 +96,12 @@ return LogoDiskStore.writeAtomically(file) { out -> bitmap.compress(format, 80, 
 
 | 文件 | 变更 |
 |---|---|
-| `android/app/src/tivimini/java/com/cjlhll/iptv/LogoLoader.kt` | PNG 写盘、防御层、`.png` 新后缀、旧 `.webp` 读兼容、stats/日志 |
-| `android/app/src/tivimini/java/com/cjlhll/iptv/LogoDiskStore.kt` | `EXTENSION`/`LEGACY_EXTENSIONS`/`DISK_EXTENSIONS`，`scan`/`prune`/`clear` 支持多后缀 |
+| `android/app/src/main/java/com/cjlhll/iptv/LogoLoader.kt` | PNG 写盘、防御层、`.png` 新后缀、旧 `.webp` 读兼容、stats/日志 |
+| `android/app/src/main/java/com/cjlhll/iptv/LogoDiskStore.kt` | `EXTENSION`/`LEGACY_EXTENSIONS`/`DISK_EXTENSIONS`，`scan`/`prune`/`clear` 支持多后缀 |
 | `android/app/src/test/java/com/cjlhll/iptv/LogoWriteFormatTest.kt` | 新增回归（6 个用例覆盖格式/兼容/失败不抛） |
 | `android/app/src/test/java/com/cjlhll/iptv/LogoDiskStoreTest.kt` | 适配多后缀 API |
 | `scripts/check_logo_webp.py` | 新增静态门禁（禁止 WEBP 编码器回归） |
-| `.github/workflows/apk.yml` | 校验步骤加 `check_logo_webp.py`；`push` 触发加入 `integration/tivimini-baseline` |
+| `.github/workflows/apk.yml` | 校验步骤加 `check_logo_webp.py`；`push` 触发加入 `main` |
 | `docs/LOGO_WEBP_CRASH_FIX.md` | 本文（崩溃栈与修复对照、验收步骤） |
 
 ## 8. 交付 receipt（CI 绿）
@@ -111,7 +111,7 @@ return LogoDiskStore.writeAtomically(file) { out -> bitmap.compress(format, 80, 
 | 修复提交 | `dfb69f1` fix(logo): write logo cache as PNG (P0 WEBP SIGSEGV)…；`dde661e` fix(ci): default push builds to isolated validation package |
 | CI run（绿） | **#141**，sha `dde661e`，event `push`（推送即自动构建），conclusion `success` |
 | 产物 | `iqtvlite-test-apk`（artifact id 14702980775，10,372,465 B）；`iqtvlite-android-reports`（id 14703070432） |
-| 包 | `tv.iqtvlite.app.validation`，versionCode `10141`，versionName `2.2.0-tivimini-dde661e5-validation` |
+| 包 | `tv.iqtvlite.app.validation`，versionCode `10141`，versionName `0.1.0-validation` |
 | `app-debug.apk` sha256 | `f7b9931fd86bd34f314c9c7f6e6878a8e914e64c9b861bb3d927b0e070e15722` |
 | `app-debug-androidTest.apk` sha256 | `97b5aeca6a35fcd7ed857f4f83745f29a4bc14769a38cc479e8f01eda99d2bc1` |
 | 签名证书 SHA-256（主包=测试包） | `2dbd4422210439ed5c6bf05ed88f0d6bdb85778215202f93350b892eeaff7fb9`（4 个稳定签名 secrets 尚未配置，故仍是临时 debug keystore，跨 run 会变——见 `docs/CI_STABLE_SIGNING.md`） |

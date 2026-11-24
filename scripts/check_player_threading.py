@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """t169 static guard: no ExoPlayer access from a background coroutine.
 
 ExoPlayer throws `IllegalStateException: Player is accessed on the wrong thread` for any accessor
@@ -20,7 +20,7 @@ import re
 import sys
 from pathlib import Path
 
-DEFAULT_SRC = Path("android/app/src/tivimini/java/com/cjlhll/iptv")
+DEFAULT_SRC = Path("android/app/src/main/java/com/cjlhll/iptv")
 
 BG_INLINE = re.compile(r"Dispatchers\.(Default|IO)\s*\{")
 LAUNCH = re.compile(r"\b(launch|async)\s*(\([^)]*\))?\s*\{")

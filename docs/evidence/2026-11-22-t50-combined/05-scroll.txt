@@ -1,2 +1,0 @@
-open=1–12
-down25=dump失败
