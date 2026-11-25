@@ -102,8 +102,8 @@ class NativeBoundaryTest {
     }
 
     @Test fun lanServersUseDifferentPortsAndStopCleanly() {
-        val first = SourceConfigLanServer(context) { _, _ -> }
-        val second = SourceConfigLanServer(context) { _, _ -> }
+        val first = SourceConfigLanServer(context, onPush = { _, _ -> })
+        val second = SourceConfigLanServer(context, onPush = { _, _ -> })
         try {
             val a = first.start()
             val b = second.start()
