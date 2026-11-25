@@ -288,11 +288,11 @@ fun ChannelInfoBanner(
                             top = 9.dp,
                             bottom = if (showBottomRow) 7.dp else 13.dp,
                         )
-                        .height((68f * lScale).dp),
+                        .height((84f * maxOf(lScale, tScale)).dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    val mainLogoW = (126f * lScale).dp
-                    val mainLogoH = (68f * lScale).dp
+                    val mainLogoW = (132f * lScale).dp
+                    val mainLogoH = (74f * lScale).dp
                 Box(
                     modifier = Modifier.size(width = mainLogoW, height = mainLogoH),
                     contentAlignment = Alignment.Center,
