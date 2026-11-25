@@ -115,6 +115,8 @@ object FrameRateEstimator {
         private var lastPtsUs = Long.MIN_VALUE
         private var count = 0
         private var writePos = 0
+        private var cachedFps: Float? = null
+        private var framesSinceSort = 0
 
         fun onFramePtsUs(ptsUs: Long): Float? {
             val prev = lastPtsUs
@@ -127,6 +129,11 @@ object FrameRateEstimator {
             writePos = (writePos + 1) % windowSize
             if (count < windowSize) count++
             if (count < minSamples) return null
+            framesSinceSort++
+            if (count >= windowSize && cachedFps != null && framesSinceSort < windowSize) {
+                return cachedFps
+            }
+            framesSinceSort = 0
             for (i in 0 until count) scratch[i] = deltasUs[i]
             java.util.Arrays.sort(scratch, 0, count)
             val medianUs = if (count % 2 == 1) {
@@ -135,13 +142,17 @@ object FrameRateEstimator {
                 (scratch[count / 2 - 1] + scratch[count / 2]) / 2.0
             }
             if (medianUs <= 0.0) return null
-            return (1_000_000.0 / medianUs).toFloat().coerceIn(MIN_FPS, MAX_FPS)
+            val fps = (1_000_000.0 / medianUs).toFloat().coerceIn(MIN_FPS, MAX_FPS)
+            cachedFps = fps
+            return fps
         }
 
         fun reset() {
             lastPtsUs = Long.MIN_VALUE
             count = 0
             writePos = 0
+            cachedFps = null
+            framesSinceSort = 0
         }
     }
 }

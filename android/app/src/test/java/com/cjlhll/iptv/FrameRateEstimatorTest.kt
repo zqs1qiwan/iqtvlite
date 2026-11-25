@@ -105,4 +105,24 @@ class FrameRateEstimatorTest {
         }
         assertEquals(59.94f, last!!, 0.2f)
     }
+
+    @Test
+    fun ptsFrameRateTrackerUpdatesAfterSteadyStateRateChange() {
+        val tracker = FrameRateEstimator.PtsFrameRateTracker()
+        var pts = 0L
+        var last: Float? = null
+        // 25fps steady state past full 16-frame window
+        repeat(20) {
+            last = tracker.onFramePtsUs(pts)
+            pts += 40_000L
+        }
+        assertEquals(25f, last!!, 0.05f)
+
+        // Switch mid-stream to 50fps; periodic refresh re-sorts within <= windowSize frames
+        repeat(20) {
+            last = tracker.onFramePtsUs(pts)
+            pts += 20_000L
+        }
+        assertEquals(50f, last!!, 0.05f)
+    }
 }

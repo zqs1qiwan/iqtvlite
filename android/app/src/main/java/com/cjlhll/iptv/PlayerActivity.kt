@@ -1770,7 +1770,9 @@ fun VideoPlayerScreen(
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(1500, 6000, 500, 1000)
             .build()
-        val p = ExoPlayer.Builder(context, DefaultRenderersFactory(context).setEnableDecoderFallback(true))
+        val renderersFactory = JingcaiRenderersFactory(context, softVideo = false)
+            .setEnableDecoderFallback(true)
+        val p = ExoPlayer.Builder(context, renderersFactory)
             .setLoadControl(loadControl)
             .setAudioAttributes(AudioAttributes.DEFAULT, false)
             .build()
@@ -2359,31 +2361,12 @@ fun VideoPlayerScreen(
     Box(modifier = Modifier.fillMaxSize()) {
         val digitOsd by uiController.digitOsd.collectAsState()
         if (showClockInPlayer && !playback.isInPipMode && !digitOsd.visible) {
-            var clockText by remember { mutableStateOf("") }
-            LaunchedEffect(showClockInPlayer) {
-                val fmt = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
-                while (true) {
-                    clockText = fmt.format(java.util.Date())
-                    delay(15_000L)
-                }
-            }
-            if (clockText.isNotEmpty()) {
-                Text(
-                    text = clockText,
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        fontSize = (20f * uiScale.textScale).sp,
-                        fontWeight = FontWeight.SemiBold,
-                        shadow = androidx.compose.ui.graphics.Shadow(
-                            color = androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.72f),
-                            blurRadius = 8f,
-                        ),
-                    ),
-                    color = TvDesignTokens.TextPrimary,
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(top = 18.dp, end = 26.dp),
-                )
-            }
+            PlayerClockOverlay(
+                textScale = uiScale.textScale,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 18.dp, end = 26.dp),
+            )
         }
 
         ChannelSwitchOverlay(
@@ -3032,6 +3015,38 @@ private fun clearAudioOverride(player: Player) {
         .clearOverridesOfType(C.TRACK_TYPE_TEXT)
         .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
         .build()
+}
+
+@Composable
+private fun PlayerClockOverlay(
+    textScale: Float,
+    modifier: Modifier = Modifier,
+) {
+    var clockText by remember { mutableStateOf("") }
+    LaunchedEffect(Unit) {
+        val fmt = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
+        while (true) {
+            val now = System.currentTimeMillis()
+            clockText = fmt.format(java.util.Date(now))
+            val delayMs = (60_000L - (now % 60_000L)) + 50L
+            delay(delayMs)
+        }
+    }
+    if (clockText.isNotEmpty()) {
+        Text(
+            text = clockText,
+            style = MaterialTheme.typography.titleMedium.copy(
+                fontSize = (20f * textScale).sp,
+                fontWeight = FontWeight.SemiBold,
+                shadow = androidx.compose.ui.graphics.Shadow(
+                    color = androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.72f),
+                    blurRadius = 8f,
+                ),
+            ),
+            color = TvDesignTokens.TextPrimary,
+            modifier = modifier,
+        )
+    }
 }
 
 private const val ZAP_TAG = "IQTV-ZAP"

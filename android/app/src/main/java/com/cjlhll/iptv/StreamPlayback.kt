@@ -323,6 +323,7 @@ object StreamPlayback {
         // 次选 MediaFormat.KEY_FRAME_RATE 首帧提示，兜底 onVideoFrameProcessingOffset。
         private val ptsTracker = FrameRateEstimator.PtsFrameRateTracker()
         private val fpsWindow = FrameRateEstimator.FrameRateWindow()
+        private val reusableWindow = androidx.media3.common.Timeline.Window()
         @Volatile private var ptsMeasuredFps: Float? = null
         @Volatile private var inferredFps: Float? = null
         @Volatile private var fpsLogged = false
@@ -430,8 +431,10 @@ object StreamPlayback {
             // t169: use the main-thread snapshot instead of player.currentMediaItem, so this is safe
             // from any callback thread and cannot throw the wrong-thread IllegalStateException.
             if (!PlaybackSession.isCurrent(session) || event.timeline.isEmpty) return false
-            val window = androidx.media3.common.Timeline.Window()
-            return event.windowIndex in 0 until event.timeline.windowCount && event.timeline.getWindow(event.windowIndex, window).mediaItem.mediaId == session
+            if (event.windowIndex !in 0 until event.timeline.windowCount) return false
+            return synchronized(reusableWindow) {
+                event.timeline.getWindow(event.windowIndex, reusableWindow).mediaItem.mediaId == session
+            }
         }
         private fun emit(event: String, fields: String) { if (enabled) Log.d(TAG, "$event session=$session $fields") }
         // Return before any group traversal/format rendering when diagnostics are disabled.

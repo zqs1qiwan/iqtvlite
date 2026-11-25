@@ -23,7 +23,7 @@ class JingcaiTsDataSource(
     private val probe: ((ByteArray, Int) -> Unit)? = null,
 ) : DataSource {
 
-    private val scratch = ByteArray(64 * 1024)
+    private val scratch: ByteArray? = if (pipeline != null) ByteArray(64 * 1024) else null
 
     override fun open(dataSpec: DataSpec): Long {
         val length = upstream.open(dataSpec)
@@ -41,9 +41,10 @@ class JingcaiTsDataSource(
             }
             return n
         }
+        val buf = scratch ?: return C.RESULT_END_OF_INPUT
         var written = pipeline.pop(buffer, offset, length)
         while (written == 0) {
-            val n = upstream.read(scratch, 0, scratch.size)
+            val n = upstream.read(buf, 0, buf.size)
             if (n == C.RESULT_END_OF_INPUT) {
                 JingcaiDiag.code("eof")
                 if (pipeline.pendingBytes() > 0) return pipeline.drainRaw(buffer, offset, length)
@@ -51,7 +52,7 @@ class JingcaiTsDataSource(
             }
             if (n <= 0) return 0
             JingcaiDiag.onBytes(n)
-            pipeline.push(scratch, 0, n)
+            pipeline.push(buf, 0, n)
             written = pipeline.pop(buffer, offset, length)
         }
         if (probe != null && written > 0) probe.invoke(buffer.copyOfRange(offset, offset + written), written)

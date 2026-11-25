@@ -521,38 +521,11 @@ fun ChannelInfoBanner(
 
                 // 两段式第 1 段动态宽折线引导：嵌入台标信息层最底边细条，不增加额外行高
                 if (showTwoStepPeek) {
-                    val pulse = rememberInfiniteTransition(label = "ok_peek_cue")
-                    val dyFrac by pulse.animateFloat(
-                        initialValue = 0f,
-                        targetValue = 1f,
-                        animationSpec = infiniteRepeatable(
-                            animation = tween(durationMillis = 900, easing = FastOutSlowInEasing),
-                            repeatMode = RepeatMode.Reverse,
-                        ),
-                        label = "ok_peek_dy",
-                    )
-                    val cueAlpha = 0.42f + 0.43f * dyFrac
-                    Canvas(
+                    OkPeekCue(
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
-                            .padding(bottom = 3.dp)
-                            .width(46.dp)
-                            .height(8.dp),
-                    ) {
-                        val w = size.width
-                        val h = size.height
-                        val offsetY = dyFrac * (h * 0.28f)
-                        val p = Path().apply {
-                            moveTo(w * 0.08f, h * 0.22f + offsetY)
-                            lineTo(w * 0.50f, h * 0.72f + offsetY)
-                            lineTo(w * 0.92f, h * 0.22f + offsetY)
-                        }
-                        drawPath(
-                            path = p,
-                            color = TvDesignTokens.TextPrimary.copy(alpha = cueAlpha),
-                            style = Stroke(width = 2.0.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round),
-                        )
-                    }
+                            .padding(bottom = 3.dp),
+                    )
                 }
             }
 
@@ -1025,6 +998,41 @@ fun TechSpecText(text: String) {
         style = MaterialTheme.typography.labelMedium,
         color = TvDesignTokens.TextSecondary
     )
+}
+
+@Composable
+private fun OkPeekCue(modifier: Modifier = Modifier) {
+    val pulse = rememberInfiniteTransition(label = "ok_peek_cue")
+    val dyFracState = pulse.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 900, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "ok_peek_dy",
+    )
+    val path = remember { Path() }
+    Canvas(
+        modifier = modifier
+            .width(46.dp)
+            .height(8.dp),
+    ) {
+        val dyFrac = dyFracState.value
+        val cueAlpha = 0.42f + 0.43f * dyFrac
+        val w = size.width
+        val h = size.height
+        val offsetY = dyFrac * (h * 0.28f)
+        path.reset()
+        path.moveTo(w * 0.08f, h * 0.22f + offsetY)
+        path.lineTo(w * 0.50f, h * 0.72f + offsetY)
+        path.lineTo(w * 0.92f, h * 0.22f + offsetY)
+        drawPath(
+            path = path,
+            color = TvDesignTokens.TextPrimary.copy(alpha = cueAlpha),
+            style = Stroke(width = 2.0.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round),
+        )
+    }
 }
 
 @Composable
