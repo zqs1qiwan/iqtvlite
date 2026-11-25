@@ -30,44 +30,45 @@ object ApkDownloader {
                 val client = NetUtil.ipv4OkHttpClient
                 val request = Request.Builder().url(url).build()
 
-                val response = client.newCall(request).execute()
-                if (!response.isSuccessful) {
-                    Log.e(TAG, "Request failed: ${response.code}")
-                    return@withContext null
-                }
+                client.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) {
+                        Log.e(TAG, "Request failed: ${response.code}")
+                        return@withContext null
+                    }
 
-                val body = response.body ?: return@withContext null
-                val totalBytes = body.contentLength()
+                    val body = response.body ?: return@withContext null
+                    val totalBytes = body.contentLength()
 
-                val fileName = "update_${System.currentTimeMillis()}.apk"
-                val file = File(context.cacheDir, fileName)
+                    val fileName = "update_${System.currentTimeMillis()}.apk"
+                    val file = File(context.cacheDir, fileName)
 
-                body.byteStream().use { input ->
-                    file.outputStream().use { output ->
-                        val buffer = ByteArray(8192)
-                        var bytesRead: Int
-                        var bytesDownloaded = 0L
+                    body.byteStream().use { input ->
+                        file.outputStream().use { output ->
+                            val buffer = ByteArray(8192)
+                            var bytesRead: Int
+                            var bytesDownloaded = 0L
 
-                        while (input.read(buffer).also { bytesRead = it } != -1) {
-                            output.write(buffer, 0, bytesRead)
-                            bytesDownloaded += bytesRead
+                            while (input.read(buffer).also { bytesRead = it } != -1) {
+                                output.write(buffer, 0, bytesRead)
+                                bytesDownloaded += bytesRead
 
-                            onProgress(DownloadProgress(
-                                bytesDownloaded = bytesDownloaded,
-                                totalBytes = totalBytes,
-                                isComplete = false
-                            ))
+                                onProgress(DownloadProgress(
+                                    bytesDownloaded = bytesDownloaded,
+                                    totalBytes = totalBytes,
+                                    isComplete = false
+                                ))
+                            }
                         }
                     }
+
+                    onProgress(DownloadProgress(
+                        bytesDownloaded = totalBytes,
+                        totalBytes = totalBytes,
+                        isComplete = true
+                    ))
+
+                    file
                 }
-
-                onProgress(DownloadProgress(
-                    bytesDownloaded = totalBytes,
-                    totalBytes = totalBytes,
-                    isComplete = true
-                ))
-
-                file
             } catch (e: Exception) {
                 Log.e(TAG, "Download error: ${e.message}")
                 null

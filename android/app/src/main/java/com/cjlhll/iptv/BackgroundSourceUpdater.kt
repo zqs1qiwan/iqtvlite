@@ -46,7 +46,11 @@ object BackgroundSourceUpdater {
             withContext(Dispatchers.IO) {
                 val expectedVersion = SourceStore.currentVersion(context)
                 try {
-                    val request = Request.Builder().url(liveSource).build()
+                    val activeUa = Prefs.getActiveSource(context)?.userAgent?.trim().orEmpty()
+                        .ifBlank { Prefs.getGlobalUserAgent(context).trim() }
+                    val reqBuilder = Request.Builder().url(liveSource)
+                    HttpStreamAddress.normalizeUserAgent(activeUa)?.let { reqBuilder.header("User-Agent", it) }
+                    val request = reqBuilder.build()
                     httpClient.newCall(request).execute().use { response ->
                         if (!response.isSuccessful) {
                             Log.w(TAG, "playlist download failed code=${response.code}")

@@ -1,6 +1,11 @@
 package com.cjlhll.iptv
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
@@ -39,6 +44,7 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -129,7 +135,7 @@ fun ChannelInfoBanner(
     val lang by AppStrings.langFlow.collectAsState()
     val visible = InfoCardPolicy.isVisible(state, seekOverlayVisible)
     val focused = state == InfoCardPolicy.State.FOCUSED
-    val isActiveConsole = manual || focused
+    val isActiveConsole = focused
 
     val containerAlpha = if (isActiveConsole) uiAlpha else (uiAlpha * 0.70f).coerceIn(0.40f, 0.72f)
     val containerColor = TvDesignTokens.SurfaceObsidian.copy(alpha = containerAlpha)
@@ -142,8 +148,11 @@ fun ChannelInfoBanner(
     )
     val visibleQuickActions = if (isActiveConsole && !seekOverlayVisible) quickActions else emptyList()
     val showBottomRow = showRecent || visibleQuickActions.isNotEmpty()
+    val showTwoStepPeek = !focused && manual && !seekOverlayVisible &&
+        (InfoCardPolicy.showRecentRow(recentCount, catchupConfiguration != null, false) || quickActions.isNotEmpty())
 
-    val recentSlotCount = if (showRecent) minOf(recentCount, InfoCardPolicy.MAX_RECENT) else 0
+    val maxRecentDisplay = 5
+    val recentSlotCount = if (showRecent) minOf(recentCount, maxRecentDisplay) else 0
     val totalFocusSlots = recentSlotCount + visibleQuickActions.size
 
     val focusManager = LocalFocusManager.current
@@ -269,19 +278,21 @@ fun ChannelInfoBanner(
                 }
         ) {
             // ── 第一层（通用，铺满下方）：大台标 + 频道名/分组 + 当前/下一节目双栏 + 右侧独立 Tag ──
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(
-                        start = 28.dp,
-                        end = 28.dp,
-                        top = 12.dp,
-                        bottom = if (showBottomRow) 10.dp else 13.dp,
-                    ),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                val mainLogoW = (138f * lScale).dp
-                val mainLogoH = (80f * lScale).dp
+            Box(modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(
+                            start = 28.dp,
+                            end = 28.dp,
+                            top = 9.dp,
+                            bottom = if (showBottomRow) 7.dp else 13.dp,
+                        )
+                        .height((68f * lScale).dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    val mainLogoW = (126f * lScale).dp
+                    val mainLogoH = (68f * lScale).dp
                 Box(
                     modifier = Modifier.size(width = mainLogoW, height = mainLogoH),
                     contentAlignment = Alignment.Center,
@@ -445,6 +456,7 @@ fun ChannelInfoBanner(
                                     modifier = Modifier.testTag("info_card_progress"),
                                 )
                             } else {
+                                Spacer(modifier = Modifier.height(8.dp))
                                 Box(modifier = Modifier.testTag("info_card_progress"))
                             }
                         }
@@ -502,9 +514,46 @@ fun ChannelInfoBanner(
                         }
                     }
                 }
+                }
+
+                // 两段式第 1 段动态宽折线引导：嵌入台标信息层最底边细条，不增加额外行高
+                if (showTwoStepPeek) {
+                    val pulse = rememberInfiniteTransition(label = "ok_peek_cue")
+                    val dyFrac by pulse.animateFloat(
+                        initialValue = 0f,
+                        targetValue = 1f,
+                        animationSpec = infiniteRepeatable(
+                            animation = tween(durationMillis = 900, easing = FastOutSlowInEasing),
+                            repeatMode = RepeatMode.Reverse,
+                        ),
+                        label = "ok_peek_dy",
+                    )
+                    val cueAlpha = 0.42f + 0.43f * dyFrac
+                    Canvas(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(bottom = 3.dp)
+                            .width(46.dp)
+                            .height(8.dp),
+                    ) {
+                        val w = size.width
+                        val h = size.height
+                        val offsetY = dyFrac * (h * 0.28f)
+                        val p = Path().apply {
+                            moveTo(w * 0.08f, h * 0.22f + offsetY)
+                            lineTo(w * 0.50f, h * 0.72f + offsetY)
+                            lineTo(w * 0.92f, h * 0.22f + offsetY)
+                        }
+                        drawPath(
+                            path = p,
+                            color = TvDesignTokens.TextPrimary.copy(alpha = cueAlpha),
+                            style = Stroke(width = 2.0.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round),
+                        )
+                    }
+                }
             }
 
-            // ── 第二层（仅 OK 主动呼出时显示）：最左竖排最近观看 + 6 个最近频道 + 右侧本台快捷控制 ──
+            // ── 第二层（展开/聚焦时显示）：最左竖排最近观看 + 5 个紧凑最近频道 + 右侧本台快捷控制 ──
             if (showBottomRow) {
                 Box(
                     modifier = Modifier
@@ -514,11 +563,11 @@ fun ChannelInfoBanner(
                         .background(Color.White.copy(alpha = 0.08f))
                 )
 
-                val rowHeight = (94f * lScale).dp
+                val rowHeight = (64f * lScale).dp
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(start = 28.dp, end = 28.dp, top = 10.dp, bottom = 12.dp),
+                        .padding(start = 28.dp, end = 28.dp, top = 6.dp, bottom = 7.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     if (showRecent) {
@@ -596,7 +645,7 @@ private fun RecentStrip(
     val cardShape = remember { RoundedCornerShape(6.dp) }
     val labelShape = remember { RoundedCornerShape(5.dp) }
     val idlePlateColor = Color(0x14FFFFFF)
-    val logoSlotH = (64f * uiScale.logoScale).dp
+    val logoSlotH = (44f * uiScale.logoScale).dp
     val logoScale = uiScale.logoScale
     val textScale = uiScale.textScale
 
@@ -629,7 +678,7 @@ private fun RecentStrip(
             )
         }
 
-        for (slot in 0 until InfoCardPolicy.MAX_RECENT) {
+        for (slot in 0 until 5) {
             val item = items.getOrNull(slot)
             if (item == null) {
                 Spacer(modifier = Modifier.weight(1f))
@@ -673,9 +722,9 @@ private fun RecentCardTile(
     modifier: Modifier = Modifier,
 ) {
     val hasLogo = logoUrl?.isNotBlank() == true
-    val cardLogoW = ((if (isHighlighted) 114f else 74f) * logoScale).dp
-    val cardLogoH = ((if (isHighlighted) 62f else 40f) * logoScale).dp
-    val titleSp = (if (isHighlighted) 13.5f else 12.0f) * textScale
+    val cardLogoW = ((if (isHighlighted) 96f else 72f) * logoScale).dp
+    val cardLogoH = ((if (isHighlighted) 44f else 36f) * logoScale).dp
+    val titleSp = (if (isHighlighted) 12.0f else 10.5f) * textScale
 
     Column(
         modifier = modifier
@@ -687,7 +736,7 @@ private fun RecentCardTile(
             .focusable()
             .background(if (isHighlighted) BrandFocus.FocusBgColor else idlePlateColor, cardShape)
             .clickable { onClick(index) }
-            .padding(horizontal = 3.dp, vertical = 2.dp),
+            .padding(horizontal = 3.dp, vertical = 1.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
@@ -803,8 +852,8 @@ private fun QuickActionTile(
         action.active -> activePlateColor
         else -> idlePlateColor
     }
-    val iconSize = if (isHighlighted) 25.dp else 21.dp
-    val labelSp = (if (isHighlighted) 12.5f else 11.5f) * textScale.coerceAtMost(1.06f)
+    val iconSize = if (isHighlighted) 23.dp else 19.dp
+    val labelSp = (if (isHighlighted) 11.5f else 10.5f) * textScale.coerceAtMost(1.06f)
 
     Column(
         modifier = Modifier
@@ -817,7 +866,7 @@ private fun QuickActionTile(
             .focusable()
             .background(tileBg, tileShape)
             .clickable { onTrigger(action.id) }
-            .padding(horizontal = 3.dp, vertical = 6.dp),
+            .padding(horizontal = 3.dp, vertical = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {

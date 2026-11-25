@@ -137,9 +137,22 @@ X-Custom-Token: your-token
 
 ## 安装与更新
 
-1. 前往 [**Releases 最新版本**](https://github.com/zqs1qiwan/iqtvlite/releases/latest) 下载通用最新包 `IQTV-Lite-latest.apk`。
+1. 前往 [**Releases 最新版本**](https://github.com/zqs1qiwan/iqtvlite/releases/latest) 下载 `IQTV-Lite-v0.2.2.apk`（或通用最新包 `IQTV-Lite-latest.apk`）。
 2. 将 APK 传至 Android TV / 电视盒子安装（支持 Android 7.0 及以上，兼容 32 位与 64 位 ARM 设备）。
 3. 后续可在电视端「设置 → 关于与更新 → 检查更新」直接内联检测并下载安装新版本，也可手动前往 GitHub Releases 更新。
+
+---
+
+## 实验功能说明
+
+在「设置 → 播放解码 → 高级优化（实验）」中包含以下实验性或硬件适配选项：
+
+| 功能名称 | 默认状态 | 作用说明 | 使用建议 |
+| --- | --- | --- | --- |
+| **4K 切台防花屏重建** | 开启 | 切换到 4K / HEVC 频道时自动重建硬件视频解码器，清理老旧电视芯片（如部分 Android 9 机顶盒）残留的上一台参考帧缓存，避免切台花屏。 | 若你的电视/盒子从不花屏且希望 4K 换台更极限流畅，可尝试关闭。 |
+| **预连接相邻频道** | 关闭 | 空闲时在后台预连接当前频道的上一台与下一台（TCP/TLS 握手），以缩短上下键连续换台的等待时间。 | 对连接数或并发有限制的单播源建议保持关闭，以免增加服务器连接压力。 |
+| **组播预热** | 关闭 | 仅针对家庭宽带 IPTV 组播（`udp://` / `rtp://`）环境，提前预热相邻频道的组播组加入以加速内网切台。 | 使用公网 HTTP/HLS 单播直播源的用户请保持关闭。 |
+| **码流兼容模式** | 关闭 | 针对非标准广电 TS 流（如 PMT/PCR 时间戳异常导致的卡死、只出声不出画或音画不同步）提供实验性兼容调度策略。 | 仅在个别频道播放异常时按需开启测试，正常流请保持关闭。 |
 
 ---
 
@@ -234,9 +247,20 @@ X-Custom-Token: your-token
 
 ## Installation & Updates
 
-1. Download `IQTV-Lite-v0.2.1.apk` (or `IQTV-Lite-latest.apk`) from [**Latest Release**](https://github.com/zqs1qiwan/iqtvlite/releases/latest).
+1. Download `IQTV-Lite-v0.2.2.apk` (or `IQTV-Lite-latest.apk`) from [**Latest Release**](https://github.com/zqs1qiwan/iqtvlite/releases/latest).
 2. Sideload onto your Android TV / TV box (`Android 7.0+`, supports both `arm64-v8a` and `armeabi-v7a`).
 3. Check for future updates directly in **Settings → About & Updates → Check for Updates**, or download from GitHub Releases.
+
+## Experimental Features
+
+Under **Settings → Playback → Advanced (Experimental)**, the following tuning and stream-compatibility options are available:
+
+| Option | Default | What It Does | When to Change |
+| --- | --- | --- | --- |
+| **4K Zap Anti-Artifacting Rebuild** | ON | Rebuilds the hardware video decoder when tuning to 4K / HEVC channels to clear stale reference frames on older Android TV SoCs. | Turn OFF only if your device never shows 4K artifacts and you want slightly faster 4K zaps. |
+| **Neighbour Preconnect** | OFF | Pre-warms TCP/TLS connections to the adjacent (`±1`) channels while idle to reduce channel-switch latency. | Keep OFF on strict IPTV providers that limit concurrent connections per token/IP. |
+| **Multicast Prewarm** | OFF | Pre-joins adjacent UDP multicast groups for faster LAN ISP IPTV multicast switching. | Useful only on home LAN multicast setups; keep OFF for HTTP/HLS unicast playlists. |
+| **Stream Compatibility** | OFF | Experimental TS/PMT/PCR timeline compatibility modes for non-standard broadcast feeds that stall or lose A/V sync. | Enable only when testing specific streams that freeze or drift out of sync. |
 
 ## Remote Control Guide
 

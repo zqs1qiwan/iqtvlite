@@ -94,8 +94,19 @@ object Prefs {
         getPrefs(context).edit().putString(KEY_EPG_SOURCE, url).apply()
     }
 
+    private val LONG_KEYS = setOf(
+        KEY_LAST_EPG_UPDATE_TIME,
+        KEY_SOURCE_VERSION,
+        KEY_PLAYLIST_LAST_SUCCESS,
+        KEY_PLAYLIST_LAST_FAILURE,
+        KEY_EPG_LAST_FAILURE,
+    )
+
+    private fun readLong(prefs: SharedPreferences, key: String, default: Long = 0L): Long =
+        (prefs.all[key] as? Number)?.toLong() ?: default
+
     fun getLastEpgUpdateTime(context: Context): Long {
-        return getPrefs(context).getLong(KEY_LAST_EPG_UPDATE_TIME, 0L)
+        return readLong(getPrefs(context), KEY_LAST_EPG_UPDATE_TIME, 0L)
     }
 
     fun setLastEpgUpdateTime(context: Context, time: Long) {
@@ -133,7 +144,7 @@ object Prefs {
             .apply()
     }
 
-    fun getSourceVersion(context: Context): Long = getPrefs(context).getLong(KEY_SOURCE_VERSION, 0L)
+    fun getSourceVersion(context: Context): Long = readLong(getPrefs(context), KEY_SOURCE_VERSION, 0L)
 
     fun setSourceVersion(context: Context, version: Long) {
         getPrefs(context).edit().putLong(KEY_SOURCE_VERSION, version).apply()
@@ -194,7 +205,7 @@ object Prefs {
     }
 
     fun getPlaylistLastSuccess(context: Context): Long =
-        getPrefs(context).getLong(KEY_PLAYLIST_LAST_SUCCESS, 0L)
+        readLong(getPrefs(context), KEY_PLAYLIST_LAST_SUCCESS, 0L)
 
     fun setPlaylistLastSuccess(context: Context, at: Long) {
         getPrefs(context).edit()
@@ -205,7 +216,7 @@ object Prefs {
     }
 
     fun getPlaylistLastFailure(context: Context): Long =
-        getPrefs(context).getLong(KEY_PLAYLIST_LAST_FAILURE, 0L)
+        readLong(getPrefs(context), KEY_PLAYLIST_LAST_FAILURE, 0L)
 
     fun getPlaylistFailCount(context: Context): Int =
         getPrefs(context).getInt(KEY_PLAYLIST_FAIL_COUNT, 0)
@@ -219,7 +230,7 @@ object Prefs {
     }
 
     fun getEpgLastFailure(context: Context): Long =
-        getPrefs(context).getLong(KEY_EPG_LAST_FAILURE, 0L)
+        readLong(getPrefs(context), KEY_EPG_LAST_FAILURE, 0L)
 
     fun getEpgFailCount(context: Context): Int =
         getPrefs(context).getInt(KEY_EPG_FAIL_COUNT, 0)
@@ -664,6 +675,17 @@ object Prefs {
         getPrefs(context).edit().putString(KEY_SUBTITLE_PREFERRED_LANG, lang).apply()
     }
 
+    private val VOLATILE_BACKUP_KEYS = setOf(
+        KEY_SOURCE_VERSION,
+        KEY_PLAYLIST_FILE_NAME,
+        KEY_LAST_EPG_UPDATE_TIME,
+        KEY_PLAYLIST_LAST_SUCCESS,
+        KEY_PLAYLIST_LAST_FAILURE,
+        KEY_PLAYLIST_FAIL_COUNT,
+        KEY_EPG_LAST_FAILURE,
+        KEY_EPG_FAIL_COUNT,
+    )
+
     fun exportBackupJson(context: Context): String {
         val all = getPrefs(context).all
         val root = org.json.JSONObject()
@@ -671,6 +693,7 @@ object Prefs {
         root.put("schema", 1)
         val entries = org.json.JSONObject()
         for ((k, v) in all) {
+            if (k in VOLATILE_BACKUP_KEYS) continue
             when (v) {
                 is Boolean, is Int, is Long, is Float, is Double, is String -> entries.put(k, v)
                 is Set<*> -> entries.put(k, org.json.JSONArray(v.mapNotNull { it?.toString() }))
@@ -690,9 +713,7 @@ object Prefs {
             val v = prefsObj.opt(k)
             when (v) {
                 is Boolean -> editor.putBoolean(k, v)
-                is Int -> editor.putInt(k, v)
-                is Long -> editor.putLong(k, v)
-                is Number -> editor.putInt(k, v.toInt())
+                is Number -> if (k in LONG_KEYS) editor.putLong(k, v.toLong()) else editor.putInt(k, v.toInt())
                 is String -> editor.putString(k, v)
                 is org.json.JSONArray -> {
                     val set = LinkedHashSet<String>()

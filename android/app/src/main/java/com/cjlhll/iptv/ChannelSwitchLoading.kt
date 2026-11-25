@@ -107,23 +107,23 @@ fun ChannelSwitchOverlay(
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .background(
-                    MaterialTheme.colorScheme.surface.copy(alpha = 0.88f),
-                    RoundedCornerShape(0.dp)
-                )
-                .padding(horizontal = 16.dp, vertical = 12.dp)
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
         ) {
             CircularProgressIndicator(
-                color = MaterialTheme.colorScheme.primary,
+                color = TvDesignTokens.BrandLiteBlue,
                 strokeWidth = 2.dp,
-                modifier = Modifier.size(22.dp)
+                modifier = Modifier.size(20.dp)
             )
-            Spacer(modifier = Modifier.width(10.dp))
+            Spacer(modifier = Modifier.width(8.dp))
             Text(
                 text = message,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurface
+                style = MaterialTheme.typography.bodyMedium.copy(
+                    shadow = androidx.compose.ui.graphics.Shadow(
+                        color = Color.Black.copy(alpha = 0.75f),
+                        blurRadius = 6f,
+                    )
+                ),
+                color = TvDesignTokens.TextPrimary,
             )
         }
     }

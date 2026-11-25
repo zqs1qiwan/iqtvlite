@@ -18,13 +18,13 @@ on:
         type: boolean
         default: true
       release_version:
-        description: Production versionName (e.g. 0.1.2, 0.2.1)
+        description: Production versionName (e.g. 0.1.2, 0.2.2)
         type: string
-        default: '0.2.1'
+        default: '0.2.2'
       release_version_code:
-        description: Production versionCode integer (e.g. 102, 201)
+        description: Production versionCode integer (e.g. 102, 202)
         type: string
-        default: '201'
+        default: '202'
       publish_github_release:
         description: Also publish GitHub Releases (v<version> & latest; requires RELEASE_KEYSTORE_* secrets)
         type: boolean

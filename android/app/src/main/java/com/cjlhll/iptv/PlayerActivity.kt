@@ -296,6 +296,14 @@ class PlayerActivity : ComponentActivity() {
             FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
         )
         setContentView(rootLayout)
+        onBackPressedDispatcher.addCallback(
+            this,
+            object : androidx.activity.OnBackPressedCallback(true) {
+                override fun handleOnBackPressed() {
+                    handleBackKey()
+                }
+            }
+        )
 
         // 自动收起定时器放在 Activity lifecycleScope 中，独立监听时间戳流，彻底消除 Compose 整屏重组。
         lifecycleScope.launch {
@@ -317,7 +325,7 @@ class PlayerActivity : ComponentActivity() {
                 if (!uiController.isInfoCardVisible || lastMs <= 0L) return@collectLatest
                 while (true) {
                     val cur = uiController.currentOverlay as? PlayerOverlay.InfoCard ?: return@collectLatest
-                    val timeoutMs = InfoCardPolicy.autoHideTimeoutMs(cur.manual, cur.focused)
+                    val timeoutMs = Prefs.getInfoPanelTimeoutSec(this@PlayerActivity).coerceIn(2, 15) * 1000L
                     val now = System.currentTimeMillis()
                     val interactionAt = uiController.currentInfoCardInteractionMs
                     if (InfoCardPolicy.shouldArmAutoHide(
@@ -668,6 +676,9 @@ class PlayerActivity : ComponentActivity() {
 
         // 2. 长按延后短按的 ACTION_UP 收口
         if (event.action == KeyEvent.ACTION_UP) {
+            if (keyCode == KeyEvent.KEYCODE_BACK) {
+                return true
+            }
             if (pendingLongPressKeyCode == keyCode) {
                 val firedLong = longPressFiredForKey == keyCode
                 cancelLongPress()
@@ -1450,7 +1461,8 @@ fun VideoPlayerScreen(
         }
     }
 
-    // 播放错误自动恢复：先刷新源缓存，若同频道有多线路则自动切下一条可用线路
+    // 播放错误自动恢复：先刷新源缓存，若同频道有多线路则自动切下一条可用线路（单次选台限 1 次刷新，防止永久坏台死循环）
+    var recoveryRefreshedMediaId by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(Unit) {
         for (failure in playbackErrorEvents) {
             val failed = failure.playback
@@ -1465,7 +1477,6 @@ fun VideoPlayerScreen(
                 }
                 continue
             }
-            channelSwitch.show()
             val groupIndex = ChannelGrouper.findGroupIndexByUrl(channelGroups, failed.request.channel.url)
             if (groupIndex != null && !playbackIntent.retainsUnlistedLive) {
                 val group = channelGroups[groupIndex]
@@ -1476,6 +1487,7 @@ fun VideoPlayerScreen(
                         .map { offset -> (failedIdx + offset) % group.variants.size }
                         .firstOrNull { idx -> group.variants[idx].channel.url !in triedVariantUrls }
                     if (nextIdx != null && playbackIntent.isCurrent(failed)) {
+                        channelSwitch.show()
                         val nextCh = group.variants[nextIdx].channel
                         currentGroupIndex = groupIndex
                         currentVariantIndex = nextIdx
@@ -1487,6 +1499,12 @@ fun VideoPlayerScreen(
                     }
                 }
             }
+            if (recoveryRefreshedMediaId == failed.mediaId) {
+                channelSwitch.hide()
+                continue
+            }
+            recoveryRefreshedMediaId = failed.mediaId
+            channelSwitch.show()
             val source = Prefs.getLiveSource(context)
             playbackIntent.recover(
                 failure,
@@ -1527,24 +1545,24 @@ fun VideoPlayerScreen(
         }
     }
 
-    // EPG 加载（SQLite 毫秒冷启；仍保留首帧后启动以避免抢占起播 IO）
+    // EPG 加载（始终订阅刷新事件，避免初始无 EPG 切源后收不到更新；冷启仍等首帧后加载以防抢占起播 IO）
     LaunchedEffect(Unit) {
+        launch {
+            BackgroundSourceUpdater.epgUpdated.collect { data ->
+                epgData = data
+                epgVersion++
+                epgLoadFailed = false
+            }
+        }
+        launch {
+            manualEpgRequests.collect {
+                if (ManualRefreshPolicy.actionFor(true, false) == ManualRefreshPolicy.Action.CALL_SCHEDULER) {
+                    AutoUpdateScheduler.requestManualEpg(context)
+                }
+            }
+        }
         val epgSource = Prefs.getEpgSource(context)
         if (epgSource.isNotBlank()) {
-            launch {
-                BackgroundSourceUpdater.epgUpdated.collect { data ->
-                    epgData = data
-                    epgVersion++
-                    epgLoadFailed = false
-                }
-            }
-            launch {
-                manualEpgRequests.collect {
-                    if (ManualRefreshPolicy.actionFor(true, false) == ManualRefreshPolicy.Action.CALL_SCHEDULER) {
-                        AutoUpdateScheduler.requestManualEpg(context)
-                    }
-                }
-            }
             withTimeoutOrNull(ColdStartPolicy.EPG_CACHE_FALLBACK_MS) {
                 snapshotFlow { firstFrameRendered }.first { it }
             }
@@ -1826,16 +1844,19 @@ fun VideoPlayerScreen(
                 )
             )
             val variantCount = playingGroup?.variants?.size ?: 0
-            if (variantCount > 1) {
+            val sourceLabel = if (variantCount > 1) {
                 val idx = (playingVariantIndex + 1).coerceIn(1, variantCount)
-                add(
-                    InfoCardQuickAction(
-                        id = InfoCardQuickActionId.SOURCE,
-                        label = AppStrings.tr(appLanguage, "线路 $idx/$variantCount", "Src $idx/$variantCount"),
-                        description = AppStrings.tr(appLanguage, "切换播放线路", "Switch source"),
-                    )
-                )
+                AppStrings.tr(appLanguage, "线路 $idx/$variantCount", "Src $idx/$variantCount")
+            } else {
+                AppStrings.tr(appLanguage, "换源", "Source")
             }
+            add(
+                InfoCardQuickAction(
+                    id = InfoCardQuickActionId.SOURCE,
+                    label = sourceLabel,
+                    description = AppStrings.tr(appLanguage, "切换播放线路", "Switch source"),
+                )
+            )
             add(
                 InfoCardQuickAction(
                     id = InfoCardQuickActionId.ASPECT,
@@ -1983,7 +2004,7 @@ fun VideoPlayerScreen(
             val gs = latestChannelGroups.value
             if (number !in 1..gs.size) false else {
                 latestPlayGroupAuto.value(number - 1)
-                uiController.showInfoCard(focused = false)
+                if (Prefs.isShowInfoOnZap(context)) uiController.showInfoCard(focused = false)
                 true
             }
         }
@@ -1993,7 +2014,7 @@ fun VideoPlayerScreen(
             val chosen = matches.getOrNull(matchIndex) ?: return@setOnDigitMatchJump false
             if (chosen.groupIndex !in gs.indices) return@setOnDigitMatchJump false
             latestPlayGroupAuto.value(chosen.groupIndex)
-            uiController.showInfoCard(focused = false)
+            if (Prefs.isShowInfoOnZap(context)) uiController.showInfoCard(focused = false)
             true
         }
         playback.setOnChannelStep { direction ->
@@ -2001,7 +2022,7 @@ fun VideoPlayerScreen(
             if (gs.size < 2 || uiController.isBlockingOverlayOpen) return@setOnChannelStep false
             val nextIdx = ((latestCurrentGroupIdx.value + direction) % gs.size + gs.size) % gs.size
             latestPlayGroupAuto.value(nextIdx)
-            uiController.showInfoCard(focused = false)
+            if (Prefs.isShowInfoOnZap(context)) uiController.showInfoCard(focused = false)
             true
         }
         playback.setOnPlayLastChannel { latestPlayLast.value() }
@@ -2029,7 +2050,7 @@ fun VideoPlayerScreen(
         }
         infoCard.setOpenInfoCardFromOkController {
             val recentShownCount = if (latestCatchupReq.value == null && !latestSeekOverlay.value) {
-                latestCardRecent.value.size
+                minOf(latestCardRecent.value.size, 5)
             } else 0
             val quickCount = if (!latestSeekOverlay.value) latestQuickActions.value.size else 0
             val totalSlots = recentShownCount + quickCount
@@ -2039,12 +2060,17 @@ fun VideoPlayerScreen(
                 seekOverlayVisible = latestSeekOverlay.value,
             )
             val cur = uiController.currentOverlay as? PlayerOverlay.InfoCard
+            val directFocus = InfoCardPolicy.openCardFocusesDirectly(latestInfoOkMode.value) && canFocus
             if (cur != null) {
-                // 第二段 OK（IDLE -> FOCUSED）
-                if (!cur.focused && canFocus) uiController.focusInfoCard(0)
-                else uiController.noteInfoCardInteraction(promoteManual = true)
+                if (cur.manual) {
+                    // 第二段 OK（已主动呼出 IDLE -> FOCUSED）
+                    if (!cur.focused && canFocus) uiController.focusInfoCard(0)
+                    else uiController.noteInfoCardInteraction(promoteManual = true)
+                } else {
+                    // 换台自动弹出的信息条（manual = false）：在两段式下先进入第 1 段主动菜单，不跳过第 1 段直入 FOCUSED
+                    uiController.showInfoCard(focused = directFocus, manual = true)
+                }
             } else {
-                val directFocus = InfoCardPolicy.openCardFocusesDirectly(latestInfoOkMode.value) && canFocus
                 uiController.showInfoCard(focused = directFocus, manual = true)
             }
             true
@@ -2052,7 +2078,7 @@ fun VideoPlayerScreen(
         infoCard.setInfoCardFocusedActionController { action ->
             val items = latestCardRecent.value
             val actions = latestQuickActions.value
-            val recentShownCount = if (latestCatchupReq.value == null && !latestSeekOverlay.value) items.size else 0
+            val recentShownCount = if (latestCatchupReq.value == null && !latestSeekOverlay.value) minOf(items.size, 5) else 0
             val totalSlots = recentShownCount + actions.size
             when (action) {
                 InfoCardPolicy.FocusedKeyAction.MOVE_LEFT -> uiController.moveInfoCardFocus(-1, totalSlots)
@@ -2263,6 +2289,7 @@ fun VideoPlayerScreen(
                 Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
             }
             override fun onPlayProgram(request: CatchupPlayRequest) {
+                catchupRetryCount = 0
                 val bound = PlaybackIntent.catchup(latestAllChannels.value, request, playbackIntent.request)
                 if (bound != null) {
                     playbackIntent.beginSelection()
@@ -2330,6 +2357,35 @@ fun VideoPlayerScreen(
 
     // ── UI 渲染层 ────────────────────────────────────────────────────────────
     Box(modifier = Modifier.fillMaxSize()) {
+        val digitOsd by uiController.digitOsd.collectAsState()
+        if (showClockInPlayer && !playback.isInPipMode && !digitOsd.visible) {
+            var clockText by remember { mutableStateOf("") }
+            LaunchedEffect(showClockInPlayer) {
+                val fmt = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
+                while (true) {
+                    clockText = fmt.format(java.util.Date())
+                    delay(15_000L)
+                }
+            }
+            if (clockText.isNotEmpty()) {
+                Text(
+                    text = clockText,
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontSize = (20f * uiScale.textScale).sp,
+                        fontWeight = FontWeight.SemiBold,
+                        shadow = androidx.compose.ui.graphics.Shadow(
+                            color = androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.72f),
+                            blurRadius = 8f,
+                        ),
+                    ),
+                    color = TvDesignTokens.TextPrimary,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(top = 18.dp, end = 26.dp),
+                )
+            }
+        }
+
         ChannelSwitchOverlay(
             controller = channelSwitch,
             modifier = Modifier.align(Alignment.BottomEnd).padding(24.dp)
