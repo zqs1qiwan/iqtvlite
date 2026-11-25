@@ -30,12 +30,7 @@ object PlaylistSources {
             .substringBefore('/')
             .substringBefore(':')
             .trim()
-        return when {
-            host.equals("iptv.laobaitv.net", true) -> "老白直播源"
-            host.equals("lbzs.laobaitv.net", true) -> "老白专享源"
-            host.isNotBlank() -> host
-            else -> "播放源 $fallbackIndex"
-        }
+        return if (host.isNotBlank()) host else "播放源 $fallbackIndex"
     }
 
     fun newId(url: String, existingIds: Set<String> = emptySet()): String {

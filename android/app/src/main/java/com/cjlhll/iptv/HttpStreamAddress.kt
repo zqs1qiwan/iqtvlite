@@ -1,7 +1,7 @@
 package com.cjlhll.iptv
 
 /**
- * 播放地址与 HTTP 请求头统一解析器（兼容 Kodi / VLC / TVBox / lbzs.laobaitv.net 全部写法）：
+ * 播放地址与 HTTP 请求头统一解析器（兼容 Kodi / VLC / TVBox / URL | 参数写法）：
  *
  * 1. 支持 URL 中 `|` 后的任意头部参数（如 `|User-Agent=VLC&Referer=https://...&Origin=...&Cookie=...`）；
  * 2. 支持 M3U `#EXTINF` 属性（`http-user-agent` / `user-agent` / `http-referer` / `http-referrer` /

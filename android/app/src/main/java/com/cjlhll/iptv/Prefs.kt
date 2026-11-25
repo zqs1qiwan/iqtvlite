@@ -30,8 +30,8 @@ object Prefs {
     private const val KEY_REMOTE_BACK = "remote_back"
     private const val KEY_REMOTE_DIGITS = "remote_digits"
     private const val KEY_REMOTE_CHANNEL_KEYS = "remote_channel_keys"
-    // FULLFIX §7：功能→按键全映射（v1）。保存 RemoteBindings.serialize 的结果。
-    private const val KEY_REMOTE_ACTION_BINDINGS = "remote_action_bindings_v1"
+    // FULLFIX §7：功能→按键全映射（与 RemoteBindings.PREFS_KEY 保持单源一致）。
+    private const val KEY_REMOTE_ACTION_BINDINGS = RemoteBindings.PREFS_KEY
     // t205: start-up buffer tier (300/400/500 ms), default 稳/500.
     private const val KEY_PLAYBACK_BUFFER_MIN = "playback_buffer_min"
     // t218: neighbour pre-connect experiment (default OFF — opt-in only).
@@ -483,7 +483,7 @@ object Prefs {
     }
 
     fun isHomePipEnabled(context: Context): Boolean =
-        getPrefs(context).getBoolean(KEY_HOME_PIP_ENABLED, true)
+        getPrefs(context).getBoolean(KEY_HOME_PIP_ENABLED, false)
 
     fun setHomePipEnabled(context: Context, enabled: Boolean) {
         getPrefs(context).edit().putBoolean(KEY_HOME_PIP_ENABLED, enabled).apply()

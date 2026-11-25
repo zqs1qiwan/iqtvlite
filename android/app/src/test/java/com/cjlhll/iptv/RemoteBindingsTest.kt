@@ -33,11 +33,11 @@ class RemoteBindingsTest {
             RemoteBindings.resolve(RemoteBindings.KEY_DPAD_LEFT, false, UiContext.PLAYER_ONLY),
         )
         assertEquals(
-            RemoteAction.OPEN_SETTINGS,
+            RemoteAction.LAST_CHANNEL,
             RemoteBindings.resolve(RemoteBindings.KEY_DPAD_RIGHT, false, UiContext.PLAYER_ONLY),
         )
         assertEquals(
-            RemoteAction.OPEN_SETTINGS,
+            null,
             RemoteBindings.resolve(RemoteBindings.KEY_MENU, false, UiContext.PLAYER_ONLY),
         )
         assertEquals(

@@ -23,7 +23,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.text.style.TextOverflow
@@ -689,17 +691,20 @@ fun ChannelLogo(
 
     val shape = TvDesignTokens.ShapeFlat
     val bg = TvDesignTokens.SurfaceElevated
+    val sizedModifier = modifier
+        .let { if (width != null) it.width(width) else it }
+        .let { if (height != null) it.height(height) else it }
 
     if (loaded != null) {
         Image(
             bitmap = loaded!!,
             contentDescription = fallbackTitle,
             contentScale = androidx.compose.ui.layout.ContentScale.Fit,
-            modifier = modifier.clip(shape)
+            modifier = sizedModifier.clip(shape)
         )
     } else {
         Box(
-            modifier = modifier
+            modifier = sizedModifier
                 .clip(shape)
                 .background(bg),
             contentAlignment = Alignment.Center

@@ -42,6 +42,10 @@ class SourceConfigLanServer(
                 onSwitchAndPlay = onSwitchAndPlay,
             )
             try {
+                // 优先复用固定主端口，关闭后立即重开不至于被迫回退到下一个端口
+                s.setServerSocketFactory {
+                    java.net.ServerSocket().apply { reuseAddress = true }
+                }
                 s.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false)
                 server = s
                 info = Info(ip = localIp, port = port, url = "http://$localIp:$port/")
@@ -440,8 +444,25 @@ class SourceConfigLanServer(
         }
 
         private fun parsePayload(session: IHTTPSession): JSONObject {
-            val files = HashMap<String, String>()
             return try {
+                // NanoHTTPD 默认按 ISO-8859-1 解析无 charset 的 JSON body，会导致中文每次提交都被二次乱码；
+                // 这里直接按 Content-Length 读取原始字节并以 UTF-8 解码。
+                val contentLength = session.headers["content-length"]?.trim()?.toIntOrNull() ?: 0
+                if (contentLength in 1..(4 * 1024 * 1024)) {
+                    val buf = ByteArray(contentLength)
+                    var read = 0
+                    val input = session.inputStream
+                    while (read < contentLength) {
+                        val n = input.read(buf, read, contentLength - read)
+                        if (n <= 0) break
+                        read += n
+                    }
+                    val raw = String(buf, 0, read, Charsets.UTF_8).trim()
+                    if (raw.startsWith("{")) {
+                        return JSONObject(raw)
+                    }
+                }
+                val files = HashMap<String, String>()
                 session.parseBody(files)
                 val raw = files["postData"]?.trim().orEmpty()
                 if (raw.isNotEmpty() && raw.startsWith("{")) {

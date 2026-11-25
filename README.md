@@ -43,7 +43,7 @@
     <td width="50%" align="center">
       <img src="assets/screenshots/player-infocard.png" alt="播放信息卡与控制台" />
       <br />
-      <sub><b>双层智能信息栏</b>：换台仅轻量通透展示当前频道；按 OK 主动呼出完整控制台，下方一行集成 5 个最近观看与画面比例 / 音轨 / 字幕 / 画中画 / 设置快捷控制</sub>
+      <sub><b>双层智能信息栏</b>：换台仅轻量通透展示当前频道；按 OK 主动呼出完整控制台，下方一行集成最近观看频道与 收藏 / 适应 / 音轨 / 字幕 / 多画面 / 设置 快捷控制</sub>
     </td>
     <td width="50%" align="center">
       <img src="assets/screenshots/channel-drawer.png" alt="频道列表与节目预告抽屉" />
@@ -60,7 +60,7 @@
     <td width="50%" align="center">
       <img src="assets/screenshots/settings.png" alt="简洁电视端设置菜单" />
       <br />
-      <sub><b>大屏设置中心</b>：中英文实时切换、大/中/小界面缩放、按键自定义、多源管理与设置内联检查更新，无多余弹窗与打扰</sub>
+      <sub><b>大屏设置中心</b>：7 大分类（通用 / 节目列表 / 节目预告 / 外观 / 播放解码 / 遥控设置 / 关于与更新），支持中英文实时切换、按键自定义与设置内联检查更新</sub>
     </td>
   </tr>
   <tr>
@@ -78,7 +78,7 @@
 
 - **双层底部信息栏**：
   - **上下键换台**：弹出更通透轻量的底部条，铺满展示当前台标、频道号、节目名称、进度条与实时视频参数（分辨率 / 帧率 / 声道 / HDR / 编码），数秒后自动收起。
-  - **按 `OK` 主动呼出**：展开稳重不透明的完整两行控制台——上方保留当前频道展示，下方一整行左侧展示 **最近观看 5 个频道**（台标 + 台名），右侧无缝衔接 **线路（多源时）· 画面比例（适应 / 铺满 / 拉伸）· 音轨 · 字幕 · 画中画（系统支持时）· 设置** 快捷控制。
+  - **按 `OK` 主动呼出**：展开稳重不透明的完整两行控制台——上方保留当前频道展示，下方一整行左侧展示 **最近观看频道**（台标 + 台名），右侧无缝衔接 **收藏 · 线路（多源时）· 适应（画面比例）· 音轨 · 字幕 · 多画面 · 设置** 快捷控制。
 - **逐级展开选台抽屉**：
   - 按 `←` 打开 **频道 + 节目单**，聚焦长节目名自动平滑滚动；再次点击当前正在播放的直播台会直接收起抽屉，不重复加载。
   - 再按一次 `←` 自动收起节目单，展示 **分组 + 频道**。
@@ -97,7 +97,7 @@
 ### 1. 多线路聚合 vs 独立频道
 - **同一频道多条备用线路**（一个 `#EXTINF` 下跟多行地址，自动合并并提供失效轮询与「线路」切换）：
 ```m3u
-#EXTINF:-1 tvg-id="dongfangweishi" tvg-name="东方卫视" tvg-logo="https://logo.laobaitv.net/东方卫视" http-user-agent="VLC" group-title="卫视频道",东方卫视
+#EXTINF:-1 tvg-id="dongfangweishi" tvg-name="东方卫视" tvg-logo="https://example.com/logo/dragontv.png" http-user-agent="VLC" group-title="卫视频道",东方卫视
 http://example.com/line1.m3u8
 http://example.com/line2.m3u8
 http://example.com/line3.m3u8
@@ -133,9 +133,9 @@ X-Custom-Token: your-token
 
 ## 安装与更新
 
-1. 前往 [**Releases 最新版本**](https://github.com/zqs1qiwan/iqtvlite/releases/latest) 下载 `IQTV-Lite-v0.1.1.apk`（或通用最新包 `IQTV-Lite-latest.apk`）。
+1. 前往 [**Releases 最新版本**](https://github.com/zqs1qiwan/iqtvlite/releases/latest) 下载 `IQTV-Lite-v0.2.1.apk`（或通用最新包 `IQTV-Lite-latest.apk`）。
 2. 将 APK 传至 Android TV / 电视盒子安装（支持 Android 7.0 及以上，兼容 32 位与 64 位 ARM 设备）。
-3. 后续可在电视端「设置 → 关于 → 检查更新」直接内联检测并下载安装新版本，也可手动前往 GitHub Releases 更新。
+3. 后续可在电视端「设置 → 关于与更新 → 检查更新」直接内联检测并下载安装新版本，也可手动前往 GitHub Releases 更新。
 
 ---
 
@@ -144,11 +144,11 @@ X-Custom-Token: your-token
 | 按键 | 功能说明 |
 | --- | --- |
 | `↑` / `↓` | 切换上 / 下一个频道（弹出轻量半透明当前台信息卡并自动收起） |
-| `OK` / `Enter` | 呼出完整控制信息栏；再次按 `OK` 在底部最近观看 5 台与右侧快捷控制图标间横向选择 |
+| `OK` / `Enter` | 呼出完整控制信息栏；再次按 `OK` 在底部最近观看频道与右侧快捷控制图标间横向选择，点击右侧齿轮进入设置 |
 | `←` | 逐级打开选台抽屉：**频道 + 节目单 → 分组 → 播放源** |
-| `→` / `Menu` | 打开右侧电视设置菜单 |
-| `Back` | 逐级退回或关闭菜单；在播放器全屏状态可按设置好的快捷键退出 |
-| `数字键` | 直接输入频道号跳转 |
+| `→` | 默认**切换上一频道**（可在「设置 → 遥控设置」自由改键为打开设置或其他功能） |
+| `Back` | 逐级退回或关闭菜单；在播放器全屏状态默认支持双击返回退出 |
+| `数字键` | 直接输入频道号，右上角实时显示匹配台名并自动跳转 |
 
 > 以上短按与长按行为均可在「设置 → 遥控器与操作」或手机网页端自由改键或置空。
 
@@ -159,7 +159,7 @@ X-Custom-Token: your-token
 **IQTV Lite** is a free, open-source (GPLv3), ad-free IPTV player crafted for Android TV remotes and entry-level TV boxes.
 
 - **Lightweight & Fast**: ~8.6 MB footprint powered by a fast native playlist & XMLTV parser for instant channel zapping and smooth scrolling even on modest TV hardware.
-- **Two-Tier Bottom Info Console**: Channel zapping shows a cleaner, more translucent full-width channel banner. Pressing `OK` reveals the full console adding 5 quick-switch recent channels on the left and quick channel controls (**Source · Aspect Ratio · Audio · Subtitles · PiP · Settings**) on the right.
+- **Two-Tier Bottom Info Console**: Channel zapping shows a cleaner, more translucent full-width channel banner. Pressing `OK` reveals the full console adding quick-switch recent channels on the left and quick controls (**Favorite · Source · Aspect Ratio · Audio · Subtitles · Multi-Screen · Settings**) on the right; `→` defaults to **Previous Channel** and can be remapped anytime.
 - **Exact M3U Grouping & Auto-Failover**: Multiple URLs under one `#EXTINF` aggregate into a switchable multi-source channel with automatic failover polling, while separate `#EXTINF` entries stay independent. Supports inline `|User-Agent=...&Referer=...` (joined with `&`), `#EXTINF`/`#EXTVLCOPT` attributes, and global per-line headers.
 - **Scan-to-Configure Web Console**: Scan the on-TV QR code from your phone or PC browser to manage playlists, HTTP headers, display scale (`Small` / `Medium` / `Large`), UI language (`简体中文` / `English`), and remote bindings.
 - **Install**: Download the signed APK from [**Latest Release**](https://github.com/zqs1qiwan/iqtvlite/releases/latest) (`Android TV 7.0+`, `arm64-v8a` & `armeabi-v7a`).

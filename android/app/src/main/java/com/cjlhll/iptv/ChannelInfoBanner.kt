@@ -168,10 +168,14 @@ fun ChannelInfoBanner(
                 }
                 if (target >= 0) {
                     stripFocusIndex = target
-                    repeat(4) {
-                        withFrameNanos { }
-                        if (runCatching { requesters.getOrNull(target)?.requestFocus() }.isSuccess) {
-                            return@repeat
+                    if (runCatching { requesters.getOrNull(target)?.requestFocus() }.isSuccess) {
+                        wasFocused = true
+                    } else {
+                        repeat(4) {
+                            withFrameNanos { }
+                            if (runCatching { requesters.getOrNull(target)?.requestFocus() }.isSuccess) {
+                                return@repeat
+                            }
                         }
                     }
                 }
@@ -510,7 +514,7 @@ fun ChannelInfoBanner(
                         .background(Color.White.copy(alpha = 0.08f))
                 )
 
-                val rowHeight = (68f * lScale).dp
+                val rowHeight = (94f * lScale).dp
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -592,8 +596,9 @@ private fun RecentStrip(
     val cardShape = remember { RoundedCornerShape(6.dp) }
     val labelShape = remember { RoundedCornerShape(5.dp) }
     val idlePlateColor = Color(0x14FFFFFF)
-    val logoW = (54f * uiScale.logoScale).dp
-    val logoH = (34f * uiScale.logoScale).dp
+    val logoSlotH = (64f * uiScale.logoScale).dp
+    val logoScale = uiScale.logoScale
+    val textScale = uiScale.textScale
 
     Row(
         modifier = modifier
@@ -631,71 +636,102 @@ private fun RecentStrip(
                 continue
             }
             val index = slot
-            var nodeFocused by remember(item.title, index) { mutableStateOf(false) }
-            val isHighlighted = focused && (nodeFocused || index == logicalFocusIndex)
-            val hasLogo = item.logoUrl?.isNotBlank() == true
+            val isHighlighted = focused && index == logicalFocusIndex
+            RecentCardTile(
+                index = index,
+                title = item.title,
+                logoUrl = item.logoUrl,
+                isHighlighted = isHighlighted,
+                logoSlotH = logoSlotH,
+                logoScale = logoScale,
+                textScale = textScale,
+                cardShape = cardShape,
+                idlePlateColor = idlePlateColor,
+                focusRequester = requesters.getOrNull(index),
+                onFocusChanged = onCardFocusChanged,
+                onClick = onClick,
+                modifier = Modifier.weight(1f),
+            )
+        }
+    }
+}
 
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxHeight()
-                    .testTag("info_card_recent_$index")
-                    .semantics { contentDescription = "最近观看第${index + 1}个 ${item.title}" }
-                    .let { m -> requesters.getOrNull(index)?.let { r -> m.focusRequester(r) } ?: m }
-                    .onFocusChanged {
-                        nodeFocused = it.isFocused
-                        onCardFocusChanged(index, it.isFocused)
-                    }
-                    .focusable()
-                    .background(if (isHighlighted) BrandFocus.FocusBgColor else idlePlateColor, cardShape)
-                    .clickable { onClick(index) }
-                    .padding(horizontal = 4.dp, vertical = 5.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center,
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(logoH),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    if (hasLogo) {
-                        ChannelLogo(
-                            logoUrl = item.logoUrl,
-                            fallbackTitle = "",
-                            width = logoW,
-                            height = logoH,
-                        )
-                    } else {
-                        Text(
-                            text = item.title.take(4),
-                            style = MaterialTheme.typography.titleSmall.copy(
-                                fontSize = (12f * uiScale.textScale).sp,
-                                fontWeight = FontWeight.SemiBold,
-                            ),
-                            color = if (isHighlighted) TvDesignTokens.TextPrimary else TvDesignTokens.TextSecondary,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            textAlign = TextAlign.Center,
-                        )
-                    }
-                }
-                Spacer(modifier = Modifier.height(3.dp))
+@Composable
+private fun RecentCardTile(
+    index: Int,
+    title: String,
+    logoUrl: String?,
+    isHighlighted: Boolean,
+    logoSlotH: androidx.compose.ui.unit.Dp,
+    logoScale: Float,
+    textScale: Float,
+    cardShape: RoundedCornerShape,
+    idlePlateColor: Color,
+    focusRequester: FocusRequester?,
+    onFocusChanged: (Int, Boolean) -> Unit,
+    onClick: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val hasLogo = logoUrl?.isNotBlank() == true
+    val cardLogoW = ((if (isHighlighted) 114f else 74f) * logoScale).dp
+    val cardLogoH = ((if (isHighlighted) 62f else 40f) * logoScale).dp
+    val titleSp = (if (isHighlighted) 13.5f else 12.0f) * textScale
+
+    Column(
+        modifier = modifier
+            .fillMaxHeight()
+            .testTag("info_card_recent_$index")
+            .semantics { contentDescription = "最近观看第${index + 1}个 $title" }
+            .let { m -> if (focusRequester != null) m.focusRequester(focusRequester) else m }
+            .onFocusChanged { onFocusChanged(index, it.isFocused) }
+            .focusable()
+            .background(if (isHighlighted) BrandFocus.FocusBgColor else idlePlateColor, cardShape)
+            .clickable { onClick(index) }
+            .padding(horizontal = 3.dp, vertical = 2.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(logoSlotH),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (hasLogo) {
+                ChannelLogo(
+                    logoUrl = logoUrl,
+                    fallbackTitle = "",
+                    width = cardLogoW,
+                    height = cardLogoH,
+                )
+            } else {
                 Text(
-                    text = item.title,
-                    style = MaterialTheme.typography.labelSmall.copy(
-                        fontSize = (10.5f * uiScale.textScale).sp,
-                        lineHeight = (12.5f * uiScale.textScale).sp,
-                        fontWeight = if (isHighlighted) FontWeight.SemiBold else FontWeight.Normal,
+                    text = title.take(4),
+                    style = MaterialTheme.typography.titleSmall.copy(
+                        fontSize = (titleSp + 1.2f).sp,
+                        fontWeight = FontWeight.SemiBold,
                     ),
-                    color = if (isHighlighted) TvDesignTokens.TextPrimary else Color(0xFFB8C3D4),
+                    color = if (isHighlighted) TvDesignTokens.TextPrimary else TvDesignTokens.TextSecondary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth(),
                 )
             }
         }
+        Spacer(modifier = Modifier.height(2.dp))
+        Text(
+            text = title,
+            style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = titleSp.sp,
+                lineHeight = (titleSp + 2f).sp,
+                fontWeight = if (isHighlighted) FontWeight.SemiBold else FontWeight.Medium,
+            ),
+            color = if (isHighlighted) TvDesignTokens.TextPrimary else Color(0xFFD0D9E8),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth(),
+        )
     }
 }
 
@@ -713,7 +749,7 @@ private fun QuickActionsStrip(
 ) {
     val tileShape = remember { RoundedCornerShape(6.dp) }
     val idlePlateColor = Color(0x14FFFFFF)
-    val activePlateColor = BrandFocus.BlueColor.copy(alpha = 0.28f)
+    val activePlateColor = TvDesignTokens.BrandLiteBlue.copy(alpha = 0.22f)
     val tileWidth = (58f * textScale.coerceIn(0.92f, 1.10f)).dp
 
     Row(
@@ -725,62 +761,94 @@ private fun QuickActionsStrip(
     ) {
         actions.forEachIndexed { idx, action ->
             val slotIndex = slotOffset + idx
-            var nodeFocused by remember(action.id) { mutableStateOf(false) }
-            val isHighlighted = focused && (nodeFocused || slotIndex == logicalFocusIndex)
-            val iconColor = when {
-                isHighlighted -> TvDesignTokens.TextPrimary
-                action.active -> Color(0xFF9AC2FF)
-                else -> Color(0xFFD6DEEC)
-            }
-            val tileBg = when {
-                isHighlighted -> BrandFocus.FocusBgColor
-                action.active -> activePlateColor
-                else -> idlePlateColor
-            }
-
-            Column(
-                modifier = Modifier
-                    .width(tileWidth)
-                    .fillMaxHeight()
-                    .testTag("info_card_action_${action.id.name.lowercase()}")
-                    .semantics { contentDescription = action.description }
-                    .let { m -> requesters.getOrNull(idx)?.let { r -> m.focusRequester(r) } ?: m }
-                    .onFocusChanged {
-                        nodeFocused = it.isFocused
-                        onFocusChanged(slotIndex, it.isFocused)
-                    }
-                    .focusable()
-                    .background(tileBg, tileShape)
-                    .clickable { onTrigger(action.id) }
-                    .padding(horizontal = 3.dp, vertical = 6.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center,
-            ) {
-                QuickActionGlyph(
-                    id = action.id,
-                    tint = iconColor,
-                    modifier = Modifier.size(19.dp),
-                )
-                Spacer(modifier = Modifier.height(6.dp))
-                Text(
-                    text = action.label,
-                    style = MaterialTheme.typography.labelSmall.copy(
-                        fontSize = (10.5f * textScale.coerceAtMost(1.06f)).sp,
-                        lineHeight = (12.5f * textScale).sp,
-                        fontWeight = if (isHighlighted || action.active) FontWeight.SemiBold else FontWeight.Medium,
-                    ),
-                    color = when {
-                        isHighlighted -> TvDesignTokens.TextPrimary
-                        action.active -> Color(0xFFB5D2FF)
-                        else -> Color(0xFFB8C3D4)
-                    },
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
+            val isHighlighted = focused && slotIndex == logicalFocusIndex
+            QuickActionTile(
+                action = action,
+                slotIndex = slotIndex,
+                isHighlighted = isHighlighted,
+                tileWidth = tileWidth,
+                tileShape = tileShape,
+                idlePlateColor = idlePlateColor,
+                activePlateColor = activePlateColor,
+                textScale = textScale,
+                focusRequester = requesters.getOrNull(idx),
+                onFocusChanged = onFocusChanged,
+                onTrigger = onTrigger,
+            )
         }
+    }
+}
+
+@Composable
+private fun QuickActionTile(
+    action: InfoCardQuickAction,
+    slotIndex: Int,
+    isHighlighted: Boolean,
+    tileWidth: androidx.compose.ui.unit.Dp,
+    tileShape: RoundedCornerShape,
+    idlePlateColor: Color,
+    activePlateColor: Color,
+    textScale: Float,
+    focusRequester: FocusRequester?,
+    onFocusChanged: (Int, Boolean) -> Unit,
+    onTrigger: (InfoCardQuickActionId) -> Unit,
+) {
+    val iconColor = when {
+        isHighlighted -> TvDesignTokens.TextPrimary
+        action.active -> TvDesignTokens.BrandLiteBlue
+        else -> Color(0xFFD6DEEC)
+    }
+    val tileBg = when {
+        isHighlighted -> BrandFocus.FocusBgColor
+        action.active -> activePlateColor
+        else -> idlePlateColor
+    }
+    val iconSize = if (isHighlighted) 25.dp else 21.dp
+    val labelSp = (if (isHighlighted) 12.5f else 11.5f) * textScale.coerceAtMost(1.06f)
+
+    Column(
+        modifier = Modifier
+            .width(tileWidth)
+            .fillMaxHeight()
+            .testTag("info_card_action_${action.id.name.lowercase()}")
+            .semantics { contentDescription = action.description }
+            .let { m -> if (focusRequester != null) m.focusRequester(focusRequester) else m }
+            .onFocusChanged { onFocusChanged(slotIndex, it.isFocused) }
+            .focusable()
+            .background(tileBg, tileShape)
+            .clickable { onTrigger(action.id) }
+            .padding(horizontal = 3.dp, vertical = 6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Box(
+            modifier = Modifier.size(25.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            QuickActionGlyph(
+                id = action.id,
+                tint = iconColor,
+                modifier = Modifier.size(iconSize),
+            )
+        }
+        Spacer(modifier = Modifier.height(6.dp))
+        Text(
+            text = action.label,
+            style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = labelSp.sp,
+                lineHeight = (labelSp + 2f).sp,
+                fontWeight = if (isHighlighted || action.active) FontWeight.SemiBold else FontWeight.Medium,
+            ),
+            color = when {
+                isHighlighted -> TvDesignTokens.TextPrimary
+                action.active -> TvDesignTokens.BrandLiteBlue
+                else -> Color(0xFFB8C3D4)
+            },
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth(),
+        )
     }
 }
 
@@ -872,18 +940,20 @@ private fun QuickActionGlyph(
                 )
             }
             InfoCardQuickActionId.SETTINGS -> {
-                // 齿轮设置图标
+                // 8 齿齿轮设置图标
                 val center = Offset(w * 0.50f, h * 0.50f)
-                drawCircle(tint, radius = w * 0.16f, center = center, style = stroke)
-                val innerR = w * 0.27f
-                val outerR = w * 0.38f
-                for (i in 0 until 6) {
-                    val angle = i * (PI / 3.0)
+                drawCircle(tint, radius = w * 0.25f, center = center, style = Stroke(width = 2.2.dp.toPx()))
+                drawCircle(tint, radius = w * 0.11f, center = center, style = Stroke(width = 1.4.dp.toPx()))
+                val innerR = w * 0.28f
+                val outerR = w * 0.41f
+                val toothStroke = 2.4.dp.toPx()
+                for (i in 0 until 8) {
+                    val angle = i * (PI / 4.0)
                     val sx = center.x + (innerR * cos(angle)).toFloat()
                     val sy = center.y + (innerR * sin(angle)).toFloat()
                     val ex = center.x + (outerR * cos(angle)).toFloat()
                     val ey = center.y + (outerR * sin(angle)).toFloat()
-                    drawLine(tint, Offset(sx, sy), Offset(ex, ey), strokeWidth = stroke.width, cap = StrokeCap.Round)
+                    drawLine(tint, Offset(sx, sy), Offset(ex, ey), strokeWidth = toothStroke, cap = StrokeCap.Butt)
                 }
             }
         }

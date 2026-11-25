@@ -1,10 +1,15 @@
 package com.cjlhll.iptv
 
+import android.graphics.Bitmap
+import android.os.Handler
+import android.os.Looper
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -20,14 +25,17 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -40,14 +48,23 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -57,8 +74,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import tv.iqtvlite.app.BuildConfig
+import tv.iqtvlite.app.R
 
 private const val SETTINGS_LIST_TAG = "settings_list"
 
@@ -122,7 +142,7 @@ data class SettingsUiState(
     // v0.2.0 7-category settings state
     val autoStartOnBoot: Boolean = false,
     val resumeLastChannel: Boolean = true,
-    val homePipEnabled: Boolean = true,
+    val homePipEnabled: Boolean = false,
     val doubleBackExitEnabled: Boolean = true,
     val epgRetentionDays: Int = 7,
     val epgUpdateOnPlaylistChange: Boolean = true,
@@ -202,6 +222,8 @@ data class SettingsActions(
     val onToggleDefaultSubtitles: (Boolean) -> Unit = {},
     val onSelectSubtitlePreferredLang: (String) -> Unit = {},
     val onUpdateSourceGroupConfig: (String, Prefs.SourceGroupConfig) -> Unit = { _, _ -> },
+    val onWebStateSynced: () -> Unit = {},
+    val onWebPushSource: (String, String) -> Unit = { _, _ -> },
 )
 
 /**
@@ -577,6 +599,7 @@ fun SettingsDrawer(
                         onToggleAutoCheckUpdate = actions.onToggleAutoCheckUpdate,
                         onCheckUpdateClick = actions.onCheckUpdateClick,
                         onDownloadUpdateClick = actions.onDownloadUpdateClick,
+                        onOpenProjectInfo = { actions.onOpenPicker(PICKER_ABOUT_PROJECT) },
                         textScale = textScale,
                         scroll = scrollFor(SettingsPage.ABOUT),
                         requesterOf = ::requesterOf,
@@ -640,6 +663,8 @@ private const val PICKER_VIDEO_DECODER = "video_decoder"
 private const val PICKER_SUBTITLE_LANG = "subtitle_lang"
 private const val PICKER_GROUP_MANAGE = "group_manage"
 private const val PICKER_GROUP_SORT = "group_sort"
+private const val PICKER_WEB_QR = "web_qr"
+private const val PICKER_ABOUT_PROJECT = "about_project"
 
 private data class UaPreset(
     val value: String,
@@ -671,6 +696,28 @@ private fun SettingsPickerRouter(
     val lang = state.language
     fun t(zh: String, en: String): String = if (lang == AppLang.EN) en else zh
 
+    if (pickerId == PICKER_WEB_QR) {
+        SettingsWebQrView(
+            lang = lang,
+            textScale = textScale,
+            scroll = scroll,
+            requesterOf = requesterOf,
+            onClose = actions.onClosePicker,
+            onWebStateSynced = actions.onWebStateSynced,
+            onWebPushSource = actions.onWebPushSource,
+        )
+        return
+    }
+    if (pickerId == PICKER_ABOUT_PROJECT) {
+        SettingsAboutProjectView(
+            lang = lang,
+            textScale = textScale,
+            scroll = scroll,
+            requesterOf = requesterOf,
+            onClose = actions.onClosePicker,
+        )
+        return
+    }
     if (pickerId == PICKER_SOURCES_MANAGE) {
         SettingsSourcesManageView(
             lang = lang,
@@ -1135,7 +1182,7 @@ private fun SettingsSourcesManageView(
             SettingsChoiceRow(
                 title = src.name,
                 value = statusText,
-                valueColor = if (isActive) BrandFocus.BlueColor else null,
+                valueColor = if (isActive) TvDesignTokens.BrandLiteBlue else null,
                 textScale = textScale,
                 focusRequester = requesterOf("picker_opt_$index"),
                 tag = "picker_opt_$index",
@@ -1188,7 +1235,7 @@ private fun SettingsSourceDetailView(
         SettingsChoiceRow(
             title = t("在选台列表显示", "Show in channel drawer"),
             value = if (source.enabled) t("已展示（可在选台分组旁切换）", "Visible (switchable beside Groups)") else t("已隐藏（仅在设置中可见）", "Hidden (settings only)"),
-            valueColor = if (source.enabled) BrandFocus.BlueColor else null,
+            valueColor = if (source.enabled) TvDesignTokens.BrandLiteBlue else null,
             showChevron = false,
             textScale = textScale,
             focusRequester = requesterOf("picker_opt_1"),
@@ -1205,6 +1252,201 @@ private fun SettingsSourceDetailView(
         )
         if (source.epgUrl.isNotBlank()) {
             HelpText("EPG: ${source.epgUrl}")
+        }
+    }
+}
+
+/** 内嵌扫码 WebUI 配置页（直接在设置抽屉内生成二维码，替代笨重控制台）。 */
+@Composable
+private fun SettingsWebQrView(
+    lang: AppLang,
+    textScale: Float,
+    scroll: ScrollState,
+    requesterOf: (String) -> FocusRequester,
+    onClose: () -> Unit,
+    onWebStateSynced: () -> Unit,
+    onWebPushSource: (String, String) -> Unit,
+) {
+    fun t(zh: String, en: String) = if (lang == AppLang.EN) en else zh
+    val context = LocalContext.current
+    val appContext = context.applicationContext
+    val mainHandler = remember { Handler(Looper.getMainLooper()) }
+    var lanUrl by remember { mutableStateOf<String?>(null) }
+    var lanError by remember { mutableStateOf<String?>(null) }
+    var qrBitmap by remember { mutableStateOf<Bitmap?>(null) }
+
+    DisposableEffect(appContext) {
+        var server: SourceConfigLanServer? = null
+        val disposed = java.util.concurrent.atomic.AtomicBoolean(false)
+        val thread = Thread {
+            val created = SourceConfigLanServer(
+                appContext = appContext,
+                onPush = { live, epg ->
+                    mainHandler.post { onWebPushSource(live, epg) }
+                },
+                onStateChanged = {
+                    mainHandler.post { onWebStateSynced() }
+                },
+                onSwitchAndPlay = { src ->
+                    mainHandler.post { onWebPushSource(src.url, src.epgUrl) }
+                },
+            )
+            val started = runCatching { created.start() }
+            if (disposed.get()) {
+                created.stop()
+            } else {
+                server = created
+                mainHandler.post {
+                    started.onSuccess { info ->
+                        lanUrl = info.url
+                        lanError = null
+                    }.onFailure { e ->
+                        lanUrl = null
+                        lanError = e.message ?: t("局域网服务启动失败", "LAN server start failed")
+                    }
+                }
+            }
+        }
+        thread.isDaemon = true
+        thread.start()
+        onDispose {
+            disposed.set(true)
+            runCatching { server?.stop() }
+        }
+    }
+
+    LaunchedEffect(lanUrl) {
+        val url = lanUrl
+        qrBitmap = if (url.isNullOrBlank()) {
+            null
+        } else {
+            withContext(Dispatchers.Default) {
+                runCatching { QrCode.toBitmap(url, 520) }.getOrNull()
+            }
+        }
+    }
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        SettingsTopTitle(title = t("扫码网页配置", "Scan QR · WebUI"), tag = "settings_picker_title", textScale = textScale)
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(scroll)
+                .testTag(SETTINGS_LIST_TAG),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            val bmp = qrBitmap
+            if (bmp != null) {
+                Box(
+                    modifier = Modifier
+                        .padding(top = 6.dp, bottom = 12.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color.White)
+                        .padding(10.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Image(
+                        bitmap = bmp.asImageBitmap(),
+                        contentDescription = t("局域网配置二维码", "LAN WebUI QR Code"),
+                        modifier = Modifier.size(192.dp),
+                    )
+                }
+            } else if (lanError != null) {
+                HelpText(lanError!!, color = Color(0xFFFCA5A5), start = 4.dp)
+            } else {
+                HelpText(t("正在启动局域网配置服务…", "Starting LAN WebUI server…"), start = 4.dp)
+            }
+
+            if (!lanUrl.isNullOrBlank()) {
+                Text(
+                    text = lanUrl!!,
+                    style = MaterialTheme.typography.bodyMedium.copy(
+                        fontSize = (13.5f * textScale).sp,
+                        fontWeight = FontWeight.Medium,
+                    ),
+                    color = TvDesignTokens.BrandLiteBlue,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(bottom = 8.dp),
+                )
+            }
+
+            HelpText(
+                text = t(
+                    "请确保手机与电视连接同一 Wi-Fi / 局域网，扫码或浏览器打开上方地址即可管理播放源、请求头、遥控映射与配置备份恢复。",
+                    "Connect your phone to the same LAN/Wi-Fi and scan or open the URL above to manage playlists, headers, remote bindings & backups.",
+                ),
+                start = 4.dp,
+            )
+            Spacer(modifier = Modifier.height(10.dp))
+            SettingsItem(
+                text = t("返回上一级", "Back"),
+                textScale = textScale,
+                focusRequester = requesterOf("picker_opt_0"),
+                tag = "picker_opt_0",
+                onClick = onClose,
+            )
+        }
+    }
+}
+
+/** 关于项目与开源许可证详情页。 */
+@Composable
+private fun SettingsAboutProjectView(
+    lang: AppLang,
+    textScale: Float,
+    scroll: ScrollState,
+    requesterOf: (String) -> FocusRequester,
+    onClose: () -> Unit,
+) {
+    fun t(zh: String, en: String) = if (lang == AppLang.EN) en else zh
+    val versionDisplay = if (BuildConfig.VERSION_NAME.startsWith("v", ignoreCase = true)) {
+        BuildConfig.VERSION_NAME
+    } else {
+        "v${BuildConfig.VERSION_NAME}"
+    }
+    Column(modifier = Modifier.fillMaxSize()) {
+        SettingsTopTitle(title = t("关于与开源协议", "Project & License"), tag = "settings_picker_title", textScale = textScale)
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(scroll)
+                .testTag(SETTINGS_LIST_TAG),
+        ) {
+            SettingsAboutBrandHeader(
+                lang = lang,
+                versionDisplay = versionDisplay,
+                textScale = textScale,
+            )
+            SettingsGroupHeader(t("项目仓库", "Repository"))
+            HelpText(
+                text = "https://github.com/zqs1qiwan/iqtvlite",
+                color = TvDesignTokens.BrandLiteBlue,
+                start = 12.dp,
+            )
+            SettingsGroupHeader(t("开源许可证", "Open Source License"))
+            HelpText(
+                text = "GNU General Public License v3.0 (GPL-3.0)",
+                color = TvDesignTokens.TextPrimary,
+                start = 12.dp,
+            )
+            HelpText(
+                text = t(
+                    "IQTV Lite 为轻量级 Android TV 开源直播播放器，源码与二进制分发遵循 GPL-3.0 开源协议。",
+                    "IQTV Lite is an open-source lightweight Android TV live player distributed under GPL-3.0.",
+                ),
+                start = 12.dp,
+            )
+            Spacer(modifier = Modifier.height(10.dp))
+            SettingsItem(
+                text = t("返回上一级", "Back"),
+                textScale = textScale,
+                focusRequester = requesterOf("picker_opt_0"),
+                tag = "picker_opt_0",
+                onClick = onClose,
+            )
         }
     }
 }
@@ -1286,7 +1528,7 @@ private fun SettingsRemoteActionPickerView(
         SettingsChoiceRow(
             title = t("指定短按按键", "Assign short press"),
             value = shortSummary,
-            valueColor = if (capturingShort) BrandFocus.BlueColor else null,
+            valueColor = if (capturingShort) TvDesignTokens.BrandLiteBlue else null,
             showChevron = false,
             textScale = textScale,
             focusRequester = requesterOf("picker_opt_0"),
@@ -1297,7 +1539,7 @@ private fun SettingsRemoteActionPickerView(
         SettingsChoiceRow(
             title = t("指定长按按键", "Assign long press"),
             value = longSummary,
-            valueColor = if (capturingLong) BrandFocus.BlueColor else null,
+            valueColor = if (capturingLong) TvDesignTokens.BrandLiteBlue else null,
             showChevron = false,
             textScale = textScale,
             focusRequester = requesterOf("settings_remote_bind_long_${action.name}"),
@@ -1323,7 +1565,7 @@ private fun SettingsRemoteActionPickerView(
         if (capturingShort || capturingLong) {
             HelpText(
                 text = t("正在等待按键输入，直接按下目标遥控器按键即可绑定；按返回键取消。", "Listening for key press… Press target remote key or Back to cancel."),
-                color = BrandFocus.BlueColor,
+                color = TvDesignTokens.BrandLiteBlue,
             )
         }
     }
@@ -1344,6 +1586,11 @@ private fun SettingsRootPage(
     onOpenPage: (SettingsPage) -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
+        SettingsTopTitle(
+            title = if (lang == AppLang.EN) "Settings" else "设置",
+            tag = SettingsIA.ROOT_TITLE_TAG,
+            textScale = textScale,
+        )
         Column(
             modifier = Modifier
                 .weight(1f)
@@ -1351,11 +1598,6 @@ private fun SettingsRootPage(
                 .verticalScroll(scroll)
                 .testTag(SETTINGS_LIST_TAG)
         ) {
-            SettingsTopTitle(
-                title = if (lang == AppLang.EN) "Settings" else "设置",
-                tag = SettingsIA.ROOT_TITLE_TAG,
-                textScale = textScale,
-            )
             entries.forEachIndexed { index, entry ->
                 SettingsRootItem(
                     lang = lang,
@@ -1399,14 +1641,7 @@ private fun SettingsBottomKeyHint(lang: AppLang) {
                     .padding(horizontal = 8.dp),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(
-                    text = "←",
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold,
-                    ),
-                    color = TvDesignTokens.TextPrimary,
-                )
+                SettingsKeyArrowIcon(directionLeft = true, color = TvDesignTokens.TextPrimary)
             }
             Spacer(modifier = Modifier.width(8.dp))
             Text(
@@ -1429,18 +1664,11 @@ private fun SettingsBottomKeyHint(lang: AppLang) {
                     .padding(horizontal = 8.dp),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(
-                    text = "→",
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold,
-                    ),
-                    color = TvDesignTokens.TextPrimary,
-                )
+                SettingsKeyArrowIcon(directionLeft = false, color = TvDesignTokens.TextPrimary)
             }
             Spacer(modifier = Modifier.width(8.dp))
             Text(
-                text = if (lang == AppLang.EN) "Settings" else "设置",
+                text = if (lang == AppLang.EN) "Prev Channel" else "切换上一频道",
                 style = MaterialTheme.typography.labelLarge.copy(
                     fontSize = 13.5.sp,
                     fontWeight = FontWeight.Medium,
@@ -1449,6 +1677,37 @@ private fun SettingsBottomKeyHint(lang: AppLang) {
                 maxLines = 1,
             )
         }
+    }
+}
+
+@Composable
+private fun SettingsKeyArrowIcon(directionLeft: Boolean, color: Color) {
+    Canvas(modifier = Modifier.size(16.dp)) {
+        val w = size.width
+        val h = size.height
+        val cy = h / 2f
+        val stroke = 2.dp.toPx()
+        val tipX = if (directionLeft) w * 0.16f else w * 0.84f
+        val tailX = if (directionLeft) w * 0.84f else w * 0.16f
+        val wingX = if (directionLeft) w * 0.48f else w * 0.52f
+
+        drawLine(
+            color = color,
+            start = Offset(tailX, cy),
+            end = Offset(tipX, cy),
+            strokeWidth = stroke,
+            cap = StrokeCap.Round,
+        )
+        val head = Path().apply {
+            moveTo(wingX, h * 0.22f)
+            lineTo(tipX, cy)
+            lineTo(wingX, h * 0.78f)
+        }
+        drawPath(
+            path = head,
+            color = color,
+            style = Stroke(width = stroke, cap = StrokeCap.Round, join = StrokeJoin.Round),
+        )
     }
 }
 
@@ -1509,7 +1768,7 @@ private fun SettingsRootItem(
                 text = entry.summary,
                 style = MaterialTheme.typography.bodySmall.copy(fontSize = (12f * textScale).sp),
                 color = when {
-                    accentSummary -> Color(0xFF93C5FD)
+                    accentSummary -> TvDesignTokens.BrandLiteBlue
                     focused -> TvDesignTokens.TextSecondary
                     else -> TvDesignTokens.TextMuted
                 },
@@ -1558,49 +1817,55 @@ private fun SettingsGeneralPage(
     } else {
         t("未配置（扫码网页编辑）", "None (Edit via WebUI)")
     }
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(scroll)
-            .testTag(SETTINGS_LIST_TAG)
-    ) {
+    Column(modifier = Modifier.fillMaxSize()) {
         SettingsPageHeader(SettingsPage.GENERAL, lang, textScale)
-        SettingsGroupHeader(t("启动与系统", "Startup & System"))
-        SettingsItem(
-            text = if (autoStartOnBoot) t("开机时自动启动：开", "Auto-start on boot: On") else t("开机时自动启动：关", "Auto-start on boot: Off"),
-            textScale = textScale,
-            focusRequester = requesterOf("settings_auto_start"),
-            tag = "settings_auto_start",
-            onFocused = onFocused,
-            onClick = { onToggleAutoStart(!autoStartOnBoot) },
-        )
-        RowGap()
-        SettingsItem(
-            text = if (resumeLastChannel) t("启动后打开上次观看频道：开", "Turn on last channel on start: On") else t("启动后打开上次观看频道：关", "Turn on last channel on start: Off"),
-            textScale = textScale,
-            focusRequester = requesterOf("settings_resume_last"),
-            tag = "settings_resume_last",
-            onFocused = onFocused,
-            onClick = { onToggleResumeLast(!resumeLastChannel) },
-        )
-        RowGap()
-        SettingsItem(
-            text = if (homePipEnabled) t("按主页键切换到“画中画”模式：开", "Switch to PiP on Home key: On") else t("按主页键切换到“画中画”模式：关", "Switch to PiP on Home key: Off"),
-            textScale = textScale,
-            focusRequester = requesterOf("settings_home_pip"),
-            tag = "settings_home_pip",
-            onFocused = onFocused,
-            onClick = { onToggleHomePip(!homePipEnabled) },
-        )
-        RowGap()
-        SettingsItem(
-            text = if (doubleBackExitEnabled) t("双击返回键退出：开", "Confirm exit by second Back: On") else t("双击返回键退出：关", "Confirm exit by second Back: Off"),
-            textScale = textScale,
-            focusRequester = requesterOf("settings_double_back_exit"),
-            tag = "settings_double_back_exit",
-            onFocused = onFocused,
-            onClick = { onToggleDoubleBackExit(!doubleBackExitEnabled) },
-        )
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(scroll)
+                .testTag(SETTINGS_LIST_TAG)
+        ) {
+            SettingsGroupHeader(t("启动与系统", "Startup & System"))
+            SettingsToggleRow(
+                title = t("开机时自动启动", "Auto-start on boot"),
+                checked = autoStartOnBoot,
+                textScale = textScale,
+                focusRequester = requesterOf("settings_auto_start"),
+                tag = "settings_auto_start",
+                onFocused = onFocused,
+                onClick = { onToggleAutoStart(!autoStartOnBoot) },
+            )
+            RowGap()
+            SettingsToggleRow(
+                title = t("启动后打开上次观看频道", "Turn on last channel on start"),
+                checked = resumeLastChannel,
+                textScale = textScale,
+                focusRequester = requesterOf("settings_resume_last"),
+                tag = "settings_resume_last",
+                onFocused = onFocused,
+                onClick = { onToggleResumeLast(!resumeLastChannel) },
+            )
+            RowGap()
+            SettingsToggleRow(
+                title = t("按主页键切换到“画中画”模式", "Switch to PiP on Home key"),
+                checked = homePipEnabled,
+                textScale = textScale,
+                focusRequester = requesterOf("settings_home_pip"),
+                tag = "settings_home_pip",
+                onFocused = onFocused,
+                onClick = { onToggleHomePip(!homePipEnabled) },
+            )
+            RowGap()
+            SettingsToggleRow(
+                title = t("双击返回键退出", "Confirm exit by second Back"),
+                checked = doubleBackExitEnabled,
+                textScale = textScale,
+                focusRequester = requesterOf("settings_double_back_exit"),
+                tag = "settings_double_back_exit",
+                onFocused = onFocused,
+                onClick = { onToggleDoubleBackExit(!doubleBackExitEnabled) },
+            )
         SettingsGroupHeader(t("网络请求头与备份", "Headers & Backup"))
         SettingsChoiceRow(
             title = t("User-Agent 设置", "User-Agent"),
@@ -1631,6 +1896,7 @@ private fun SettingsGeneralPage(
             onFocused = onFocused,
             onClick = onSourceConfigClick,
         )
+        }
     }
 }
 
@@ -1660,14 +1926,16 @@ private fun SettingsPlaylistsPage(
     } else {
         activeSourceName
     }
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(scroll)
-            .testTag(SETTINGS_LIST_TAG)
-    ) {
+    Column(modifier = Modifier.fillMaxSize()) {
         SettingsPageHeader(SettingsPage.PLAYLISTS, lang, textScale)
-        SettingsGroupHeader(t("当前节目列表", "Playlists"))
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(scroll)
+                .testTag(SETTINGS_LIST_TAG)
+        ) {
+            SettingsGroupHeader(t("当前节目列表", "Playlists"))
         SettingsChoiceRow(
             title = t("节目列表管理（隐藏 / 切换）", "Playlists (Show / Switch)"),
             value = sourceManageSummary,
@@ -1715,6 +1983,7 @@ private fun SettingsPlaylistsPage(
             onFocused = onFocused,
             onClick = onOpenRecent,
         )
+        }
     }
 }
 
@@ -1735,52 +2004,56 @@ private fun SettingsEpgPage(
     onFocused: (String) -> Unit,
 ) {
     fun t(zh: String, en: String) = if (lang == AppLang.EN) en else zh
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(scroll)
-            .testTag(SETTINGS_LIST_TAG)
-    ) {
+    Column(modifier = Modifier.fillMaxSize()) {
         SettingsPageHeader(SettingsPage.EPG, lang, textScale)
-        SettingsGroupHeader(t("节目预告策略", "EPG Schedule & Retention"))
-        SettingsChoiceRow(
-            title = t("保存之前节目预告的天数", "Past Days to Keep EPG"),
-            value = t("$epgRetentionDays 天", "$epgRetentionDays days"),
-            textScale = textScale,
-            focusRequester = requesterOf("settings_epg_retention"),
-            tag = "settings_epg_retention",
-            onFocused = onFocused,
-            onClick = onOpenRetentionPicker,
-        )
-        RowGap()
-        SettingsChoiceRow(
-            title = t("更新频率（小时）", "Update Interval"),
-            value = autoUpdateEpgLabel,
-            textScale = textScale,
-            focusRequester = requesterOf("settings_auto_epg"),
-            tag = "settings_auto_epg",
-            onFocused = onFocused,
-            onClick = onOpenEpgIntervalPicker,
-        )
-        RowGap()
-        SettingsItem(
-            text = if (epgUpdateOnPlaylistChange) t("节目列表更改时更新：开", "Update on playlist change: On") else t("节目列表更改时更新：关", "Update on playlist change: Off"),
-            textScale = textScale,
-            focusRequester = requesterOf("settings_epg_on_playlist_change"),
-            tag = "settings_epg_on_playlist_change",
-            onFocused = onFocused,
-            onClick = { onToggleEpgOnPlaylistChange(!epgUpdateOnPlaylistChange) },
-        )
-        SettingsGroupHeader(t("手动更新", "Manual Update"))
-        SettingsItem(
-            text = t("立即更新节目预告", "Update EPG Now"),
-            textScale = textScale,
-            focusRequester = requesterOf("settings_refresh_epg"),
-            tag = "settings_refresh_epg",
-            onFocused = onFocused,
-            onClick = onRefreshEpgNow,
-        )
-        HelpText(lastUpdateSummary, start = 4.dp)
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(scroll)
+                .testTag(SETTINGS_LIST_TAG)
+        ) {
+            SettingsGroupHeader(t("节目预告策略", "EPG Schedule & Retention"))
+            SettingsChoiceRow(
+                title = t("保存之前节目预告的天数", "Past Days to Keep EPG"),
+                value = t("$epgRetentionDays 天", "$epgRetentionDays days"),
+                textScale = textScale,
+                focusRequester = requesterOf("settings_epg_retention"),
+                tag = "settings_epg_retention",
+                onFocused = onFocused,
+                onClick = onOpenRetentionPicker,
+            )
+            RowGap()
+            SettingsChoiceRow(
+                title = t("更新频率（小时）", "Update Interval"),
+                value = autoUpdateEpgLabel,
+                textScale = textScale,
+                focusRequester = requesterOf("settings_auto_epg"),
+                tag = "settings_auto_epg",
+                onFocused = onFocused,
+                onClick = onOpenEpgIntervalPicker,
+            )
+            RowGap()
+            SettingsToggleRow(
+                title = t("节目列表更改时更新", "Update on playlist change"),
+                checked = epgUpdateOnPlaylistChange,
+                textScale = textScale,
+                focusRequester = requesterOf("settings_epg_on_playlist_change"),
+                tag = "settings_epg_on_playlist_change",
+                onFocused = onFocused,
+                onClick = { onToggleEpgOnPlaylistChange(!epgUpdateOnPlaylistChange) },
+            )
+            SettingsGroupHeader(t("手动更新", "Manual Update"))
+            SettingsItem(
+                text = t("立即更新节目预告", "Update EPG Now"),
+                textScale = textScale,
+                focusRequester = requesterOf("settings_refresh_epg"),
+                tag = "settings_refresh_epg",
+                onFocused = onFocused,
+                onClick = onRefreshEpgNow,
+            )
+            HelpText(lastUpdateSummary, start = 4.dp)
+        }
     }
 }
 
@@ -1819,14 +2092,16 @@ private fun SettingsAppearancePage(
     onFocused: (String) -> Unit,
 ) {
     fun t(zh: String, en: String) = if (lang == AppLang.EN) en else zh
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(scroll)
-            .testTag(SETTINGS_LIST_TAG)
-    ) {
+    Column(modifier = Modifier.fillMaxSize()) {
         SettingsPageHeader(SettingsPage.APPEARANCE, lang, textScale)
-        SettingsGroupHeader(t("语言与界面", "Language & UI"))
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(scroll)
+                .testTag(SETTINGS_LIST_TAG)
+        ) {
+            SettingsGroupHeader(t("语言与界面", "Language & UI"))
         SettingsChoiceRow(
             title = "语言 / Language",
             value = lang.nativeName,
@@ -1867,8 +2142,9 @@ private fun SettingsAppearancePage(
             onClick = onOpenInfoTimeoutPicker,
         )
         RowGap()
-        SettingsItem(
-            text = if (showInfoOnZap) t("换台显示信息面板：开", "Show info panel on zap: On") else t("换台显示信息面板：关", "Show info panel on zap: Off"),
+        SettingsToggleRow(
+            title = t("换台显示信息面板", "Show info panel on zap"),
+            checked = showInfoOnZap,
             textScale = textScale,
             focusRequester = requesterOf("settings_show_info_on_zap"),
             tag = "settings_show_info_on_zap",
@@ -1876,8 +2152,9 @@ private fun SettingsAppearancePage(
             onClick = { onToggleShowInfoOnZap(!showInfoOnZap) },
         )
         RowGap()
-        SettingsItem(
-            text = if (showClockInPlayer) t("播放器时钟显示：开", "Show clock in player: On") else t("播放器时钟显示：关", "Show clock in player: Off"),
+        SettingsToggleRow(
+            title = t("播放器时钟显示", "Show clock in player"),
+            checked = showClockInPlayer,
             textScale = textScale,
             focusRequester = requesterOf("settings_show_clock"),
             tag = "settings_show_clock",
@@ -1885,8 +2162,9 @@ private fun SettingsAppearancePage(
             onClick = { onToggleShowClock(!showClockInPlayer) },
         )
         RowGap()
-        SettingsItem(
-            text = if (showExactResolution) t("显示精确分辨率：开", "Show exact resolution: On") else t("显示精确分辨率：关", "Show exact resolution: Off"),
+        SettingsToggleRow(
+            title = t("显示精确分辨率", "Show exact resolution"),
+            checked = showExactResolution,
             textScale = textScale,
             focusRequester = requesterOf("settings_show_exact_resolution"),
             tag = "settings_show_exact_resolution",
@@ -1904,8 +2182,9 @@ private fun SettingsAppearancePage(
             onClick = onOpenInfoOkPicker,
         )
         SettingsGroupHeader(t("频道组与台标", "Groups & Logos"))
-        SettingsItem(
-            text = if (showFavoritesGroup) t("显示“收藏夹”分组：开", "Show Favorites group: On") else t("显示“收藏夹”分组：关", "Show Favorites group: Off"),
+        SettingsToggleRow(
+            title = t("显示“收藏夹”分组", "Show Favorites group"),
+            checked = showFavoritesGroup,
             textScale = textScale,
             focusRequester = requesterOf("settings_show_favorites_group"),
             tag = "settings_show_favorites_group",
@@ -1913,8 +2192,9 @@ private fun SettingsAppearancePage(
             onClick = { onToggleShowFavoritesGroup(!showFavoritesGroup) },
         )
         RowGap()
-        SettingsItem(
-            text = if (showAllChannelsGroup) t("显示“全部频道”分组：开", "Show All Channels group: On") else t("显示“全部频道”分组：关", "Show All Channels group: Off"),
+        SettingsToggleRow(
+            title = t("显示“全部频道”分组", "Show All Channels group"),
+            checked = showAllChannelsGroup,
             textScale = textScale,
             focusRequester = requesterOf("settings_show_all_group"),
             tag = "settings_show_all_group",
@@ -1922,18 +2202,20 @@ private fun SettingsAppearancePage(
             onClick = { onToggleShowAllGroup(!showAllChannelsGroup) },
         )
         RowGap()
-        SettingsItem(
+        SettingsToggleRow(
             tag = "settings_logo_prefetch",
-            text = if (logoPrefetchEnabled) t("台标预取：开", "Logo Prefetch: On") else t("台标预取：关", "Logo Prefetch: Off"),
+            title = t("台标预取", "Logo Prefetch"),
+            checked = logoPrefetchEnabled,
             textScale = textScale,
             focusRequester = requesterOf("settings_logo_prefetch"),
             onFocused = onFocused,
             onClick = { onToggleLogoPrefetch(!logoPrefetchEnabled) },
         )
         RowGap()
-        SettingsItem(
+        SettingsToggleRow(
             tag = "settings_logo_load",
-            text = if (logoLoadEnabled) t("台标显示：开", "Show Logos: On") else t("台标显示：关", "Show Logos: Off"),
+            title = t("台标显示", "Show Logos"),
+            checked = logoLoadEnabled,
             textScale = textScale,
             focusRequester = requesterOf("settings_logo_load"),
             onFocused = onFocused,
@@ -1959,6 +2241,7 @@ private fun SettingsAppearancePage(
         )
         if (logoCacheSummary.isNotBlank()) {
             HelpText(logoCacheSummary, start = 4.dp)
+        }
         }
     }
 }
@@ -2000,112 +2283,119 @@ private fun SettingsPlaybackPage(
         "en" -> t("英文", "English")
         else -> t("自动", "Auto")
     }
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(scroll)
-            .testTag(SETTINGS_LIST_TAG)
-    ) {
+    Column(modifier = Modifier.fillMaxSize()) {
         SettingsPageHeader(SettingsPage.PLAYBACK, lang, textScale)
-        SettingsGroupHeader(t("解码与缓冲", "Decoder & Buffer"))
-        SettingsChoiceRow(
-            title = t("缓冲大小", "Buffer Size"),
-            value = bufferLabel,
-            textScale = textScale,
-            focusRequester = requesterOf("settings_playback_buffer"),
-            tag = "settings_playback_buffer",
-            onFocused = onFocused,
-            onClick = onOpenBufferPicker,
-        )
-        RowGap()
-        SettingsChoiceRow(
-            title = t("视频解码器", "Video Decoder"),
-            value = decoderLabel,
-            textScale = textScale,
-            focusRequester = requesterOf("settings_video_decoder"),
-            tag = "settings_video_decoder",
-            onFocused = onFocused,
-            onClick = onOpenVideoDecoderPicker,
-        )
-        RowGap()
-        SettingsItem(
-            text = if (rebuildOn4kZap) t("4K 切台防花屏重建：开", "4K zap anti-artifacting: On") else t("4K 切台防花屏重建：关", "4K zap anti-artifacting: Off"),
-            textScale = textScale,
-            focusRequester = requesterOf("settings_rebuild_4k_zap"),
-            tag = "settings_rebuild_4k_zap",
-            onFocused = onFocused,
-            onClick = { onToggleRebuild4kZap(!rebuildOn4kZap) },
-        )
-        SettingsGroupHeader(t("音轨与字幕", "Audio & Subtitles"))
-        SettingsItem(
-            text = if (defaultSubtitlesEnabled) t("默认加载字幕：开", "Auto-load subtitles: On") else t("默认加载字幕：关", "Auto-load subtitles: Off"),
-            textScale = textScale,
-            focusRequester = requesterOf("settings_default_subtitles"),
-            tag = "settings_default_subtitles",
-            onFocused = onFocused,
-            onClick = { onToggleDefaultSubtitles(!defaultSubtitlesEnabled) },
-        )
-        RowGap()
-        SettingsChoiceRow(
-            title = t("首选字幕语言", "Preferred Subtitle Language"),
-            value = subLangLabel,
-            textScale = textScale,
-            focusRequester = requesterOf("settings_subtitle_lang"),
-            tag = "settings_subtitle_lang",
-            onFocused = onFocused,
-            onClick = onOpenSubtitleLangPicker,
-        )
-        RowGap()
-        SettingsItem(
-            text = audioEntryLabel,
-            textScale = textScale,
-            focusRequester = requesterOf("settings_audio_track"),
-            tag = "settings_audio_track",
-            onFocused = onFocused,
-            onClick = onAudioTrackClick,
-        )
-        if (!audioSummary.isNullOrBlank()) {
-            HelpText(t("当前：$audioSummary", "Current: $audioSummary"))
-        }
-        if (qualityMenuEnabled) {
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(scroll)
+                .testTag(SETTINGS_LIST_TAG)
+        ) {
+            SettingsGroupHeader(t("解码与缓冲", "Decoder & Buffer"))
+            SettingsChoiceRow(
+                title = t("缓冲大小", "Buffer Size"),
+                value = bufferLabel,
+                textScale = textScale,
+                focusRequester = requesterOf("settings_playback_buffer"),
+                tag = "settings_playback_buffer",
+                onFocused = onFocused,
+                onClick = onOpenBufferPicker,
+            )
+            RowGap()
+            SettingsChoiceRow(
+                title = t("视频解码器", "Video Decoder"),
+                value = decoderLabel,
+                textScale = textScale,
+                focusRequester = requesterOf("settings_video_decoder"),
+                tag = "settings_video_decoder",
+                onFocused = onFocused,
+                onClick = onOpenVideoDecoderPicker,
+            )
+            RowGap()
+            SettingsToggleRow(
+                title = t("4K 切台防花屏重建", "4K zap anti-artifacting"),
+                checked = rebuildOn4kZap,
+                textScale = textScale,
+                focusRequester = requesterOf("settings_rebuild_4k_zap"),
+                tag = "settings_rebuild_4k_zap",
+                onFocused = onFocused,
+                onClick = { onToggleRebuild4kZap(!rebuildOn4kZap) },
+            )
+            SettingsGroupHeader(t("音轨与字幕", "Audio & Subtitles"))
+            SettingsToggleRow(
+                title = t("默认加载字幕", "Auto-load subtitles"),
+                checked = defaultSubtitlesEnabled,
+                textScale = textScale,
+                focusRequester = requesterOf("settings_default_subtitles"),
+                tag = "settings_default_subtitles",
+                onFocused = onFocused,
+                onClick = { onToggleDefaultSubtitles(!defaultSubtitlesEnabled) },
+            )
+            RowGap()
+            SettingsChoiceRow(
+                title = t("首选字幕语言", "Preferred Subtitle Language"),
+                value = subLangLabel,
+                textScale = textScale,
+                focusRequester = requesterOf("settings_subtitle_lang"),
+                tag = "settings_subtitle_lang",
+                onFocused = onFocused,
+                onClick = onOpenSubtitleLangPicker,
+            )
             RowGap()
             SettingsItem(
-                text = t("线路选择（当前频道）", "Stream Sources (Current)"),
+                text = audioEntryLabel,
                 textScale = textScale,
-                focusRequester = requesterOf("settings_quality_menu"),
-                tag = "settings_quality_menu",
+                focusRequester = requesterOf("settings_audio_track"),
+                tag = "settings_audio_track",
                 onFocused = onFocused,
-                onClick = onQualityMenuClick,
+                onClick = onAudioTrackClick,
+            )
+            if (!audioSummary.isNullOrBlank()) {
+                HelpText(t("当前：$audioSummary", "Current: $audioSummary"))
+            }
+            if (qualityMenuEnabled) {
+                RowGap()
+                SettingsItem(
+                    text = t("线路选择（当前频道）", "Stream Sources (Current)"),
+                    textScale = textScale,
+                    focusRequester = requesterOf("settings_quality_menu"),
+                    tag = "settings_quality_menu",
+                    onFocused = onFocused,
+                    onClick = onQualityMenuClick,
+                )
+            }
+            SettingsGroupHeader(t("高级优化（实验）", "Advanced (Experimental)"))
+            SettingsToggleRow(
+                title = t("预连接相邻频道", "Neighbour Preconnect"),
+                checked = zapPreconnectEnabled,
+                textScale = textScale,
+                focusRequester = requesterOf("settings_zap_preconnect"),
+                tag = "settings_zap_preconnect",
+                onFocused = onFocused,
+                onClick = onToggleZapPreconnect,
+            )
+            RowGap()
+            SettingsToggleRow(
+                title = t("组播预热", "Multicast Prewarm"),
+                checked = multicastPrewarmEnabled,
+                textScale = textScale,
+                focusRequester = requesterOf("settings_multicast_prewarm"),
+                tag = "settings_multicast_prewarm",
+                onFocused = onFocused,
+                onClick = onToggleMulticastPrewarm,
+            )
+            RowGap()
+            SettingsChoiceRow(
+                title = t("码流兼容模式", "Stream Compatibility"),
+                value = jingcaiLabel,
+                textScale = textScale,
+                focusRequester = requesterOf("settings_jingcai_experiment"),
+                tag = "settings_jingcai_experiment",
+                onFocused = onFocused,
+                onClick = onOpenJingcaiPicker,
             )
         }
-        SettingsGroupHeader(t("高级优化（实验）", "Advanced (Experimental)"))
-        SettingsItem(
-            text = if (zapPreconnectEnabled) t("预连接相邻频道：开", "Neighbour Preconnect: On") else t("预连接相邻频道：关", "Neighbour Preconnect: Off"),
-            textScale = textScale,
-            focusRequester = requesterOf("settings_zap_preconnect"),
-            tag = "settings_zap_preconnect",
-            onFocused = onFocused,
-            onClick = onToggleZapPreconnect,
-        )
-        RowGap()
-        SettingsItem(
-            text = if (multicastPrewarmEnabled) t("组播预热：开", "Multicast Prewarm: On") else t("组播预热：关", "Multicast Prewarm: Off"),
-            textScale = textScale,
-            focusRequester = requesterOf("settings_multicast_prewarm"),
-            tag = "settings_multicast_prewarm",
-            onFocused = onFocused,
-            onClick = onToggleMulticastPrewarm,
-        )
-        RowGap()
-        SettingsChoiceRow(
-            title = t("码流兼容模式", "Stream Compatibility"),
-            value = jingcaiLabel,
-            textScale = textScale,
-            focusRequester = requesterOf("settings_jingcai_experiment"),
-            tag = "settings_jingcai_experiment",
-            onFocused = onFocused,
-            onClick = onOpenJingcaiPicker,
-        )
     }
 }
 
@@ -2129,15 +2419,16 @@ private fun SettingsRemotePage(
     onFocused: (String) -> Unit,
 ) {
     fun t(zh: String, en: String) = if (lang == AppLang.EN) en else zh
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(scroll)
-            .testTag(SETTINGS_LIST_TAG)
-    ) {
+    Column(modifier = Modifier.fillMaxSize()) {
         SettingsPageHeader(SettingsPage.REMOTE, lang, textScale)
-
-        SettingsGroupHeader(t("功能按键指定（点击配置）", "Key Assignments (Click to Assign)"))
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(scroll)
+                .testTag(SETTINGS_LIST_TAG)
+        ) {
+            SettingsGroupHeader(t("功能按键指定（点击配置）", "Key Assignments (Click to Assign)"))
         for (action in RemoteBindings.CONFIGURABLE_ACTIONS) {
             val binding = bindings.firstOrNull { it.action == action }
             val shortStr = RemoteBindings.bindingSummary(binding, false, lang)
@@ -2191,8 +2482,9 @@ private fun SettingsRemotePage(
             onClick = onOpenDigitsPicker,
         )
         RowGap()
-        SettingsItem(
-            text = if (channelKeysEnabled) t("频道键 166/167：启用", "Channel +/- (166/167): On") else t("频道键 166/167：禁用", "Channel +/- (166/167): Off"),
+        SettingsToggleRow(
+            title = t("遥控器频道 +/- 键", "Remote Channel +/- Keys"),
+            checked = channelKeysEnabled,
             textScale = textScale,
             focusRequester = requesterOf("settings_remote_channel_keys"),
             tag = "settings_remote_channel_keys",
@@ -2217,6 +2509,48 @@ private fun SettingsRemotePage(
             onFocused = onFocused,
             onClick = onResetBindings,
         )
+        }
+    }
+}
+
+@Composable
+private fun SettingsAboutBrandHeader(
+    lang: AppLang,
+    versionDisplay: String,
+    textScale: Float,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp, vertical = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Image(
+            painter = painterResource(id = R.drawable.brand_wordmark_white),
+            contentDescription = "IQTV Lite Logo",
+            contentScale = ContentScale.FillWidth,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(88.dp),
+        )
+        Spacer(modifier = Modifier.height(6.dp))
+        Text(
+            text = "IQTV Lite",
+            style = MaterialTheme.typography.titleMedium.copy(
+                fontSize = (17f * textScale).sp,
+                fontWeight = FontWeight.SemiBold,
+            ),
+            color = TvDesignTokens.TextPrimary,
+        )
+        Spacer(modifier = Modifier.height(2.dp))
+        Text(
+            text = if (lang == AppLang.EN) "Version $versionDisplay" else "版本 $versionDisplay",
+            style = MaterialTheme.typography.bodySmall.copy(fontSize = (12.5f * textScale).sp),
+            color = TvDesignTokens.TextSecondary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(bottom = 8.dp),
+        )
     }
 }
 
@@ -2228,6 +2562,7 @@ private fun SettingsAboutPage(
     onToggleAutoCheckUpdate: (Boolean) -> Unit,
     onCheckUpdateClick: () -> Unit,
     onDownloadUpdateClick: () -> Unit,
+    onOpenProjectInfo: () -> Unit,
     textScale: Float,
     scroll: ScrollState,
     requesterOf: (String) -> FocusRequester,
@@ -2239,42 +2574,32 @@ private fun SettingsAboutPage(
     } else {
         "v${BuildConfig.VERSION_NAME}"
     }
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(scroll)
-            .testTag(SETTINGS_LIST_TAG)
-    ) {
+    Column(modifier = Modifier.fillMaxSize()) {
         SettingsPageHeader(SettingsPage.ABOUT, lang, textScale)
-        Text(
-            text = "IQTV Lite",
-            style = MaterialTheme.typography.titleMedium.copy(
-                fontSize = (16f * textScale).sp,
-                fontWeight = FontWeight.SemiBold,
-            ),
-            color = TvDesignTokens.TextPrimary,
-            modifier = Modifier.padding(start = 12.dp, bottom = 4.dp)
-        )
-        Text(
-            text = t("版本 $versionDisplay", "Version $versionDisplay"),
-            style = MaterialTheme.typography.bodySmall.copy(fontSize = (13f * textScale).sp),
-            color = TvDesignTokens.TextSecondary,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(start = 12.dp, bottom = 14.dp)
-        )
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(scroll)
+                .testTag(SETTINGS_LIST_TAG)
+        ) {
+            SettingsAboutBrandHeader(
+                lang = lang,
+                versionDisplay = versionDisplay,
+                textScale = textScale,
+            )
 
-        SettingsChoiceRow(
-            title = t("启动时自动检查更新", "Auto-check Updates"),
-            value = if (autoCheckUpdate) t("开启", "On") else t("关闭", "Off"),
-            textScale = textScale,
-            focusRequester = requesterOf("settings_auto_check_update"),
-            tag = "settings_auto_check_update",
-            onFocused = onFocused,
-            onClick = { onToggleAutoCheckUpdate(!autoCheckUpdate) },
-        )
-        HelpText(t("开启后每次打开应用会自动在后台检查 GitHub 新版本。", "Checks GitHub Releases automatically when launching the app."))
-        RowGap()
+            SettingsToggleRow(
+                title = t("启动时自动检查更新", "Auto-check Updates"),
+                checked = autoCheckUpdate,
+                textScale = textScale,
+                focusRequester = requesterOf("settings_auto_check_update"),
+                tag = "settings_auto_check_update",
+                onFocused = onFocused,
+                onClick = { onToggleAutoCheckUpdate(!autoCheckUpdate) },
+            )
+            HelpText(t("开启后每次打开应用会自动在后台检查 GitHub 新版本。", "Checks GitHub Releases automatically when launching the app."))
+            RowGap()
 
         val primaryLabel: String
         val primaryAction: () -> Unit
@@ -2361,8 +2686,8 @@ private fun SettingsAboutPage(
                         "发现新版本 ${info.latestTag}（当前 ${info.currentVersion}），按 OK 开始下载安装。",
                         "Update ${info.latestTag} available (current ${info.currentVersion}). Press OK to download."
                     ),
-                    bg = BrandFocus.BlueColor.copy(alpha = 0.16f),
-                    fg = Color(0xFF93C5FD),
+                    bg = TvDesignTokens.BrandLiteBlue.copy(alpha = 0.16f),
+                    fg = TvDesignTokens.BrandLiteBlue,
                     textScale = textScale,
                 )
             }
@@ -2385,7 +2710,7 @@ private fun SettingsAboutPage(
                                 .fillMaxWidth(pct / 100f)
                                 .fillMaxHeight()
                                 .clip(RoundedCornerShape(999.dp))
-                                .background(BrandFocus.BlueColor)
+                                .background(TvDesignTokens.BrandLiteBlue)
                         )
                     }
                     Spacer(modifier = Modifier.height(6.dp))
@@ -2404,6 +2729,17 @@ private fun SettingsAboutPage(
                     textScale = textScale,
                 )
             }
+        }
+            RowGap()
+            SettingsChoiceRow(
+                title = t("关于项目与开源协议", "About Project & License"),
+                value = "GitHub · GPL-3.0",
+                textScale = textScale,
+                focusRequester = requesterOf("settings_about_project"),
+                tag = "settings_about_project",
+                onFocused = onFocused,
+                onClick = onOpenProjectInfo,
+            )
         }
     }
 }
@@ -2481,12 +2817,103 @@ private fun HelpText(
 
 @Composable
 private fun SettingsGroupHeader(text: String) {
-    Text(
-        text = text,
-        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-        color = TvDesignTokens.TextSecondary,
-        modifier = Modifier.padding(start = 12.dp, top = 12.dp, bottom = 6.dp)
-    )
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 12.dp, end = 12.dp, top = 16.dp, bottom = 6.dp)
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelLarge.copy(
+                fontSize = 12.5.sp,
+                fontWeight = FontWeight.SemiBold,
+                letterSpacing = 0.8.sp,
+            ),
+            color = TvDesignTokens.BrandLiteBlue.copy(alpha = 0.88f),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Spacer(modifier = Modifier.height(5.dp))
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(1.dp)
+                .background(Color.White.copy(alpha = 0.08f))
+        )
+    }
+}
+
+/** 标准 Android TV 右对齐胶囊式开关行。 */
+@Composable
+@OptIn(ExperimentalFoundationApi::class)
+private fun SettingsToggleRow(
+    title: String,
+    checked: Boolean,
+    textScale: Float,
+    focusRequester: FocusRequester?,
+    onClick: () -> Unit,
+    tag: String? = null,
+    onFocused: ((String) -> Unit)? = null,
+) {
+    var focused by remember { mutableStateOf(false) }
+    val bringIntoView = remember { BringIntoViewRequester() }
+    val scope = rememberCoroutineScope()
+    val bg = if (focused) BrandFocus.FocusBgColor else Color.Transparent
+    val shape = remember { RoundedCornerShape(6.dp) }
+    val trackColor = if (checked) TvDesignTokens.BrandLiteBlue else Color.White.copy(alpha = 0.24f)
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .let { m -> if (tag != null) m.testTag(tag) else m }
+            .semantics { contentDescription = "$title ${if (checked) "开" else "关"}" }
+            .let { m -> if (focusRequester != null) m.focusRequester(focusRequester) else m }
+            .bringIntoViewRequester(bringIntoView)
+            .background(bg, shape)
+            .onFocusChanged {
+                focused = it.isFocused
+                if (it.isFocused) {
+                    if (tag != null && onFocused != null) onFocused(tag)
+                    scope.launch { runCatching { bringIntoView.bringIntoView() } }
+                }
+            }
+            .focusable()
+            .clickable {
+                onClick()
+                runCatching { focusRequester?.requestFocus() }
+            }
+            .padding(horizontal = 14.dp, vertical = 11.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleMedium.copy(
+                fontSize = (15.5f * textScale).sp,
+                fontWeight = if (focused) FontWeight.SemiBold else FontWeight.Medium,
+            ),
+            color = if (focused) TvDesignTokens.TextPrimary else TvDesignTokens.TextPrimary.copy(alpha = 0.90f),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        Spacer(modifier = Modifier.width(12.dp))
+        Box(
+            modifier = Modifier
+                .width(42.dp)
+                .height(22.dp)
+                .clip(RoundedCornerShape(50))
+                .background(trackColor)
+                .padding(horizontal = 3.dp),
+            contentAlignment = if (checked) Alignment.CenterEnd else Alignment.CenterStart,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(16.dp)
+                    .clip(CircleShape)
+                    .background(Color.White)
+            )
+        }
+    }
 }
 
 /** 点击展开选项列表的两行设置项（标题 + 当前值 + 右箭头）。 */
@@ -2552,11 +2979,25 @@ private fun SettingsChoiceRow(
             )
         }
         if (showChevron) {
-            Text(
-                text = "›",
-                style = MaterialTheme.typography.titleMedium.copy(fontSize = (18f * textScale).sp),
-                color = if (focused) TvDesignTokens.TextPrimary else TvDesignTokens.TextMuted,
-            )
+            val chevronColor = if (focused) TvDesignTokens.TextPrimary else TvDesignTokens.TextMuted
+            Canvas(
+                modifier = Modifier
+                    .padding(start = 8.dp)
+                    .size(14.dp),
+            ) {
+                val w = size.width
+                val h = size.height
+                val p = Path().apply {
+                    moveTo(w * 0.34f, h * 0.22f)
+                    lineTo(w * 0.66f, h * 0.50f)
+                    lineTo(w * 0.34f, h * 0.78f)
+                }
+                drawPath(
+                    path = p,
+                    color = chevronColor,
+                    style = Stroke(width = 1.8.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round),
+                )
+            }
         }
     }
 }
@@ -2602,7 +3043,7 @@ private fun SettingsRadioRow(
         Text(
             text = if (selected) "●" else "○",
             style = MaterialTheme.typography.titleMedium.copy(fontSize = (14f * textScale).sp),
-            color = if (selected) Color(0xFF5C98FF) else TvDesignTokens.TextMuted,
+            color = if (selected) TvDesignTokens.BrandLiteBlue else TvDesignTokens.TextMuted,
             modifier = Modifier.width(22.dp),
         )
         Column(modifier = Modifier.weight(1f)) {
@@ -2613,7 +3054,7 @@ private fun SettingsRadioRow(
                     fontWeight = if (selected || focused) FontWeight.SemiBold else FontWeight.Normal,
                 ),
                 color = when {
-                    selected -> Color(0xFF5C98FF)
+                    selected -> TvDesignTokens.BrandLiteBlue
                     focused -> TvDesignTokens.TextPrimary
                     else -> TvDesignTokens.TextPrimary.copy(alpha = 0.88f)
                 },

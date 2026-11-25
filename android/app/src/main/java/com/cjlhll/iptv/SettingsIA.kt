@@ -107,6 +107,7 @@ object SettingsIA {
         SettingsPage.ABOUT to listOf(
             "settings_auto_check_update",
             "settings_check_update",
+            "settings_about_project",
         ),
     )
 

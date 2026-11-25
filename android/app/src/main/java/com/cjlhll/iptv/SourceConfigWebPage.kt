@@ -12,7 +12,7 @@ object SourceConfigWebPage {
 <html lang="${if (initialLang == "en") "en" else "zh-CN"}">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover" />
   <title>$appName</title>
   <style>
     :root {
@@ -35,6 +35,11 @@ object SourceConfigWebPage {
       --input: #0D141E;
     }
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body {
+      overflow-x: hidden;
+      touch-action: manipulation;
+      -webkit-text-size-adjust: 100%;
+    }
     body {
       margin: 0;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
@@ -68,11 +73,12 @@ object SourceConfigWebPage {
     .brand {
       display: flex;
       align-items: center;
-      gap: 12px;
+      flex-wrap: wrap;
+      gap: 4px 12px;
       min-width: 0;
     }
     .brand-wordmark {
-      height: 34px;
+      height: 32px;
       width: auto;
       display: block;
       flex-shrink: 0;
@@ -81,6 +87,7 @@ object SourceConfigWebPage {
       font-size: 12px;
       color: var(--muted);
       line-height: 1.3;
+      white-space: nowrap;
     }
     .top-actions {
       display: flex;
@@ -148,6 +155,9 @@ object SourceConfigWebPage {
       padding: 9px 4px;
       border-radius: 9px;
       cursor: pointer;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
       transition: all .16s ease;
     }
     .tab-btn.active {
@@ -173,6 +183,7 @@ object SourceConfigWebPage {
       display: flex;
       align-items: center;
       justify-content: space-between;
+      flex-wrap: wrap;
       gap: 10px;
       margin-bottom: 12px;
     }
@@ -195,6 +206,8 @@ object SourceConfigWebPage {
       border-radius: 999px;
       font-size: 11px;
       font-weight: 600;
+      white-space: nowrap;
+      flex-shrink: 0;
     }
     .badge-blue { background: rgba(47,107,255,0.24); color: #9FC5FF; }
     .badge-muted { background: rgba(255,255,255,0.12); color: #CBD6E6; }
@@ -266,7 +279,7 @@ object SourceConfigWebPage {
       color: var(--text);
       border-radius: 10px;
       padding: 11px 12px;
-      font-size: 14px;
+      font-size: 16px;
       outline: none;
       font-family: inherit;
     }
@@ -292,7 +305,7 @@ object SourceConfigWebPage {
       resize: vertical;
       line-height: 1.5;
       font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-      font-size: 13px;
+      font-size: 16px;
     }
     input:focus, textarea:focus, select:focus {
       border-color: var(--brandSoft);
@@ -322,11 +335,20 @@ object SourceConfigWebPage {
     .btn-row {
       display: flex;
       flex-wrap: wrap;
+      align-items: stretch;
       gap: 10px;
       margin-top: 14px;
     }
     .btn {
-      flex: 1;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      text-align: center;
+      text-decoration: none;
+      line-height: 1.25;
+      margin-bottom: 0;
+      flex: 1 1 140px;
       min-width: 120px;
       border: 0;
       border-radius: 11px;
@@ -336,6 +358,7 @@ object SourceConfigWebPage {
       cursor: pointer;
       color: #fff;
       background: var(--brand);
+      white-space: nowrap;
     }
     .btn:active { transform: scale(0.99); }
     .btn-secondary {
@@ -487,6 +510,18 @@ object SourceConfigWebPage {
       border-color: rgba(255,120,130,0.7);
       color: #FFD5D8;
     }
+    @media (max-width: 520px) {
+      .topbar-inner { padding: 12px 12px 10px; }
+      .wrap { padding: 12px; }
+      .brand-wordmark { height: 28px; }
+      .tab-btn { font-size: 12.5px; padding: 8px 2px; }
+      .card { padding: 14px; border-radius: 14px; }
+      .btn-row { gap: 8px; }
+      .btn { flex: 1 1 100%; min-width: 0; }
+      .btn.btn-sm { flex: 0 0 auto; }
+      .seg-grid { gap: 6px; }
+      .seg-card { padding: 10px 6px; }
+    }
   </style>
 </head>
 <body>
@@ -550,15 +585,11 @@ object SourceConfigWebPage {
         </div>
         <div class="field">
           <label for="srcUrl" id="lblSrcUrl">直播源地址 (URL)</label>
-          <input id="srcUrl" type="url" placeholder="https://example.com/live.m3u" />
-          <div class="chips">
-            <button type="button" class="chip" id="chipPreset1" data-preset-name="老白直播源" data-preset-url="https://iptv.laobaitv.net" data-preset-epg="https://epg.laobaitv.net">填入：老白直播源</button>
-            <button type="button" class="chip" id="chipPreset2" data-preset-name="老白专享源" data-preset-url="http://lbzs.laobaitv.net" data-preset-epg="https://epg.laobaitv.net">填入：老白专享源 (lbzs)</button>
-          </div>
+          <input id="srcUrl" type="url" placeholder="支持 http(s):// M3U 或 TXT 播放列表地址" />
         </div>
         <div class="field">
           <label for="srcEpg" id="lblSrcEpg">EPG 节目单地址（可选，留空自动识别列表内 x-tvg-url）</label>
-          <input id="srcEpg" type="url" placeholder="https://epg.laobaitv.net" />
+          <input id="srcEpg" type="url" placeholder="可选，留空自动识别 M3U 内 x-tvg-url" />
         </div>
         <div class="field">
           <label for="srcUa" id="lblSrcUa">该源专属 User-Agent（可选，留空跟随全局设置）</label>
@@ -774,7 +805,7 @@ object SourceConfigWebPage {
           </label>
         </div>
         <textarea id="restoreJsonArea" rows="4" placeholder="也可直接粘贴备份 JSON 内容..." style="width:100%;margin-bottom:8px"></textarea>
-        <button class="btn btn-secondary" id="btnRestoreJson">从文本框恢复配置</button>
+        <button class="btn btn-secondary" id="btnRestoreJson" style="width:100%">从文本框恢复配置</button>
       </div>
     </section>
   </main>
@@ -819,11 +850,11 @@ object SourceConfigWebPage {
         formHint: "支持 M3U / TXT 列表，自动解析 x-tvg-url、#EXTINF 属性与 URL | 请求头。",
         btnCancelEdit: "取消编辑",
         lblSrcName: "播放源名称",
-        phSrcName: "例如：老白直播源 / 家庭内网源",
+        phSrcName: "例如：家庭内网源 / 自定义播放源",
         lblSrcUrl: "直播源地址 (URL)",
-        chipPreset1: "填入：老白直播源",
-        chipPreset2: "填入：老白专享源 (lbzs)",
+        phSrcUrl: "支持 http(s):// M3U 或 TXT 播放列表地址",
         lblSrcEpg: "EPG 节目单地址（可选，留空自动识别 x-tvg-url）",
+        phSrcEpg: "可选，留空自动识别 M3U 内 x-tvg-url",
         lblSrcUa: "该源专属 User-Agent（可选，留空跟随全局设置）",
         phSrcUa: "例如：VLC/3.0.20 LibVLC/3.0.20 或 aliplayer",
         btnSaveSource: "保存播放源",
@@ -921,9 +952,9 @@ object SourceConfigWebPage {
         lblSrcName: "Source Name",
         phSrcName: "e.g. Home IPTV / Live TV",
         lblSrcUrl: "Playlist URL",
-        chipPreset1: "Preset: Laobai Live",
-        chipPreset2: "Preset: Laobai Exclusive",
+        phSrcUrl: "http(s):// M3U or TXT playlist URL",
         lblSrcEpg: "EPG URL (optional, auto-detected if empty)",
+        phSrcEpg: "Optional, auto-detects M3U x-tvg-url if blank",
         lblSrcUa: "Source User-Agent (optional, uses global default if empty)",
         phSrcUa: "e.g. VLC/3.0.20 LibVLC/3.0.20 or aliplayer",
         btnSaveSource: "Save Source",
@@ -1016,9 +1047,9 @@ object SourceConfigWebPage {
       byId("lblSrcName").textContent = L.lblSrcName;
       byId("srcName").placeholder = L.phSrcName;
       byId("lblSrcUrl").textContent = L.lblSrcUrl;
-      byId("chipPreset1").textContent = L.chipPreset1;
-      byId("chipPreset2").textContent = L.chipPreset2;
+      byId("srcUrl").placeholder = L.phSrcUrl;
       byId("lblSrcEpg").textContent = L.lblSrcEpg;
+      byId("srcEpg").placeholder = L.phSrcEpg;
       byId("lblSrcUa").textContent = L.lblSrcUa;
       byId("srcUa").placeholder = L.phSrcUa;
       byId("btnSaveSource").textContent = L.btnSaveSource;
@@ -1097,7 +1128,7 @@ object SourceConfigWebPage {
     async function api(path, body) {
       var opt = body ? {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json; charset=utf-8" },
         body: JSON.stringify(body)
       } : { method: "GET" };
       var res = await fetch(path, opt);
@@ -1264,14 +1295,6 @@ object SourceConfigWebPage {
       byId("btnResetForm").style.display = "none";
     }
     byId("btnResetForm").addEventListener("click", resetSourceForm);
-
-    document.querySelectorAll("[data-preset-url]").forEach(function(btn) {
-      btn.addEventListener("click", function() {
-        byId("srcName").value = btn.getAttribute("data-preset-name");
-        byId("srcUrl").value = btn.getAttribute("data-preset-url");
-        byId("srcEpg").value = btn.getAttribute("data-preset-epg");
-      });
-    });
 
     async function submitSource(playNow) {
       var url = byId("srcUrl").value.trim();

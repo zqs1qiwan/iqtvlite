@@ -112,6 +112,8 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
 
     private var epgLoadJob: Job? = null
     private var prefetchJob: Job? = null
+    private var pendingGroupSelectJob: Job? = null
+    private var pendingGroupName: String? = null
     private var perfOpenAtMs = 0L
 
     private val density = resources.displayMetrics.density
@@ -360,6 +362,8 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
     override fun onDetachedFromWindow() {
         epgLoadJob?.cancel()
         prefetchJob?.cancel()
+        pendingGroupSelectJob?.cancel()
+        pendingGroupName = null
         scope.cancel()
         super.onDetachedFromWindow()
     }
@@ -494,8 +498,10 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
         }
 
         if (groupsChanged) {
-            focusedGroupIndex = newSnapshot.groups.indexOf(newSnapshot.selectedGroup).coerceAtLeast(0)
-            if (isOpen) groupsAdapter.notifyDataSetChanged()
+            if (!(activeColumn == DrawerColumn.Groups && prev.groups == newSnapshot.groups)) {
+                focusedGroupIndex = newSnapshot.groups.indexOf(newSnapshot.selectedGroup).coerceAtLeast(0)
+                if (isOpen) groupsAdapter.notifyDataSetChanged()
+            }
         }
 
         if (langChanged && isOpen) {
@@ -539,6 +545,9 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
         if (!open) {
             epgLoadJob?.cancel()
             prefetchJob?.cancel()
+            pendingGroupSelectJob?.cancel()
+            pendingGroupSelectJob = null
+            pendingGroupName = null
             LogoLoader.logPerfCounters(drawerOpen = false)
             val tClose = SystemClock.elapsedRealtime()
             visibility = GONE
@@ -659,31 +668,54 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
         }
     }
 
+    private fun moveGroupFocus(nextIndex: Int) {
+        val groups = snapshot.groups
+        if (nextIndex !in groups.indices) return
+        val prev = focusedGroupIndex
+        focusedGroupIndex = nextIndex
+        notifyFocusMove(groupsAdapter, prev, focusedGroupIndex)
+        scrollGroupBounded(focusedGroupIndex)
+        val targetGroup = groups[focusedGroupIndex]
+        pendingGroupName = targetGroup
+        pendingGroupSelectJob?.cancel()
+        pendingGroupSelectJob = scope.launch {
+            delay(130L)
+            val commitName = pendingGroupName
+            pendingGroupName = null
+            if (isOpen && commitName != null) {
+                listener?.onSelectGroup(commitName, true)
+            }
+        }
+    }
+
+    private fun flushPendingGroupSelection() {
+        val pending = pendingGroupName
+        pendingGroupSelectJob?.cancel()
+        pendingGroupSelectJob = null
+        pendingGroupName = null
+        if (pending != null) {
+            listener?.onSelectGroup(pending, true)
+        }
+    }
+
     private fun handleGroupsKey(keyCode: Int): Boolean {
         val groups = snapshot.groups
         return when (keyCode) {
             KeyEvent.KEYCODE_DPAD_UP -> {
                 if (groups.isEmpty()) return true
-                val prev = focusedGroupIndex
-                focusedGroupIndex = if (prev <= 0) groups.lastIndex else prev - 1
-                notifyFocusMove(groupsAdapter, prev, focusedGroupIndex)
-                scrollGroupBounded(focusedGroupIndex)
-                listener?.onSelectGroup(groups[focusedGroupIndex], true)
+                moveGroupFocus(if (focusedGroupIndex <= 0) groups.lastIndex else focusedGroupIndex - 1)
                 true
             }
             KeyEvent.KEYCODE_DPAD_DOWN -> {
                 if (groups.isEmpty()) return true
-                val prev = focusedGroupIndex
-                focusedGroupIndex = if (prev >= groups.lastIndex) 0 else prev + 1
-                notifyFocusMove(groupsAdapter, prev, focusedGroupIndex)
-                scrollGroupBounded(focusedGroupIndex)
-                listener?.onSelectGroup(groups[focusedGroupIndex], true)
+                moveGroupFocus(if (focusedGroupIndex >= groups.lastIndex) 0 else focusedGroupIndex + 1)
                 true
             }
             KeyEvent.KEYCODE_DPAD_RIGHT,
             KeyEvent.KEYCODE_DPAD_CENTER,
             KeyEvent.KEYCODE_ENTER,
             KeyEvent.KEYCODE_NUMPAD_ENTER -> {
+                flushPendingGroupSelection()
                 showGroups = false
                 sourcesPanel.visibility = GONE
                 groupsPanel.visibility = GONE
@@ -694,6 +726,7 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
                 true
             }
             KeyEvent.KEYCODE_DPAD_LEFT -> {
+                flushPendingGroupSelection()
                 if (snapshot.sources.size >= 2) {
                     sourcesPanel.visibility = VISIBLE
                     focusedSourceIndex = snapshot.sources.indexOfFirst { it.id == snapshot.activeSourceId }.coerceAtLeast(0)
@@ -1313,7 +1346,7 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
 
         private fun bindVisual(holder: GroupVH, position: Int, name: String) {
             val isFocused = activeColumn == DrawerColumn.Groups && position == focusedGroupIndex
-            val isSelected = name == snapshot.selectedGroup
+            val isSelected = if (activeColumn == DrawerColumn.Groups) position == focusedGroupIndex else name == snapshot.selectedGroup
             holder.rowBg.setColor(
                 when {
                     isFocused -> COLOR_FOCUS_BG

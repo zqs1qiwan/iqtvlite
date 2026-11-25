@@ -19,7 +19,7 @@ enum class RemoteAction(val label: String, val labelEn: String) {
     OPEN_SETTINGS("打开设置", "Open settings"),
     SHOW_INFO("显示信息卡", "Show info card"),
     RECENT_CHANNELS("最近观看", "Recent channels"),
-    LAST_CHANNEL("上一台", "Last channel"),
+    LAST_CHANNEL("切换上一频道", "Previous channel"),
     RETURN_LIVE("返回直播", "Return to live"),
     SEEK_BACK("快退", "Seek back"),
     SEEK_FORWARD("快进", "Seek forward"),
@@ -45,7 +45,7 @@ data class KeyBinding(
 object RemoteBindings {
 
     /** 新偏好 key（Prefs 里为 SharedPreferences 键）。 */
-    const val PREFS_KEY = "remote_action_bindings_v1"
+    const val PREFS_KEY = "remote_action_bindings_v2"
 
     // Android KeyEvent 常量（这里写成字面量，保持本文件 Android-free）。
     const val KEY_DPAD_UP = 19
@@ -85,10 +85,11 @@ object RemoteBindings {
         KeyBinding(RemoteAction.CHANNEL_UP, setOf(KEY_DPAD_UP, KEY_CHANNEL_UP, KEY_PAGE_UP)),
         KeyBinding(RemoteAction.CHANNEL_DOWN, setOf(KEY_DPAD_DOWN, KEY_CHANNEL_DOWN, KEY_PAGE_DOWN)),
         KeyBinding(RemoteAction.OPEN_DRAWER, setOf(KEY_DPAD_LEFT)),
-        // t52 §⑧：OPEN_SETTINGS 增加设备可用彩键（MENU 在部分 TV launcher 被拦截）作为可靠入口。
-        KeyBinding(RemoteAction.OPEN_SETTINGS, setOf(KEY_DPAD_RIGHT, KEY_MENU, KEY_BUTTON_1)),
+        // 设置入口统一收敛在 OK 菜单齿轮图标；此处留空，用户可按需自定义快捷键
+        KeyBinding(RemoteAction.OPEN_SETTINGS),
         KeyBinding(RemoteAction.SHOW_INFO, setOf(KEY_DPAD_CENTER, KEY_ENTER, KEY_NUMPAD_ENTER)),
-        KeyBinding(RemoteAction.RECENT_CHANNELS, setOf(KEY_LAST_CHANNEL)),
+        KeyBinding(RemoteAction.RECENT_CHANNELS),
+        KeyBinding(RemoteAction.LAST_CHANNEL, setOf(KEY_DPAD_RIGHT, KEY_LAST_CHANNEL)),
         KeyBinding(RemoteAction.RETURN_LIVE, longPressKeycodes = setOf(KEY_BACK)),
         // t49 §②：EXIT_APP 默认不预置任何键（原也绑 BACK 长按=死配置，长按永远解析成 RETURN_LIVE）。
         // 退出播放器统一走 BackKeyPolicy 双按状态机（先 toast 再退）；EXIT_APP 仅供用户显式绑定。
@@ -458,7 +459,7 @@ object RemoteBindings {
         KEY_CHANNEL_DOWN -> "167"
         KEY_PAGE_UP -> "92"
         KEY_PAGE_DOWN -> "93"
-        KEY_LAST_CHANNEL -> if (lang == AppLang.EN) "Prev" else "上一台"
+        KEY_LAST_CHANNEL -> if (lang == AppLang.EN) "Prev" else "切换上一频道"
         else -> if (lang == AppLang.EN) "Key $keycode" else "键$keycode"
     }
 

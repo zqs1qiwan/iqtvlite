@@ -32,6 +32,7 @@ import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.runtime.Composable
@@ -392,92 +393,64 @@ class PlayerActivity : ComponentActivity() {
                     }
                     if (!isInPipMode && digitState.visible) {
                         val osdDigitColor = if (digitState.confirmed) BrandFocus.BlueColor else TvDesignTokens.TextPrimary
-                        val stripShape = RoundedCornerShape(14.dp)
+                        val badgeShape = RoundedCornerShape(10.dp)
                         val uiAlpha = Prefs.uiSurfaceAlpha(Prefs.getUiTransparencyPct(this@PlayerActivity))
-                        Row(
+                        Column(
                             modifier = Modifier
-                                .align(Alignment.BottomCenter)
-                                .fillMaxWidth()
-                                .padding(
-                                    start = 32.dp,
-                                    end = if (isInAppPipActive) 340.dp else 32.dp,
-                                    bottom = 28.dp,
-                                )
+                                .align(Alignment.TopEnd)
+                                .padding(top = 28.dp, end = if (isInAppPipActive) 340.dp else 36.dp)
+                                .widthIn(min = 120.dp, max = 240.dp)
                                 .testTag("digit_osd")
-                                .clip(stripShape)
-                                .background(ComposeColor(0xFF0A0D12).copy(alpha = uiAlpha.coerceAtLeast(0.76f)))
-                                .border(1.dp, ComposeColor.White.copy(alpha = 0.14f), stripShape)
-                                .padding(horizontal = 20.dp, vertical = 14.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(16.dp),
+                                .clip(badgeShape)
+                                .background(ComposeColor(0xFF0A0D12).copy(alpha = uiAlpha.coerceAtLeast(0.72f)))
+                                .border(1.dp, ComposeColor.White.copy(alpha = 0.14f), badgeShape)
+                                .padding(horizontal = 16.dp, vertical = 10.dp),
+                            horizontalAlignment = Alignment.End,
+                            verticalArrangement = Arrangement.spacedBy(6.dp),
                         ) {
-                            Box(
-                                modifier = Modifier
-                                    .defaultMinSize(minWidth = 88.dp)
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(ComposeColor.White.copy(alpha = 0.08f))
-                                    .padding(horizontal = 16.dp, vertical = 10.dp),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Text(
-                                    text = digitState.digits,
-                                    color = osdDigitColor,
-                                    fontSize = 34.sp,
-                                    lineHeight = 38.sp,
-                                    fontWeight = if (digitState.confirmed) FontWeight.Bold else FontWeight.SemiBold,
-                                    letterSpacing = 2.sp,
-                                    style = TextStyle(fontFeatureSettings = "tnum"),
-                                )
-                            }
-                            if (digitMatches.isEmpty()) {
-                                Text(
-                                    text = AppStrings.tr("暂无匹配频道", "No matching channel"),
-                                    color = TvDesignTokens.TextSecondary,
-                                    fontSize = 15.sp,
-                                )
-                            } else {
+                            Text(
+                                text = digitState.digits,
+                                color = osdDigitColor,
+                                fontSize = 32.sp,
+                                lineHeight = 36.sp,
+                                fontWeight = if (digitState.confirmed) FontWeight.Bold else FontWeight.SemiBold,
+                                letterSpacing = 2.sp,
+                                style = TextStyle(fontFeatureSettings = "tnum"),
+                            )
+                            if (digitMatches.isNotEmpty()) {
                                 val selIdx = digitMatchSelectedIndex.coerceIn(0, digitMatches.lastIndex)
-                                Row(
-                                    modifier = Modifier.weight(1f),
-                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
+                                val itemShape = RoundedCornerShape(6.dp)
+                                Column(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalArrangement = Arrangement.spacedBy(3.dp),
                                 ) {
                                     digitMatches.forEachIndexed { idx, match ->
                                         val selected = idx == selIdx
-                                        val cardShape = RoundedCornerShape(10.dp)
                                         Row(
                                             modifier = Modifier
-                                                .weight(1f)
-                                                .clip(cardShape)
-                                                .background(
-                                                    if (selected) BrandFocus.FocusBgColor
-                                                    else ComposeColor.White.copy(alpha = 0.06f)
-                                                )
-                                                .border(
-                                                    width = if (selected) 1.5.dp else 1.dp,
-                                                    color = if (selected) BrandFocus.BlueColor else ComposeColor.White.copy(alpha = 0.10f),
-                                                    shape = cardShape,
-                                                )
-                                                .padding(horizontal = 10.dp, vertical = 8.dp),
+                                                .fillMaxWidth()
+                                                .clip(itemShape)
+                                                .background(if (selected) BrandFocus.FocusBgColor else ComposeColor.Transparent)
+                                                .padding(horizontal = 8.dp, vertical = 4.dp),
                                             verticalAlignment = Alignment.CenterVertically,
                                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                                         ) {
-                                            ChannelLogo(
-                                                logoUrl = match.logoUrl,
-                                                fallbackTitle = match.title,
-                                                width = 32.dp,
-                                                height = 24.dp,
+                                            Text(
+                                                text = match.number.toString(),
+                                                color = if (selected) BrandFocus.BlueColor else TvDesignTokens.TextMuted,
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.Medium,
+                                                style = TextStyle(fontFeatureSettings = "tnum"),
                                             )
-                                            Column(modifier = Modifier.weight(1f)) {
-                                                Text(
-                                                    text = "${match.number}  ${match.title}",
-                                                    color = if (selected) TvDesignTokens.TextPrimary else TvDesignTokens.TextSecondary,
-                                                    fontSize = 14.sp,
-                                                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-                                                    maxLines = 1,
-                                                    overflow = TextOverflow.Ellipsis,
-                                                )
-                                            }
+                                            Text(
+                                                text = match.title,
+                                                color = if (selected) TvDesignTokens.TextPrimary else TvDesignTokens.TextSecondary,
+                                                fontSize = 14.sp,
+                                                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                                modifier = Modifier.weight(1f),
+                                            )
                                         }
                                     }
                                 }
@@ -652,7 +625,7 @@ class PlayerActivity : ComponentActivity() {
             BackKeyPolicy.Action.INFO_CARD_CLOSE -> uiController.hideInfoCard()
             BackKeyPolicy.Action.TOAST_EXIT_PIP -> {
                 lastBackPressTimePip = nowMs
-                Toast.makeText(this, AppStrings.tr("再按一次返回退出画中画", "Press Back again to exit PiP"), Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, AppStrings.tr("再按一次返回退出多画面", "Press Back again to exit Multi-view"), Toast.LENGTH_SHORT).show()
             }
             BackKeyPolicy.Action.EXIT_PIP -> {
                 onExitPip?.invoke()
@@ -714,19 +687,19 @@ class PlayerActivity : ComponentActivity() {
             return super.dispatchKeyEvent(event)
         }
 
-        // 3. 数字 OSD 激活态优先（BACK 取消、←/→ 选匹配台、OK 提交、其余键先清 OSD）
+        // 3. 数字 OSD 激活态优先（BACK 取消、↑/↓/←/→ 选匹配台、OK 提交、其余键先清 OSD）
         if (uiController.currentDigits.digits.isNotEmpty() && !uiController.currentDigits.confirmed) {
             if (keyCode == KeyEvent.KEYCODE_BACK) {
                 cancelNumberTimers()
                 uiController.clearDigits()
                 return true
             }
-            if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT && digitMatchCount > 0) {
+            if ((keyCode == KeyEvent.KEYCODE_DPAD_UP || keyCode == KeyEvent.KEYCODE_DPAD_LEFT) && digitMatchCount > 0) {
                 digitMatchSelectedIndex = (digitMatchSelectedIndex - 1).coerceAtLeast(0)
                 restartDigitTimeoutTimer()
                 return true
             }
-            if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT && digitMatchCount > 0) {
+            if ((keyCode == KeyEvent.KEYCODE_DPAD_DOWN || keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) && digitMatchCount > 0) {
                 digitMatchSelectedIndex = (digitMatchSelectedIndex + 1).coerceAtMost((digitMatchCount - 1).coerceAtLeast(0))
                 restartDigitTimeoutTimer()
                 return true
@@ -1886,11 +1859,11 @@ fun VideoPlayerScreen(
                 InfoCardQuickAction(
                     id = InfoCardQuickActionId.PIP,
                     label = if (inAppPipActive) {
-                        AppStrings.tr(appLanguage, "退出画中画", "Exit PiP")
+                        AppStrings.tr(appLanguage, "退出多画面", "Exit Multi")
                     } else {
-                        AppStrings.tr(appLanguage, "画中画", "PiP")
+                        AppStrings.tr(appLanguage, "多画面", "Multi-view")
                     },
-                    description = AppStrings.tr(appLanguage, "应用内双台画中画", "In-app dual-channel PiP"),
+                    description = AppStrings.tr(appLanguage, "应用内双台多画面", "In-app dual-channel multi-view"),
                     active = inAppPipActive,
                 )
             )
@@ -2533,7 +2506,7 @@ fun VideoPlayerScreen(
                     remoteHabits = remoteHabits.copy(digits = habit)
                     remoteCbs.onRemoteSettingsChanged(remoteHabits)
                 },
-                onSourceConfigClick = { context.startActivity(Intent(context, MainActivity::class.java)) },
+                onSourceConfigClick = { uiController.openSettingsPicker("web_qr") },
                 onSwitchSource = { src -> switchToSource(src, closeSettingsAfter = true) },
                 onToggleSourceEnabled = { id ->
                     val target = sources.firstOrNull { it.id == id }
@@ -2796,6 +2769,48 @@ fun VideoPlayerScreen(
                 onUpdateSourceGroupConfig = { sourceId, cfg ->
                     Prefs.saveSourceGroupConfig(context, sourceId, cfg)
                     groupConfigsVersion++
+                },
+                onWebStateSynced = {
+                    val nextLang = Prefs.getAppLanguage(context)
+                    if (nextLang != appLanguage) {
+                        appLanguage = nextLang
+                        AppStrings.set(nextLang)
+                    }
+                    sources = Prefs.getSources(context)
+                    activeSourceId = Prefs.getActiveSourceId(context)
+                    globalUserAgent = Prefs.getGlobalUserAgent(context)
+                    globalCustomHeaders = Prefs.getGlobalCustomHeaders(context)
+                    uiScale = Prefs.getUiScale(context)
+                    infoOkMode = Prefs.getInfoOkMode(context)
+                    playbackBufferMin = Prefs.getPlaybackBufferMin(context)
+                    autoUpdatePlaylist = Prefs.getAutoUpdatePlaylist(context)
+                    autoUpdateEpg = Prefs.getAutoUpdateEpg(context)
+                    favoriteUrls = Prefs.getFavoriteUrls(context)
+                    val newBindings = Prefs.getRemoteBindings(context)
+                    remoteCbs.onBindingsChanged(newBindings)
+                    val newHabits = Prefs.getRemoteSettings(context)
+                    remoteHabits = newHabits
+                    remoteCbs.onRemoteSettingsChanged(newHabits)
+                    groupConfigsVersion++
+                    notifySettings(AppStrings.tr(appLanguage, "已同步手机端配置", "Synced WebUI settings"))
+                },
+                onWebPushSource = { live, epg ->
+                    sources = Prefs.getSources(context)
+                    activeSourceId = Prefs.getActiveSourceId(context)
+                    val pushed = sources.firstOrNull { it.url == live }
+                        ?: sources.firstOrNull { it.id == activeSourceId }
+                        ?: PlaylistSource(
+                            id = PlaylistSources.newId(live),
+                            name = PlaylistSources.defaultNameForUrl(live),
+                            url = live,
+                            epgUrl = epg,
+                        )
+                    if (pushed.url.isNotBlank()) {
+                        switchToSource(pushed, closeSettingsAfter = false)
+                    } else {
+                        AutoUpdateScheduler.refreshNow(context, playlist = true, epg = epg.isNotBlank())
+                    }
+                    notifySettings(AppStrings.tr(appLanguage, "已接收手机推送播放源", "Received WebUI playlist"))
                 },
             )
         }

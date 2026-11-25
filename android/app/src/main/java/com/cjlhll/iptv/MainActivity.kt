@@ -108,8 +108,8 @@ fun MainScreen() {
         PlaylistSources.activeSource(sources, activeSourceId)
     }
 
-    var liveSource by remember { mutableStateOf(initialActive?.url ?: Prefs.getLiveSource(context).ifBlank { "https://iptv.laobaitv.net" }) }
-    var epgSource by remember { mutableStateOf(initialActive?.epgUrl ?: Prefs.getEpgSource(context).ifBlank { "https://epg.laobaitv.net" }) }
+    var liveSource by remember { mutableStateOf(initialActive?.url ?: Prefs.getLiveSource(context)) }
+    var epgSource by remember { mutableStateOf(initialActive?.epgUrl ?: Prefs.getEpgSource(context)) }
     var globalUaSummary by remember { mutableStateOf(Prefs.getGlobalUserAgent(context)) }
     var customHeaderCount by remember { mutableStateOf(PlaylistSources.parseCustomHeaders(Prefs.getGlobalCustomHeaders(context)).size) }
 

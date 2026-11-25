@@ -72,6 +72,8 @@ object TvDesignTokens {
     val FocusSurface = BrandFocus.FocusBgColor
     /** 品牌强调蓝：仅用于正在播放的频道名、当前直播节目与进度条。 */
     val AccentPlaying = BrandFocus.BlueColor
+    /** 品牌浅蓝（Lite Blue）：统一用于设置标题/胶囊开关/选中态及快捷激活图标，全应用仅保留主蓝与浅蓝两色。 */
+    val BrandLiteBlue = Color(0xFF7AA7FF)
 
     // ── 面板透明度（配合静态 graphicsLayer，单次 GPU 合成） ──────────────────
     const val ALPHA_DRAWER = 0.92f

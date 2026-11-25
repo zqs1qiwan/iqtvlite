@@ -66,9 +66,8 @@ class InteractionRootFixTest {
             RemoteAction.OPEN_DRAWER,
             RemoteBindings.resolveRight(RemoteAction.OPEN_SETTINGS, "全部", true, false),
         )
-        // 彩键默认 OPEN_SETTINGS
-        assertEquals(
-            RemoteAction.OPEN_SETTINGS,
+        // 彩键默认未绑定（设置入口统一在 OK 菜单齿轮图标，不抢占遥控按键）
+        assertNullSafe(
             RemoteBindings.resolveWith(RemoteBindings.DEFAULT, RemoteBindings.KEY_BUTTON_1, false, UiContext.PLAYER_ONLY),
         )
     }
