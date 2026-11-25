@@ -86,7 +86,9 @@
 - **聚合多线路与失效自动轮询**：
   - 同一 `#EXTINF` 下附带多条备用地址会聚合为单一频道的多条线路，支持手动选源与播放失败时自动轮询下一条健康线路；不同 `#EXTINF` 条目严格保持各自独立。
 - **手机扫码远程配置（中英双语网页端）**：
-  - 支持多标签网页端直接管理「播放源与请求头」「显示与播放」「更新设置」「遥控按键」，修改立即同步到电视端。
+  - 在设置中直接展开局域网二维码（优先固定 `18080` 端口），手机扫码即可管理多播放源、全局请求头、显示与播放偏好、遥控按键以及 **JSON 配置备份与恢复**；移动端网页锁定防误触缩放，修改实时同步到电视端。
+- **7 大分类设置与 4K 防花屏解码**：
+  - 设置中心按「通用 · 节目列表 · 节目预告 · 外观 · 播放解码 · 遥控设置 · 关于与更新」清晰分级；内置硬件解码防花屏重建、默认字幕自动加载、右上角紧凑数字直选台、以及应用内「多画面」同屏对比（不劫持系统 `Home` 键）。
 - **双语界面与三档大屏缩放**：
   - 首次启动主动选择 **简体中文** 或 **English**，随时可在设置或网页端切换，并提供 **小 / 中 / 大** 文字与台标尺寸。
 
@@ -161,7 +163,8 @@ X-Custom-Token: your-token
 - **Lightweight & Fast**: ~8.6 MB footprint powered by a fast native playlist & XMLTV parser for instant channel zapping and smooth scrolling even on modest TV hardware.
 - **Two-Tier Bottom Info Console**: Channel zapping shows a cleaner, more translucent full-width channel banner. Pressing `OK` reveals the full console adding quick-switch recent channels on the left and quick controls (**Favorite · Source · Aspect Ratio · Audio · Subtitles · Multi-Screen · Settings**) on the right; `→` defaults to **Previous Channel** and can be remapped anytime.
 - **Exact M3U Grouping & Auto-Failover**: Multiple URLs under one `#EXTINF` aggregate into a switchable multi-source channel with automatic failover polling, while separate `#EXTINF` entries stay independent. Supports inline `|User-Agent=...&Referer=...` (joined with `&`), `#EXTINF`/`#EXTVLCOPT` attributes, and global per-line headers.
-- **Scan-to-Configure Web Console**: Scan the on-TV QR code from your phone or PC browser to manage playlists, HTTP headers, display scale (`Small` / `Medium` / `Large`), UI language (`简体中文` / `English`), and remote bindings.
+- **Scan-to-Configure Web Console & Backup**: Open the inline QR code inside Settings (fixed primary LAN port `18080`) from your phone browser to manage playlists, HTTP headers, display scale (`Small` / `Medium` / `Large`), UI language (`简体中文` / `English`), remote bindings, and **JSON backup/restore**.
+- **7-Category TV Settings & 4K Zap Resilience**: Clean 7-section settings drawer (General, Playlists, EPG, Appearance, Playback, Remote, About & Updates) with hardware 4K anti-artifacting rebuild, default subtitle loading, compact top-right numeric jump OSD, and in-app dual **Multi-Screen** mode.
 - **Install**: Download the signed APK from [**Latest Release**](https://github.com/zqs1qiwan/iqtvlite/releases/latest) (`Android TV 7.0+`, `arm64-v8a` & `armeabi-v7a`).
 
 ---
