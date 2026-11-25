@@ -311,8 +311,11 @@ fun ChannelInfoBanner(
                 Spacer(modifier = Modifier.width(18.dp))
 
                 Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.Center,
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .padding(top = 6.dp),
+                    verticalArrangement = Arrangement.Top,
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -402,7 +405,7 @@ fun ChannelInfoBanner(
                     val hasNextColumn = nextText != null
 
                     Row(
-                        verticalAlignment = Alignment.CenterVertically,
+                        verticalAlignment = Alignment.Top,
                         modifier = Modifier.fillMaxWidth(),
                     ) {
                         val currentColModifier = when {
@@ -456,8 +459,8 @@ fun ChannelInfoBanner(
                                     modifier = Modifier.testTag("info_card_progress"),
                                 )
                             } else {
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Box(modifier = Modifier.testTag("info_card_progress"))
+                                Spacer(modifier = Modifier.height(5.dp))
+                                Box(modifier = Modifier.height(3.dp).testTag("info_card_progress"))
                             }
                         }
 
