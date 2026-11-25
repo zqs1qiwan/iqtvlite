@@ -21,8 +21,16 @@ object HttpStreamAddress {
         val headers: Map<String, String> = emptyMap(),
     )
 
+    private fun stripOuterQuotes(raw: String): String {
+        val s = raw.trim()
+        if (s.length >= 2 && ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith('\'') && s.endsWith('\'')))) {
+            return s.substring(1, s.length - 1).trim()
+        }
+        return s
+    }
+
     fun normalizeUserAgent(raw: String?): String? {
-        val trimmed = raw?.trim().orEmpty()
+        val trimmed = stripOuterQuotes(raw.orEmpty())
         if (trimmed.isEmpty()) return null
         return if (trimmed.equals("VLC", ignoreCase = true)) DEFAULT_USER_AGENT else trimmed
     }
@@ -53,7 +61,9 @@ object HttpStreamAddress {
                 val keyRaw = segment.substring(0, eq).trim()
                 val valRaw = segment.substring(eq + 1).trim()
                 if (keyRaw.isEmpty() || valRaw.isEmpty()) continue
-                val decoded = runCatching { java.net.URLDecoder.decode(valRaw, "UTF-8") }.getOrDefault(valRaw).trim()
+                val decoded = stripOuterQuotes(
+                    runCatching { java.net.URLDecoder.decode(valRaw, "UTF-8") }.getOrDefault(valRaw)
+                )
                 if (decoded.isEmpty()) continue
                 val canonical = PlaylistSources.canonicalHeaderName(keyRaw)
                 pipeHeaders[canonical] = if (canonical == "User-Agent") {

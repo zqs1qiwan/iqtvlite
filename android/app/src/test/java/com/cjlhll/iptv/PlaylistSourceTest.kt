@@ -160,4 +160,15 @@ class PlaylistSourceTest {
         assertEquals(HttpStreamAddress.DEFAULT_USER_AGENT, headers3["User-Agent"])
         assertFalse(headers3.containsKey("Referer"))
     }
+
+    @Test
+    fun pipeQuotedUserAgentStripsOuterQuotes() {
+        val parsed = HttpStreamAddress.resolve(
+            url = "http://173.208.212.130:8181/720p/cctv1.m3u8|User-Agent=\"bingcha/1.1 (mianfeifenxiang)\"",
+            extinfUserAgent = "VLC",
+            extinfReferrer = null,
+        )
+        assertEquals("http://173.208.212.130:8181/720p/cctv1.m3u8", parsed.url)
+        assertEquals("bingcha/1.1 (mianfeifenxiang)", parsed.userAgent)
+    }
 }
