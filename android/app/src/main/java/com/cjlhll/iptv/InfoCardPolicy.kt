@@ -373,6 +373,18 @@ object InfoCardPolicy {
     fun programTimeLine(startMillis: Long, endMillis: Long, nowMillis: Long, catchup: Boolean): String =
         programTimeLine(startMillis, endMillis, nowMillis, catchup, AppLang.ZH)
 
+    fun formatRemainingMinutes(endMillis: Long, nowMillis: Long, lang: AppLang): String {
+        if (endMillis <= 0L || endMillis <= nowMillis) return ""
+        val remainingMin = (endMillis - nowMillis) / 60_000L
+        return if (lang == AppLang.EN) {
+            val remaining = if (remainingMin <= 0L) "<1 min" else "$remainingMin min"
+            "$remaining left"
+        } else {
+            val remaining = if (remainingMin <= 0L) "<1 分钟" else "$remainingMin 分钟"
+            "剩余 $remaining"
+        }
+    }
+
     fun programTimeLine(
         startMillis: Long,
         endMillis: Long,
@@ -383,14 +395,11 @@ object InfoCardPolicy {
         if (endMillis <= 0L) return ""
         val range = "${clockHm(startMillis)}–${clockHm(endMillis)}"
         if (catchup) return range
-        val remainingMin = (endMillis - nowMillis).coerceAtLeast(0L) / 60_000L
-        return if (lang == AppLang.EN) {
-            val remaining = if (remainingMin <= 0L) "<1 min" else "$remainingMin min"
-            "$range · $remaining left"
-        } else {
-            val remaining = if (remainingMin <= 0L) "<1 分钟" else "$remainingMin 分钟"
-            "$range · 剩余 $remaining"
+        val remainingLabel = formatRemainingMinutes(endMillis, nowMillis, lang)
+        if (remainingLabel.isEmpty()) {
+            return if (lang == AppLang.EN) "$range · <1 min left" else "$range · 剩余 <1 分钟"
         }
+        return "$range · $remainingLabel"
     }
 
     private val cardClockFormatter: java.time.format.DateTimeFormatter =

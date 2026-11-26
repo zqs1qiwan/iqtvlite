@@ -2,10 +2,7 @@ package com.cjlhll.iptv
 
 import android.app.Activity
 import android.app.PictureInPictureParams
-import android.content.BroadcastReceiver
-import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.graphics.Color
@@ -58,14 +55,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color as ComposeColor
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.lifecycleScope
 import androidx.media3.common.AudioAttributes
@@ -964,19 +960,7 @@ fun VideoPlayerScreen(
 
     // 仅在浮层可见时才驱动 nowMillis 与帧率轮询（稳态全屏播放 0 轮询、0 无谓重组）
     var nowMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
-    DisposableEffect(context) {
-        val filter = IntentFilter().apply {
-            addAction(Intent.ACTION_TIME_CHANGED)
-            addAction(Intent.ACTION_TIMEZONE_CHANGED)
-        }
-        val receiver = object : BroadcastReceiver() {
-            override fun onReceive(ctx: Context?, intent: Intent?) {
-                nowMillis = System.currentTimeMillis()
-            }
-        }
-        ContextCompat.registerReceiver(context, receiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
-        onDispose { runCatching { context.unregisterReceiver(receiver) } }
-    }
+    SystemTimeSyncEffect(context = context) { nowMillis = it }
     val needsClockTick = drawerOpen || infoCardOverlay != null
     LaunchedEffect(needsClockTick) {
         if (!needsClockTick) return@LaunchedEffect
@@ -1687,6 +1671,19 @@ fun VideoPlayerScreen(
         startPlayback(MediaPlaybackRequest(channel))
         Prefs.setLastChannel(context, channel.url, channel.title)
         recordRecentChannel(group, groupIndex + 1, variantIndex)
+        if (logoLoadEnabled && channelGroups.isNotEmpty()) {
+            val adjacentLogos = buildAdjacentLogoUrls(channelGroups, groupIndex)
+            if (adjacentLogos.isNotEmpty()) {
+                scope.launch {
+                    LogoLoader.prefetch(
+                        context,
+                        adjacentLogos,
+                        LogoLoader.CANONICAL_WIDTH_PX,
+                        LogoLoader.CANONICAL_HEIGHT_PX,
+                    )
+                }
+            }
+        }
     }
 
     /**
@@ -3032,51 +3029,6 @@ private fun clearAudioOverride(player: Player) {
         .clearOverridesOfType(C.TRACK_TYPE_TEXT)
         .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
         .build()
-}
-
-@Composable
-private fun PlayerClockOverlay(
-    textScale: Float,
-    modifier: Modifier = Modifier,
-) {
-    val context = LocalContext.current
-    var clockText by remember { mutableStateOf("") }
-    DisposableEffect(context) {
-        fun formatCurrentTime(): String {
-            val fmt = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
-            fmt.timeZone = java.util.TimeZone.getDefault()
-            return fmt.format(java.util.Date(System.currentTimeMillis()))
-        }
-        clockText = formatCurrentTime()
-        val filter = IntentFilter().apply {
-            addAction(Intent.ACTION_TIME_TICK)
-            addAction(Intent.ACTION_TIME_CHANGED)
-            addAction(Intent.ACTION_TIMEZONE_CHANGED)
-            addAction(Intent.ACTION_DATE_CHANGED)
-        }
-        val receiver = object : BroadcastReceiver() {
-            override fun onReceive(ctx: Context?, intent: Intent?) {
-                clockText = formatCurrentTime()
-            }
-        }
-        ContextCompat.registerReceiver(context, receiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
-        onDispose { runCatching { context.unregisterReceiver(receiver) } }
-    }
-    if (clockText.isNotEmpty()) {
-        Text(
-            text = clockText,
-            style = MaterialTheme.typography.titleMedium.copy(
-                fontSize = (20f * textScale).sp,
-                fontWeight = FontWeight.SemiBold,
-                shadow = androidx.compose.ui.graphics.Shadow(
-                    color = androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.72f),
-                    blurRadius = 8f,
-                ),
-            ),
-            color = TvDesignTokens.TextPrimary,
-            modifier = modifier,
-        )
-    }
 }
 
 private const val ZAP_TAG = "IQTV-ZAP"

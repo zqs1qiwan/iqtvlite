@@ -690,7 +690,6 @@ fun ChannelLogo(
     }
 
     val shape = TvDesignTokens.ShapeFlat
-    val bg = TvDesignTokens.SurfaceElevated
     val sizedModifier = modifier
         .let { if (width != null) it.width(width) else it }
         .let { if (height != null) it.height(height) else it }
@@ -702,23 +701,47 @@ fun ChannelLogo(
             contentScale = androidx.compose.ui.layout.ContentScale.Fit,
             modifier = sizedModifier.clip(shape)
         )
-    } else {
+    } else if (showFallbackText) {
         Box(
             modifier = sizedModifier
                 .clip(shape)
-                .background(bg),
+                .background(androidx.compose.ui.graphics.Color.White.copy(alpha = 0.08f)),
             contentAlignment = Alignment.Center
         ) {
-            if (showFallbackText) {
-                Text(
-                    text = fallbackTitle.take(1),
-                    maxLines = 1,
-                    overflow = TextOverflow.Clip,
-                    modifier = Modifier.padding(4.dp),
-                    style = MaterialTheme.typography.titleMedium,
-                    color = TvDesignTokens.TextSecondary
-                )
-            }
+            Text(
+                text = fallbackTitle.take(1),
+                maxLines = 1,
+                overflow = TextOverflow.Clip,
+                modifier = Modifier.padding(4.dp),
+                style = MaterialTheme.typography.titleMedium,
+                color = TvDesignTokens.TextSecondary
+            )
         }
+    } else {
+        // 加载期间保持全透明占位，彻底消除切台瞬间闪黑块
+        Box(modifier = sizedModifier)
     }
+}
+
+internal fun buildAdjacentLogoUrls(
+    groups: List<ChannelGroup>,
+    currentIndex: Int,
+    radius: Int = 3,
+): List<String> {
+    if (groups.isEmpty() || radius < 0) return emptyList()
+    val size = groups.size
+    val normalizedCenter = ((currentIndex % size) + size) % size
+    val out = ArrayList<String>(radius * 2 + 1)
+    val seen = HashSet<String>(radius * 2 + 1)
+    fun addAt(rawIndex: Int) {
+        val idx = ((rawIndex % size) + size) % size
+        val url = groups[idx].defaultChannel.logoUrl?.trim().orEmpty()
+        if (url.isNotBlank() && seen.add(url)) out.add(url)
+    }
+    addAt(normalizedCenter)
+    for (delta in 1..radius) {
+        addAt(normalizedCenter + delta)
+        addAt(normalizedCenter - delta)
+    }
+    return out
 }

@@ -178,12 +178,24 @@ object StreamPlayback {
             }
         }
         val upstreamFactory = DefaultDataSource.Factory(context, http)
-        val countingFactory = androidx.media3.datasource.DataSource.Factory {
-            JingcaiTsDataSource(upstreamFactory.createDataSource(), pipeline, probe)
+        val mediaDataSourceFactory: androidx.media3.datasource.DataSource.Factory =
+            if (pipeline != null || probe != null || BuildConfig.DEBUG) {
+                androidx.media3.datasource.DataSource.Factory {
+                    JingcaiTsDataSource(upstreamFactory.createDataSource(), pipeline, probe)
+                }
+            } else {
+                upstreamFactory
+            }
+        val factory = DefaultMediaSourceFactory(
+            mediaDataSourceFactory,
+            extractors,
+            androidx.media3.extractor.text.DefaultSubtitleParserFactory(),
+        ).apply {
+            if (JingcaiExperiment.injectCaptions(experiment)) {
+                @Suppress("DEPRECATION")
+                experimentalParseSubtitlesDuringExtraction(true)
+            }
         }
-        val factory = DefaultMediaSourceFactory(countingFactory, extractors,
-            androidx.media3.extractor.text.DefaultSubtitleParserFactory())
-            .experimentalParseSubtitlesDuringExtraction(JingcaiExperiment.injectCaptions(experiment))
         val item = MediaItem.Builder().setUri(streamUrl).setMediaId(id).build()
         val prepared = intent.prepared(request.copy(channel=channel.copy(id=channelId)), id)
         metrics.begin(prepared, onFailure)

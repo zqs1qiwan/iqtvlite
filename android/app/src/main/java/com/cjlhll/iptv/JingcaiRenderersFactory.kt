@@ -63,6 +63,12 @@ class JingcaiRenderersFactory(
     private val softVideo: Boolean,
 ) : DefaultRenderersFactory(context) {
 
+    init {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+            forceEnableMediaCodecAsynchronousQueueing()
+        }
+    }
+
     override fun buildVideoRenderers(
         context: Context,
         extensionRendererMode: Int,
