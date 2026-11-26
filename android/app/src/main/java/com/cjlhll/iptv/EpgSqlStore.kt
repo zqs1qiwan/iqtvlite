@@ -222,7 +222,7 @@ object EpgSqlStore {
                 }
             }
             val nextByChannelId = HashMap<String, Pair<String, Long>>(256)
-            val windowEnd = nowMillis + 12L * 3600_000L
+            val windowEnd = nowMillis + 6L * 3600_000L
             d.rawQuery(
                 "SELECT channel_id, start_ms, title FROM programs WHERE start_ms > ? AND start_ms <= ? ORDER BY start_ms ASC",
                 arrayOf(nowMillis.toString(), windowEnd.toString())

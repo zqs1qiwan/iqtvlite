@@ -100,8 +100,8 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
 
     // EPG 缓存按 epgVersion 分代，永不缓存空载期假空结果
     private var cachedEpgVersion = -1
-    private val epgCache = object : LinkedHashMap<String, List<EpgProgram>>(32, 0.75f, true) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, List<EpgProgram>>?): Boolean = size > 32
+    private val epgCache = object : LinkedHashMap<String, List<EpgProgram>>(128, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, List<EpgProgram>>?): Boolean = size > 128
     }
     private var loadedEpgChannelUrl: String? = null
     private var loadedEpgAllPrograms: List<EpgProgram> = emptyList()
@@ -111,6 +111,7 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
     private var epgLoading = false
 
     private var epgLoadJob: Job? = null
+    private var epgPrefetchJob: Job? = null
     private var prefetchJob: Job? = null
     private var pendingGroupSelectJob: Job? = null
     private var pendingGroupName: String? = null
@@ -361,6 +362,7 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
 
     override fun onDetachedFromWindow() {
         epgLoadJob?.cancel()
+        epgPrefetchJob?.cancel()
         prefetchJob?.cancel()
         pendingGroupSelectJob?.cancel()
         pendingGroupName = null
@@ -471,6 +473,7 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
 
         if (newSnapshot.epgVersion != cachedEpgVersion) {
             cachedEpgVersion = newSnapshot.epgVersion
+            epgPrefetchJob?.cancel()
             epgCache.clear()
             loadedEpgChannelUrl = null
         }
@@ -544,6 +547,7 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
         isOpen = open
         if (!open) {
             epgLoadJob?.cancel()
+            epgPrefetchJob?.cancel()
             prefetchJob?.cancel()
             pendingGroupSelectJob?.cancel()
             pendingGroupSelectJob = null
@@ -1042,6 +1046,7 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
         if (cached != null) {
             epgLoading = false
             applyLoadedPrograms(ch, cached)
+            scheduleAdjacentEpgPrefetch(focusedChannelIndex)
             return
         }
 
@@ -1081,6 +1086,40 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
                 epgCache[ch.url] = programs
             }
             applyLoadedPrograms(ch, programs)
+            scheduleAdjacentEpgPrefetch(focusedChannelIndex)
+        }
+    }
+
+    private fun scheduleAdjacentEpgPrefetch(centerIndex: Int) {
+        epgPrefetchJob?.cancel()
+        val snap = snapshot
+        if (!isOpen || showGroups || snap.channels.isEmpty()) return
+        val provider = snap.epgProgramProvider
+        val data = snap.epgData
+        if (provider == null && data == null) return
+        val version = snap.epgVersion
+        val targets = ArrayList<Channel>(8)
+        for (delta in 1..4) {
+            snap.channels.getOrNull(centerIndex + delta)?.let { if (!epgCache.containsKey(it.url)) targets.add(it) }
+            snap.channels.getOrNull(centerIndex - delta)?.let { if (!epgCache.containsKey(it.url)) targets.add(it) }
+        }
+        if (targets.isEmpty()) return
+        epgPrefetchJob = scope.launch {
+            for (target in targets) {
+                if (!isOpen || snapshot.epgVersion != version) return@launch
+                if (epgCache.containsKey(target.url)) continue
+                val loaded = withContext(Dispatchers.IO) {
+                    when {
+                        provider != null -> provider(target)
+                        data != null -> data.resolveChannelId(target)?.let { data.programsByChannelId[it] }.orEmpty()
+                        else -> emptyList()
+                    }
+                }
+                if (!isOpen || snapshot.epgVersion != version) return@launch
+                if (loaded.isNotEmpty() || version > 0) {
+                    epgCache[target.url] = loaded
+                }
+            }
         }
     }
 

@@ -5,8 +5,8 @@
     <img src="assets/logo-transparent.png" alt="IQTV Lite" width="420" />
   </picture>
 
-  <p><strong>专为 Android TV 与电视盒子打造的轻量、开源、纯净高响应直播电视播放器</strong></p>
-  <p><em>A clean, lightweight, open-source D-pad IPTV player built for Android TV and TV boxes</em></p>
+  <p><strong>专为 Android TV 与电视盒子打造的轻量、纯净直播电视播放器</strong></p>
+  <p><em>A clean, lightweight, open-source D-pad IPTV player for Android TV and TV boxes</em></p>
 
   <p>
     <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPLv3-2563EB.svg?style=flat-square" alt="License: GPLv3" /></a>
@@ -16,13 +16,13 @@
   </p>
 
   <p>
-    <a href="#为什么选择-iqtv-lite">中文文档</a> ·
-    <a href="#界面展示">界面展示</a> ·
-    <a href="#核心功能">核心功能</a> ·
-    <a href="#播放列表多线路与自定义-header-示例">播放列表与 Header</a> ·
-    <a href="#实验功能说明">实验功能</a> ·
+    <a href="#为什么选择-iqtv-lite">产品亮点</a> ·
+    <a href="#界面预览">界面预览</a> ·
+    <a href="#使用功能指南">功能指南</a> ·
+    <a href="#播放列表与请求头配置">播放列表与 Header</a> ·
+    <a href="#高级与实验选项">高级选项</a> ·
     <a href="#安装与更新">安装与更新</a> ·
-    <a href="#遥控器操作指南">遥控器操作</a> ·
+    <a href="#遥控器按键说明">遥控器操作</a> ·
     <a href="#english-documentation">English Documentation</a>
   </p>
 </div>
@@ -31,91 +31,86 @@
 
 ## 为什么选择 IQTV Lite
 
-- **完全免费与开源（GPLv3），零广告、无付费解锁墙**：多播放源切换、XMLTV 节目单、回看、自定义按键、手机扫码网页配置、配置备份恢复与内置更新全部免费可用，没有会员门槛。
-- **极致轻量化与流畅性能优化**：底层采用 Rust 原生高性能解析核心与 SQLite EPG 索引，面对上万条频道与大体积节目单也能快速加载与检索；选台列表与硬件解码全链路零等待，即使在入门级电视盒子上连续上下换台、快速翻组也依然顺滑跟手。
-- **开箱兼容复杂直播源**：完整支持防盗链 `Referer` / `User-Agent` / `Cookie` 等请求头配置（兼容单/双引号包裹值）、同频道多线路切换与失效自动轮询、以及同 `tvg-id` 下的 4K 与标准高清独立区分。
+- **免费开源，纯净无广告**：多播放列表切换、EPG 节目单、回看、自定义遥控按键、手机扫码管理、配置备份恢复及内置更新全部免费开放，没有任何广告或付费限制。
+- **专为电视盒子优化的流畅体验**：支持硬件加速解码（含 4K H.265 / HEVC），换台响应迅速；即使在入门级电视盒子上管理上千个频道与长节目单，翻页与换台依然顺滑跟手。
+- **复杂直播源开箱即用**：内置对防盗链 `Referer` / `User-Agent` / `Cookie` 等请求头的支持，支持同频道多条备用线路自动容灾与手动切换，并精准区分 4K 与普通高清频道。
 
 ---
 
-## 界面展示
+## 界面预览
 
 <table>
   <tr>
     <td width="50%" align="center">
-      <img src="assets/screenshots/player-infocard.png" alt="双层智能信息栏与控制台" />
+      <img src="assets/screenshots/player-infocard.png" alt="底部信息栏与快捷控制" />
       <br />
-      <sub><b>双层智能信息栏</b>：换台时等高展示台标、当前/下一节目与实时参数；两段式第 1 段在底部嵌入动态引导指向，按 ↓ 或再按 OK 展开 5 个紧凑最近观看与「收藏 / 换源(线路 1/N) / 适应 / 音轨 / 字幕 / 多画面 / 设置」快捷控制</sub>
+      <sub><b>底部信息栏与快捷控制</b>：显示当前频道台标、名称、节目进度与画质参数；向下或再按一次确认键即可展开最近观看列表及收藏、换源、画面比例、音轨、字幕、多画面与设置入口。</sub>
     </td>
     <td width="50%" align="center">
-      <img src="assets/screenshots/channel-drawer.png" alt="频道列表与节目预告抽屉" />
+      <img src="assets/screenshots/channel-drawer.png" alt="频道列表与节目单" />
       <br />
-      <sub><b>频道列表与 EPG 节目单</b>：台标展示、正在播出高亮进度、多日节目预告与回看入口；再次点击当前直播台直接收起抽屉不重载</sub>
-    </td>
-  </tr>
-  <tr>
-    <td width="50%" align="center">
-      <img src="assets/screenshots/drawer-groups-sources.png" alt="多级抽屉分组与多源切换" />
-      <br />
-      <sub><b>逐级抽屉与多源切换</b>：按左键依次展开「频道」「分组」「播放源」，支持按默认/名称/手动分组与收藏夹过滤，视野清爽不遮挡画面</sub>
-    </td>
-    <td width="50%" align="center">
-      <img src="assets/screenshots/settings.png" alt="7大分类电视端设置菜单" />
-      <br />
-      <sub><b>7 大分类设置中心</b>：通用、节目列表、节目预告、外观、播放解码、遥控设置、关于与更新，底部提供几何居中按键提示</sub>
+      <sub><b>频道列表与节目单</b>：直观展示台标与正在播出的节目，右侧同步列出多日节目预告；选中带有回看标识的历史节目可直接点播回看。</sub>
     </td>
   </tr>
   <tr>
     <td width="50%" align="center">
-      <img src="assets/screenshots/webui-qr.png" alt="设置内嵌扫码 WebUI 配置" />
+      <img src="assets/screenshots/drawer-groups-sources.png" alt="频道分组与播放源切换" />
       <br />
-      <sub><b>设置内嵌扫码 WebUI</b>：在设置内直接扫码打开手机网页端（固定主端口 `18080`），免遥控打字管理多源、全局请求头、遥控映射与 JSON 备份恢复</sub>
+      <sub><b>频道分组与多源切换</b>：在选台列表按左键可切换不同频道分组与收藏夹，接入多个播放源时可继续向左快速切换列表。</sub>
     </td>
     <td width="50%" align="center">
-      <img src="assets/screenshots/about-updates.png" alt="关于与更新页面" />
+      <img src="assets/screenshots/settings.png" alt="电视端设置中心" />
       <br />
-      <sub><b>关于、内置更新与开源协议</b>：居中品牌标识与版本号展示，支持自动/手动检查 GitHub Releases 更新与项目 GPLv3 开源信息</sub>
+      <sub><b>分类设置中心</b>：包含通用、节目列表、节目预告、外观、播放解码、遥控设置、关于与更新七大板块，所有功能均可使用电视遥控器直接设置。</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" align="center">
+      <img src="assets/screenshots/webui-qr.png" alt="手机扫码网页配置" />
+      <br />
+      <sub><b>手机扫码配置</b>：在设置内打开二维码并用手机浏览器扫码，即可直接输入订阅链接、批量设置请求头、自定义按键映射以及导出或恢复配置备份。</sub>
+    </td>
+    <td width="50%" align="center">
+      <img src="assets/screenshots/about-updates.png" alt="关于与在线更新" />
+      <br />
+      <sub><b>关于与在线更新</b>：查看当前软件版本，支持一键检查并下载安装最新版本，保持播放器持续更新。</sub>
     </td>
   </tr>
 </table>
 
 ---
 
-## 核心功能
+## 使用功能指南
 
-- **双层底部信息栏与两段式引导**：
-  - **上下键换台**：弹出轻量半透明、固定等高的底部信息栏（无论当前频道是否有节目单均保持一致高度，避免跳变），完整展示台标、频道号、分组、当前/下一节目、直播进度与真实视频参数（分辨率 / 真实帧率 / 声道 / HDR / 编码）。
-  - **两段式 `OK` 控制台**：第 1 次按 `OK` 展示台标与节目信息，并在底边嵌入细条动态向下折线引导；按 `↓` 或第 2 次按 `OK` 展开紧凑控制区，左侧显示 **5 个最近观看频道**（突出放大台标），右侧常驻 **收藏 · 换源（单源显示「换源」，多源显示 `线路 1/N`）· 适应（画面比例）· 音轨 · 字幕 · 多画面 · 设置**。也可在「外观」切换为直达展开模式。
-- **逐级展开选台抽屉（60fps 原生列表）**：
-  - 按 `←` 打开 **频道 + 节目单**，聚焦长节目名自动平滑滚动；再次点击当前正在播放的直播台会直接收起抽屉，不重复加载。
-  - 再按一次 `←` 展示 **分组 + 频道**，支持按默认 / 名称 / 手动排序分组，内置可独立显隐的「全部」与「收藏夹」。
-  - 若启用了多个播放源，继续按 `←` 展开最左侧 **播放源** 列表快速切换。
-- **聚合多线路与失效自动轮询**：
-  - 同一 `#EXTINF` 下附带多条备用地址会自动聚合为单一频道的多条线路，在 OK 菜单显示 `线路 1/N` 手动切换按钮，并在播放失败时自动轮询下一条健康线路（单次选台限 1 次紧急刷源防止坏台死循环）；不同 `#EXTINF` 条目严格保持各自独立。
-- **4K/HEVC 防花屏、默认字幕与无底色时钟**：
-  - 支持 4K/HEVC 切台硬件解码器防花屏重建，以及默认字幕自动加载与首选语言（自动 / 中文 / English）切换。
-  - 可在「外观」开启右上角 **无背景纯文字时间显示**（数字选台时自动避让）；右下角切台加载提示采用全透明背景设计。
-- **右上角紧凑数字直选台**：
-  - 按数字键仅在右上角轻量弹出匹配频道号与台名列表（不遮挡主画面），支持方向键筛选或超时自动跳转。
-- **应用内「多画面」与系统画中画分离**：
-  - OK 菜单「多画面」开启应用内双频道同屏对比（`→` 互换主副画面，双击返回退出）；按系统 `Home` 键进入桌面画中画默认关闭，避免劫持电视盒子原有桌面习惯，需用户主动在「通用」开启。
-- **设置内嵌手机扫码 WebUI（中英双语）**：
-  - 在设置中直接生成局域网二维码（固定主端口 `18080`，不可用时有序回退），手机扫码即可管理播放源、全局请求头、显示与播放偏好、遥控映射及 **JSON 配置备份与恢复**；手机端已锁定视口防止输入误触缩放。
-- **7 大分类设置与安全默认习惯**：
-  - 涵盖「通用 · 节目列表 · 节目预告 · 外观 · 播放解码 · 遥控设置 · 关于与更新」；默认不劫持系统 `Home` 键、默认开启双击返回退出、`→` 默认 **切换上一频道**（可自由改键）。
+- **智能频道信息栏与快捷栏**：
+  - 上下切换频道时，屏幕底部会短暂显示频道信息与当前/下一档节目；可在「外观」中设置信息栏停留时长或开启右上角实时时间显示。
+  - 按 `OK` 键呼出控制台：两段式模式下先显示频道信息与底部箭头提示，按 `↓` 或再按一次 `OK` 即可展开 **最近观看的 5 个频道** 与快捷操作栏（**收藏 · 换源 · 画面比例 · 音轨 · 字幕 · 多画面 · 设置**）；习惯直接展开的用户也可在「外观」中调整。
+- **分栏选台与节目回看**：
+  - 按 `←` 键打开左侧频道列表与右侧节目单，选中不同频道即可浏览未来与历史节目；支持按「默认 / 名称 / 手动」顺序整理分组，以及显示或隐藏「全部频道」和「收藏夹」。
+  - 再次点击当前正在播放的频道会直接收起菜单回到全屏观看；若已添加多个订阅源，继续按 `←` 即可快速切换播放源。
+- **多线路容灾与手动换源**：
+  - 当一个频道配有多个播放地址时，快捷栏会显示当前线路编号（如 `线路 1/3`），可随时手动切换清晰度或备用源；若当前线路连接异常，播放器会自动尝试下一条可用线路。
+- **数字直达选台与画质增强**：
+  - 使用遥控器数字键输入频道号，屏幕右上角会实时列出匹配频道，稍候或按确认即可跳转。
+  - 支持硬件视频解码优先调度（包含 4K H.265 流畅硬解）及多语言字幕自动匹配。
+- **应用内多画面同屏**：
+  - 在 `OK` 快捷栏点击「多画面」，可在当前画面旁再开启一个小窗同时观看另一个频道；按 `→` 键可快速互换主副画面，双击返回即可退出多画面。
+- **手机扫码免打字配置与配置备份**：
+  - 在电视端「设置」内扫码进入手机网页后台，无需用遥控器输入复杂网址即可添加 M3U / EPG 订阅、全局请求头、微调播放参数，并可一键导出或导入 **JSON 完整配置备份**。
 
 ---
 
-## 播放列表多线路与自定义 Header 示例
+## 播放列表与请求头配置
 
-### 1. 多线路聚合 vs 独立频道
-- **同一频道多条备用线路**（一个 `#EXTINF` 下跟多行地址，自动合并并提供失效轮询与 `线路 1/N` 切换）：
+### 1. 同台多线路 vs 独立频道
+- **同一频道聚合多条线路**（在一个 `#EXTINF` 信息行下方连续放置多个地址，播放器会自动合并为 `线路 1/N` 供切换与自动容错）：
 ```m3u
 #EXTINF:-1 tvg-id="dongfangweishi" tvg-name="东方卫视" tvg-logo="https://example.com/logo/dragontv.png" http-user-agent="VLC" group-title="卫视频道",东方卫视
 http://example.com/line1.m3u8|User-Agent=VLC
 http://example.com/line2.m3u8|User-Agent="CustomPlayer/1.1"
 http://example.com/line3.m3u8
 ```
-- **独立频道**（各自拥有 `#EXTINF`，即使 `tvg-id` 或名称相同也保持独立显示，如 `4K` 与标准版分别呈现）：
+- **保留独立频道**（各自使用独立的 `#EXTINF` 行，即使拥有相同的台标或 `tvg-id`，如 `4K` 与高清频道也会分开显示）：
 ```m3u
 #EXTINF:-1 tvg-id="beijingweishi" group-title="卫视频道",北京卫视4K
 https://example.com/btv4k.m3u8|Referer=https://api.example.com/
@@ -123,19 +118,19 @@ https://example.com/btv4k.m3u8|Referer=https://api.example.com/
 http://example.com/btvhd.m3u8|User-Agent=VLC
 ```
 
-### 2. 自定义 HTTP Header 写法与优先级
-当同一频道同时存在多种 Header 声明时，生效优先级为：**`URL 后 | 参数` > `#EXTINF / #EXTVLCOPT` > `设置 / 网页端全局 Header`**。
+### 2. 自定义 HTTP 请求头（Header）
+当多处均配置了请求头时，生效优先级为：**单条地址后缀 `|` 参数 > `#EXTINF / #EXTVLCOPT` 行内参数 > 设置中的全局 Header**。
 
-- **方式 A：播放地址后用 `|` 拼接（多个 Header 使用 `&` 或 `;` 连接，值支持引号包裹）**
+- **方式 A：地址末尾用 `|` 附加参数**（多个字段用 `&` 或 `;` 分隔，含空格的值可用引号括起）：
 ```text
 https://example.com/live.m3u8|User-Agent=VLC&Referer=https://example.com/&Origin=https://example.com&Cookie=sid=123
 ```
-- **方式 B：`#EXTINF` 行内属性或 `#EXTVLCOPT:` 指令**
+- **方式 B：写在 `#EXTINF` 或 `#EXTVLCOPT:` 中**：
 ```m3u
 #EXTINF:-1 http-user-agent="VLC" http-referer="https://example.com/" http-origin="https://example.com",示例频道
 http://example.com/stream.m3u8
 ```
-- **方式 C：全局自定义 User-Agent 与全局 Header（在「设置 → 通用」或手机网页端配置，每行一条）**
+- **方式 C：在「设置 → 通用」或手机扫码网页端配置全局 User-Agent 与全局 Header（每行一条）**：
 ```text
 Referer: https://example.com/
 Origin: https://example.com
@@ -144,39 +139,39 @@ X-Custom-Token: your-token
 
 ---
 
-## 实验功能说明
+## 高级与实验选项
 
-在「设置 → 播放解码 → 高级优化（实验）」中包含以下实验性或硬件适配选项：
+在「设置 → 播放解码 → 高级优化（实验）」中提供了以下进阶调节项，适合针对特定设备或特殊网络环境优化体验：
 
-| 功能名称 | 默认状态 | 作用说明 | 使用建议 |
+| 选项名称 | 默认状态 | 功能说明 | 使用建议 |
 | --- | --- | --- | --- |
-| **4K 切台防花屏重建** | 开启 | 切换到 4K / HEVC 频道时自动重建硬件视频解码器，清理老旧电视芯片（如部分 Android 9 机顶盒）残留的上一台参考帧缓存，避免切台花屏。 | 若你的电视/盒子从不花屏且希望 4K 换台更极限流畅，可尝试关闭。 |
-| **预连接相邻频道** | 关闭 | 空闲时在后台预连接当前频道的上一台与下一台（TCP/TLS 握手），以缩短上下键连续换台的等待时间。 | 对连接数或并发有限制的单播源建议保持关闭，以免增加服务器连接压力。 |
-| **组播预热** | 关闭 | 仅针对家庭宽带 IPTV 组播（`udp://` / `rtp://`）环境，提前预热相邻频道的组播组加入以加速内网切台。 | 使用公网 HTTP/HLS 单播直播源的用户请保持关闭。 |
-| **码流兼容模式** | 关闭 | 针对非标准广电 TS 流（如 PMT/PCR 时间戳异常导致的卡死、只出声不出画或音画不同步）提供实验性兼容调度策略。 | 仅在个别频道播放异常时按需开启测试，正常流请保持关闭。 |
+| **4K 切台防花屏重建** | 开启 | 切换到 4K 超高清频道时自动重置视频解码器，避免部分老旧机顶盒在切换高分辨率画面时出现绿屏或花屏。 | 仅在确认当前设备切换 4K 永不花屏且追求极致切台速度时关闭。 |
+| **预连接相邻频道** | 关闭 | 观看当前频道时在后台提前建立上/下一台的连接，缩短连续按上下键换台的等待时间。 | 若所用直播源对同一 IP 或 Token 的同时连接数有限制，请保持关闭。 |
+| **组播预热** | 关闭 | 针对家庭宽带 IPTV 组播源（`udp://` / `rtp://`）提前加入相邻组播流以加速内网换台。 | 普通公网 HTTP/HLS 直播源请保持关闭。 |
+| **码流兼容模式** | 关闭 | 针对部分时间戳异常、容易只出声不出画或音画逐渐漂移的特殊频道提供兼容播放模式。 | 仅在个别频道播放异常时按需尝试，日常观看保持关闭即可。 |
 
 ---
 
 ## 安装与更新
 
-1. 前往 [**Releases 最新版本**](https://github.com/zqs1qiwan/iqtvlite/releases/latest) 下载 `IQTV-Lite-v0.2.2.apk`（或通用最新包 `IQTV-Lite-latest.apk`）。
-2. 将 APK 传至 Android TV / 电视盒子安装（支持 Android 7.0 及以上，兼容 32 位与 64 位 ARM 设备）。
-3. 后续可在电视端「设置 → 关于与更新 → 检查更新」直接内联检测并下载安装新版本，也可手动前往 GitHub Releases 更新。
+1. 前往 [**Releases 最新版本**](https://github.com/zqs1qiwan/iqtvlite/releases/latest) 下载 `IQTV-Lite-v0.2.3.apk`（或通用最新包 `IQTV-Lite-latest.apk`）。
+2. 将安装包传至 Android TV 或电视盒子安装（支持 Android 7.0 及以上系统，兼容 32 位与 64 位设备）。
+3. 之后可在电视端进入「设置 → 关于与更新 → 检查更新」，直接在应用内下载安装新版。
 
 ---
 
-## 遥控器操作指南
+## 遥控器按键说明
 
-| 按键 | 功能说明 |
+| 按键 | 默认功能 |
 | --- | --- |
-| `↑` / `↓` | 切换上 / 下一个频道（弹出固定高度半透明当前台信息卡，按设置时长自动收起） |
-| `OK` / `Enter` | 呼出控制台（两段式下第 1 次显示台标/节目，按 `↓` 或再按 `OK` 展开最近观看 5 台与右侧快捷控制；点击右侧齿轮进入设置） |
-| `←` | 逐级打开选台抽屉：**频道 + 节目单 → 分组 → 播放源** |
-| `→` | 默认**切换上一频道**（可在「设置 → 遥控设置」自由改键为打开设置或其他功能；在多画面模式下切换主副画面） |
-| `Back` | 逐级退回或关闭菜单；在播放器全屏状态默认支持双击返回退出 |
-| `数字键` | 直接输入频道号，右上角紧凑实时显示匹配台号与台名并可方向键选择跳转 |
+| `↑` / `↓` | 切换上 / 下一个频道，并在底部弹出当前频道与节目信息 |
+| `OK` / `确认` | 呼出控制台（两段式下先显示台标与节目，按 `↓` 或再次按 `OK` 展开最近观看与快捷操作栏；点击最右侧齿轮进入设置） |
+| `←` | 逐级打开选台抽屉：**频道与节目单 → 分组 → 播放源** |
+| `→` | 默认**一键返回上一频道**（在多画面模式下用于互换主副画面，也可在设置中改作打开设置等其他功能） |
+| `Back / 返回` | 关闭菜单或逐级退回；全屏播放时默认连按两次返回退出应用 |
+| `数字键 0–9` | 输入频道号快速选台，右上角同步提示匹配频道列表 |
 
-> 以上短按与长按行为均可在「设置 → 遥控设置」或手机网页端自由改键或置空。
+> 以上短按与长按功能均可在「设置 → 遥控设置」或手机网页端按个人习惯自由修改。
 
 ---
 
@@ -184,11 +179,11 @@ X-Custom-Token: your-token
 
 <div align="center">
   <p>
-    <a href="#why-iqtv-lite">Why IQTV Lite</a> ·
+    <a href="#why-iqtv-lite">Highlights</a> ·
     <a href="#screenshots">Screenshots</a> ·
-    <a href="#key-features">Key Features</a> ·
+    <a href="#feature-guide">Feature Guide</a> ·
     <a href="#playlist--custom-http-headers">Playlist & Headers</a> ·
-    <a href="#experimental-features">Experimental Features</a> ·
+    <a href="#advanced--experimental-options">Advanced Options</a> ·
     <a href="#installation--updates">Installation & Updates</a> ·
     <a href="#remote-control-guide">Remote Control</a> ·
     <a href="#license">License</a>
@@ -197,85 +192,80 @@ X-Custom-Token: your-token
 
 ## Why IQTV Lite
 
-- **100% Free & Open Source (GPLv3) — Zero Ads, Zero Paywalls**: Multi-playlist switching, XMLTV EPG, catch-up playback, custom D-pad key remapping, scan-to-configure LAN WebUI, JSON backup/restore, and in-app updates are all completely free.
-- **Lightweight & Tuned for Entry-Level TV Boxes**: Powered by a native Rust playlist/XMLTV parser and SQLite EPG index for near-instant loading across 10,000+ channels. Channel zapping and hardware decoding run with zero blocking probes on the hot path.
-- **Built for Real-World Streams**: Full support for anti-hotlink `Referer` / `User-Agent` / `Cookie` headers (including quoted values), single-channel multi-line failover & manual line switching, and separate 4K vs HD entries even when sharing the same `tvg-id`.
+- **Free, Open Source & Ad-Free (GPLv3)**: Multi-playlist support, XMLTV EPG, catch-up playback, full D-pad remapping, mobile QR configuration, JSON backup/restore, and built-in app updates are all completely free with zero ads or paywalls.
+- **Fast & Smooth on Living-Room TVs**: Optimized for Android TV and entry-level TV boxes with hardware-accelerated decoding (including smooth 4K H.265 playback) and responsive navigation even with thousands of channels and multi-day program guides.
+- **Ready for Complex Streams**: Works out of the box with custom `Referer` / `User-Agent` / `Cookie` headers, automatic multi-line failover and manual source switching, plus clean separation between 4K and HD channels.
 
 ## Screenshots
 
 <table>
   <tr>
     <td width="50%" align="center">
-      <img src="assets/screenshots/player-infocard.png" alt="Two-Tier Bottom Info Console" />
+      <img src="assets/screenshots/player-infocard.png" alt="Bottom Info Bar & Quick Controls" />
       <br />
-      <sub><b>Two-Tier Info Console</b>: Fixed-height channel banner with EPG progress and verified stream tags; step-1 shows an embedded animated downward cue, pressing ↓ or OK again expands 5 compact recent channels and quick controls (Favorite / Source / Aspect / Audio / Subtitles / Multi-Screen / Settings)</sub>
+      <sub><b>Bottom Info Bar & Quick Controls</b>: Displays channel logo, live/next program progress, and stream badges. Press ↓ or OK again to reveal recently watched channels along with Favorite, Source, Aspect Ratio, Audio, Subtitles, Multi-Screen, and Settings shortcuts.</sub>
     </td>
     <td width="50%" align="center">
-      <img src="assets/screenshots/channel-drawer.png" alt="Channel List and EPG Drawer" />
+      <img src="assets/screenshots/channel-drawer.png" alt="Channel List & EPG Guide" />
       <br />
-      <sub><b>Channel List & EPG Guide</b>: Channel logos, highlighted live progress, multi-day EPG schedule, and catch-up playback; clicking the active channel closes the drawer cleanly without reloading</sub>
-    </td>
-  </tr>
-  <tr>
-    <td width="50%" align="center">
-      <img src="assets/screenshots/drawer-groups-sources.png" alt="Progressive Groups and Multi-Source Drawer" />
-      <br />
-      <sub><b>Progressive Drawer & Source Switcher</b>: Press ← to step through Channels, Groups (Default / Name / Manual order + Favorites), and enabled Playlist Sources cleanly without obscuring playback</sub>
-    </td>
-    <td width="50%" align="center">
-      <img src="assets/screenshots/settings.png" alt="7-Category TV Settings Center" />
-      <br />
-      <sub><b>7-Category TV Settings</b>: General, Playlists, EPG, Appearance, Playback, Remote, and About & Updates, with centered keycap navigation hints at the bottom</sub>
+      <sub><b>Channel List & EPG Guide</b>: Browse channels with logos and live progress alongside a multi-day program schedule; select any past program marked for catch-up to replay it directly.</sub>
     </td>
   </tr>
   <tr>
     <td width="50%" align="center">
-      <img src="assets/screenshots/webui-qr.png" alt="Inline QR Code WebUI Configuration" />
+      <img src="assets/screenshots/drawer-groups-sources.png" alt="Channel Groups & Sources Switcher" />
       <br />
-      <sub><b>Inline QR WebUI Console</b>: Scan directly inside Settings (fixed primary port `18080`) from your phone browser to manage playlists, global headers, remote bindings, and JSON backup/restore</sub>
+      <sub><b>Groups & Multi-Source Switcher</b>: Press ← inside the channel list to jump between groups or Favorites, and press ← again when multiple playlists are enabled to switch sources seamlessly.</sub>
     </td>
     <td width="50%" align="center">
-      <img src="assets/screenshots/about-updates.png" alt="About and In-App Updates" />
+      <img src="assets/screenshots/settings.png" alt="7-Category TV Settings" />
       <br />
-      <sub><b>About, Updates & License</b>: Centered brand header and version display, auto/manual GitHub Releases update check, and GPLv3 project details</sub>
+      <sub><b>Organized TV Settings</b>: Seven clear sections—General, Playlists, EPG, Appearance, Playback, Remote, and About & Updates—designed for comfortable remote-control navigation.</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" align="center">
+      <img src="assets/screenshots/webui-qr.png" alt="Phone QR Code Setup" />
+      <br />
+      <sub><b>Scan-to-Configure from Phone</b>: Open the built-in QR code in Settings and scan it from your phone browser to paste playlist/EPG URLs, edit custom headers, remap keys, or export/restore full JSON backups without typing on the TV.</sub>
+    </td>
+    <td width="50%" align="center">
+      <img src="assets/screenshots/about-updates.png" alt="About & In-App Updates" />
+      <br />
+      <sub><b>About & In-App Updates</b>: View installed version details and check for, download, and install new releases directly on your TV.</sub>
     </td>
   </tr>
 </table>
 
-## Key Features
+## Feature Guide
 
-- **Two-Tier Bottom Info Console & Animated Peek Cue**:
-  - **Zapping (`↑` / `↓`)**: Displays a translucent, **fixed-height** banner (consistent whether EPG is present or `"No program info"`, preventing height jumps) showing channel logo, number, group badge, current/next program, live progress, and real stream badges (resolution, real FPS, audio channels, HDR, codec).
-  - **Two-Step `OK` Console**: First `OK` press opens the channel info banner with a subtle embedded animated downward chevron along the bottom edge; pressing `↓` or a second `OK` expands **5 compact recent channel tiles** (with enlarged inner logos) on the left and quick actions on the right: **Favorite · Source (`Source` or `Src 1/N`) · Aspect Ratio · Audio · Subtitles · Multi-Screen · Settings**. Direct one-step expansion is also available in Appearance settings.
-- **Progressive 60fps Channel Drawer (`←`)**:
-  - Press `←` for **Channels + EPG** (long focused titles marquee smoothly; clicking the currently playing channel closes the drawer without reloading).
-  - Press `←` again for **Groups + Channels** (supports Default / Name / Manual group sorting, plus individually toggleable *All* and *Favorites* groups).
-  - When multiple playlists are enabled, press `←` again to switch **Sources**.
-- **Multi-Line Aggregation & Auto-Failover**:
-  - Multiple stream URLs placed under a single `#EXTINF` block merge into one channel with a `Src 1/N` switcher in the `OK` menu and automatic failover across backup lines on playback errors (bounded to 1 playlist refresh per tune to avoid infinite dead-channel retry loops); separate `#EXTINF` entries stay independent.
-- **4K/HEVC Anti-Artifacting, Default Subtitles & Borderless Clock**:
-  - Optional hardware decoder rebuild on 4K/HEVC channel zaps clears stale frame buffers on older Android TV chips, plus automatic subtitle loading with preferred language (`Auto` / `Chinese` / `English`).
-  - Toggleable **borderless top-right clock** (`HH:mm`, auto-hides during numeric jump OSD) and a **100% transparent** bottom-right channel-switch loading indicator.
-- **Compact Top-Right Numeric Jump OSD**:
-  - Typing digits opens a compact top-right match list showing only matching channel numbers and names without blocking playback.
-- **In-App Dual Multi-Screen vs System Home PiP**:
-  - Launch **Multi-Screen** from the `OK` menu for side-by-side dual-channel viewing inside the app (`→` swaps main & sub screens; double-Back exits). System Desktop PiP on `Home` key defaults to **OFF** so standard TV box navigation is never hijacked unless explicitly enabled under General settings.
-- **Inline QR WebUI Console & JSON Backup/Restore**:
-  - Open Settings → General → Backup / Restore (or Header Edit) to show an inline LAN QR code (fixed primary port `18080` with ordered fallback). Scan from any phone browser (viewport zoom-locked for mobile ergonomics) to manage playlists, global HTTP headers, display/playback preferences, remote bindings, and **JSON backup/restore** with instant TV sync.
-- **7-Category Settings & Safe Defaults**:
-  - Organized into **General · Playlists · EPG · Appearance · Playback · Remote · About & Updates**. Safe defaults out of the box: `Home` PiP & boot auto-start default to `OFF`, double-Back exit defaults to `ON`, and `→` defaults to **Previous Channel** (fully remappable).
+- **Clean Info Console & Quick Actions (`OK`)**:
+  - Changing channels briefly shows the channel logo, live/next program, and stream specs at the bottom; banner duration and the optional top-right clock can be customized in **Appearance**.
+  - Press `OK` for the info console: in two-step mode, the first press shows channel details with a subtle bottom arrow cue, and pressing `↓` or `OK` again reveals **5 recently watched channels** plus quick actions (**Favorite · Source · Aspect Ratio · Audio · Subtitles · Multi-Screen · Settings**). You can also switch to one-step direct expansion in Appearance settings.
+- **Sidebar Channel & EPG Browser (`←`)**:
+  - Press `←` to browse channels alongside the multi-day program guide and catch-up playback. Sort groups by Default, Name, or Manual order, and toggle visibility for *All* and *Favorites*.
+  - Clicking the currently playing channel closes the drawer back to fullscreen; if multiple playlists are active, pressing `←` again lets you switch playlists.
+- **Multi-Line Switching & Automatic Failover**:
+  - Channels with multiple stream URLs display the active line (`Src 1/N`) in the `OK` quick bar so you can manually pick the best feed, while playback errors automatically fail over to healthy backup lines.
+- **Top-Right Numeric Jump & 4K Hardware Acceleration**:
+  - Enter digits (`0–9`) on the remote to filter matching channels in a compact top-right overlay without covering the video.
+  - Prioritizes hardware decoding (including 4K HEVC support) and supports automatic subtitle loading with preferred language selection.
+- **In-App Dual Multi-Screen Viewing**:
+  - Choose **Multi-Screen** in the `OK` quick bar to watch a second channel side-by-side in an overlay window (`→` swaps the main and secondary feeds; double-press `Back` to close).
+- **Phone QR WebUI & Backup/Restore**:
+  - Scan the QR code inside Settings from any phone on the same Wi-Fi/LAN to manage playlists, global HTTP headers, playback preferences, remote mappings, and **JSON configuration backup & restore**.
 
 ## Playlist & Custom HTTP Headers
 
 ### 1. Multi-Line Aggregation vs Independent Channels
-- **Multiple backup lines for one channel** (multiple URLs under a single `#EXTINF` are merged for auto-failover and manual `Src 1/N` switching):
+- **Multiple backup URLs for one channel** (place multiple URLs under one `#EXTINF` block to combine them into `Src 1/N` with failover):
 ```m3u
 #EXTINF:-1 tvg-id="dragontv" tvg-name="Dragon TV" tvg-logo="https://example.com/logo/dragontv.png" http-user-agent="VLC" group-title="Satellite",Dragon TV
 http://example.com/line1.m3u8|User-Agent=VLC
 http://example.com/line2.m3u8|User-Agent="CustomPlayer/1.1"
 http://example.com/line3.m3u8
 ```
-- **Independent channels** (separate `#EXTINF` blocks stay separate even with the same `tvg-id`, ideal for 4K vs FHD feeds):
+- **Independent channels** (give each stream its own `#EXTINF` entry so 4K and HD channels appear separately even with the same `tvg-id`):
 ```m3u
 #EXTINF:-1 tvg-id="btv" group-title="Satellite",BTV 4K
 https://example.com/btv4k.m3u8|Referer=https://api.example.com/
@@ -283,54 +273,54 @@ https://example.com/btv4k.m3u8|Referer=https://api.example.com/
 http://example.com/btvhd.m3u8|User-Agent=VLC
 ```
 
-### 2. Header Syntax & Priority
-Header resolution order (highest to lowest): **`URL | params` > `#EXTINF / #EXTVLCOPT` > `Global Headers (Settings / WebUI)`**.
+### 2. Custom HTTP Headers & Priority
+When headers are specified in multiple places, priority is: **`URL | params` > `#EXTINF / #EXTVLCOPT` > `Global Headers (Settings / WebUI)`**.
 
-- **Method A — Inline URL `|` suffix** (join multiple headers with `&` or `;`; quoted values supported):
+- **Method A — Append `|` parameters to a stream URL** (separate multiple headers with `&` or `;`; quoted values supported):
 ```text
 https://example.com/live.m3u8|User-Agent=VLC&Referer=https://example.com/&Origin=https://example.com&Cookie=sid=123
 ```
-- **Method B — `#EXTINF` attributes or `#EXTVLCOPT:` lines**:
+- **Method B — `#EXTINF` attributes or `#EXTVLCOPT:` directives**:
 ```m3u
 #EXTINF:-1 http-user-agent="VLC" http-referer="https://example.com/" http-origin="https://example.com",Sample Channel
 http://example.com/stream.m3u8
 ```
-- **Method C — Global User-Agent & Custom Headers** (configured in **Settings → General** or the WebUI, one per line):
+- **Method C — Global User-Agent & Custom Headers** (configured in **Settings → General** or the Phone WebUI, one per line):
 ```text
 Referer: https://example.com/
 Origin: https://example.com
 X-Custom-Token: your-token
 ```
 
-## Experimental Features
+## Advanced & Experimental Options
 
-Under **Settings → Playback → Advanced (Experimental)**, the following tuning and stream-compatibility options are available:
+Under **Settings → Playback → Advanced (Experimental)**, optional tuning switches are provided for specific hardware or network setups:
 
-| Option | Default | What It Does | When to Change |
+| Option | Default | What It Does | When to Adjust |
 | --- | --- | --- | --- |
-| **4K Zap Anti-Artifacting Rebuild** | ON | Rebuilds the hardware video decoder when tuning to 4K / HEVC channels to clear stale reference frames on older Android TV SoCs. | Turn OFF only if your device never shows 4K artifacts and you want slightly faster 4K zaps. |
-| **Neighbour Preconnect** | OFF | Pre-warms TCP/TLS connections to the adjacent (`±1`) channels while idle to reduce channel-switch latency. | Keep OFF on strict IPTV providers that limit concurrent connections per token/IP. |
-| **Multicast Prewarm** | OFF | Pre-joins adjacent UDP multicast groups for faster LAN ISP IPTV multicast switching. | Useful only on home LAN multicast setups; keep OFF for HTTP/HLS unicast playlists. |
-| **Stream Compatibility** | OFF | Experimental TS/PMT/PCR timeline compatibility modes for non-standard broadcast feeds that stall or lose A/V sync. | Enable only when testing specific streams that freeze or drift out of sync. |
+| **4K Zap Anti-Artifacting Rebuild** | ON | Resets the hardware video decoder when tuning to 4K UHD channels to prevent green frames or visual artifacts on older TV boxes. | Turn OFF only if your device never shows 4K artifacts and you prefer slightly faster 4K channel switching. |
+| **Neighbour Preconnect** | OFF | Pre-connects to the adjacent (`±1`) channels while idle to reduce channel-switch wait times. | Keep OFF if your IPTV provider restricts concurrent connections per IP or token. |
+| **Multicast Prewarm** | OFF | Pre-joins adjacent home ISP IPTV multicast groups (`udp://` / `rtp://`) for faster LAN switching. | Only enable for local multicast IPTV; keep OFF for standard HTTP/HLS streams. |
+| **Stream Compatibility** | OFF | Alternative compatibility modes for unusual broadcast feeds that freeze, lose A/V sync, or play audio without video. | Leave OFF for normal channels; test only if a specific stream fails to play smoothly. |
 
 ## Installation & Updates
 
-1. Download `IQTV-Lite-v0.2.2.apk` (or `IQTV-Lite-latest.apk`) from [**Latest Release**](https://github.com/zqs1qiwan/iqtvlite/releases/latest).
-2. Sideload onto your Android TV / TV box (`Android 7.0+`, supports both `arm64-v8a` and `armeabi-v7a`).
-3. Check for future updates directly in **Settings → About & Updates → Check for Updates**, or download from GitHub Releases.
+1. Download `IQTV-Lite-v0.2.3.apk` (or `IQTV-Lite-latest.apk`) from [**Latest Release**](https://github.com/zqs1qiwan/iqtvlite/releases/latest).
+2. Install it on your Android TV or TV box (`Android 7.0+`, compatible with both `arm64-v8a` and `armeabi-v7a` devices).
+3. Update anytime from **Settings → About & Updates → Check for Updates**, or download manually from GitHub Releases.
 
 ## Remote Control Guide
 
 | Key | Default Action |
 | --- | --- |
-| `↑` / `↓` | Switch to previous / next channel (shows fixed-height translucent info banner with configurable timeout) |
-| `OK` / `Enter` | Open info console (two-step shows channel banner first; press `↓` or `OK` again to expand 5 recent channels & quick controls including `Src 1/N` and Settings gear) |
-| `←` | Open progressive drawer: **Channels + EPG → Groups → Sources** |
-| `→` | **Previous Channel** by default (remappable in **Settings → Remote**; swaps main & sub screens in Multi-Screen mode) |
-| `Back` | Step back / close overlays; double-Back to exit during fullscreen playback (default ON) |
-| `0–9` | Numeric channel jump with compact top-right matching channel list |
+| `↑` / `↓` | Switch to previous / next channel and briefly show the info bar |
+| `OK` / `Enter` | Open info console (two-step shows channel info first; press `↓` or `OK` again for recent channels and quick controls including `Src 1/N` and Settings) |
+| `←` | Open sidebar browser step by step: **Channels & EPG → Groups → Sources** |
+| `→` | **Previous Channel** by default (swaps main & secondary screens during Multi-Screen; customizable in Settings) |
+| `Back` | Close menus step by step; press `Back` twice during fullscreen playback to exit |
+| `0–9` | Jump directly by channel number via the top-right match list |
 
-> All short-press and long-press actions can be freely remapped or cleared in **Settings → Remote** or via the phone WebUI.
+> Both short-press and long-press actions can be customized freely in **Settings → Remote** or through the Phone WebUI.
 
 ---
 

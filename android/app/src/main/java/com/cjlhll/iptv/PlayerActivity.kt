@@ -2,7 +2,10 @@ package com.cjlhll.iptv
 
 import android.app.Activity
 import android.app.PictureInPictureParams
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.graphics.Color
@@ -61,6 +64,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.lifecycleScope
@@ -960,12 +964,29 @@ fun VideoPlayerScreen(
 
     // 仅在浮层可见时才驱动 nowMillis 与帧率轮询（稳态全屏播放 0 轮询、0 无谓重组）
     var nowMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    DisposableEffect(context) {
+        val filter = IntentFilter().apply {
+            addAction(Intent.ACTION_TIME_CHANGED)
+            addAction(Intent.ACTION_TIMEZONE_CHANGED)
+        }
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(ctx: Context?, intent: Intent?) {
+                nowMillis = System.currentTimeMillis()
+            }
+        }
+        ContextCompat.registerReceiver(context, receiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
+        onDispose { runCatching { context.unregisterReceiver(receiver) } }
+    }
     val needsClockTick = drawerOpen || infoCardOverlay != null
     LaunchedEffect(needsClockTick) {
         if (!needsClockTick) return@LaunchedEffect
+        val current = System.currentTimeMillis()
+        if (kotlin.math.abs(current - nowMillis) >= 30_000L) {
+            nowMillis = current
+        }
         while (true) {
-            nowMillis = System.currentTimeMillis()
             delay(30_000L)
+            nowMillis = System.currentTimeMillis()
         }
     }
 
@@ -1232,11 +1253,7 @@ fun VideoPlayerScreen(
 
     fun isFormat4kOrHevc(fmt: Format?): Boolean {
         if (fmt == null) return false
-        if (fmt.width >= 2560 || fmt.height >= 1440) return true
-        val codecs = fmt.codecs.orEmpty().lowercase()
-        val mime = fmt.sampleMimeType.orEmpty().lowercase()
-        return (codecs.contains("hvc") || codecs.contains("hev") || mime.contains("hevc")) &&
-            (fmt.width >= 1920 || fmt.height >= 1080)
+        return fmt.width >= 2560 || fmt.height >= 1440
     }
 
     /** 修复 P0-8 & 4K 花屏：软解降级或 4K/HEVC 切台时重建播放器以清理旧解码器 DPB 残留帧。 */
@@ -1584,8 +1601,8 @@ fun VideoPlayerScreen(
         }
     }
 
-    // 当前节目批量查询（SQLite 索引查询 <5ms；仅在 EPG 就绪/打开浮层/30s 刷新时执行）
-    LaunchedEffect(epgData, epgVersion, nowMillis, channelGroups, needsClockTick) {
+    // 当前节目批量查询（SQLite 索引查询；仅在 EPG 就绪/数据更新/时间跨越 30s/频道列表变化时执行）
+    LaunchedEffect(epgData, epgVersion, nowMillis, channelGroups) {
         val data = epgData
         if (data == null || channelGroups.isEmpty()) {
             nowProgramByUrl = emptyMap()
@@ -3022,15 +3039,28 @@ private fun PlayerClockOverlay(
     textScale: Float,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
     var clockText by remember { mutableStateOf("") }
-    LaunchedEffect(Unit) {
-        val fmt = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
-        while (true) {
-            val now = System.currentTimeMillis()
-            clockText = fmt.format(java.util.Date(now))
-            val delayMs = (60_000L - (now % 60_000L)) + 50L
-            delay(delayMs)
+    DisposableEffect(context) {
+        fun formatCurrentTime(): String {
+            val fmt = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
+            fmt.timeZone = java.util.TimeZone.getDefault()
+            return fmt.format(java.util.Date(System.currentTimeMillis()))
         }
+        clockText = formatCurrentTime()
+        val filter = IntentFilter().apply {
+            addAction(Intent.ACTION_TIME_TICK)
+            addAction(Intent.ACTION_TIME_CHANGED)
+            addAction(Intent.ACTION_TIMEZONE_CHANGED)
+            addAction(Intent.ACTION_DATE_CHANGED)
+        }
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(ctx: Context?, intent: Intent?) {
+                clockText = formatCurrentTime()
+            }
+        }
+        ContextCompat.registerReceiver(context, receiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
+        onDispose { runCatching { context.unregisterReceiver(receiver) } }
     }
     if (clockText.isNotEmpty()) {
         Text(
