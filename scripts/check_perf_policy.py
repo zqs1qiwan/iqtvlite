@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "android/app/src/main/java/com/cjlhll/iptv"
 POLICY = SRC / "PerfPolicy.kt"
 TRACE = SRC / "PerfTrace.kt"
-DRAWER = SRC / "PlayerDrawer.kt"
+LEGACY_DRAWER = SRC / "PlayerDrawer.kt"
 NATIVE_DRAWER = SRC / "NativeChannelDrawerView.kt"
 SETTINGS = SRC / "SettingsDrawer.kt"
 ACTIVITY = SRC / "PlayerActivity.kt"
@@ -44,16 +44,17 @@ def strip_comments(text: str) -> str:
 
 def main() -> int:
     problems = []
-    for path in (POLICY, TRACE, DRAWER, NATIVE_DRAWER, SETTINGS, ACTIVITY, ZAPTRACE, EPGSQL):
+    for path in (POLICY, TRACE, NATIVE_DRAWER, SETTINGS, ACTIVITY, ZAPTRACE, EPGSQL):
         if not path.exists():
             problems.append(f"missing source file: {path.name}")
+    if LEGACY_DRAWER.exists():
+        problems.append("PlayerDrawer.kt: dead Compose drawer must stay deleted")
     if problems:
         for p in problems:
             print(f"check_perf_policy: FAIL {p}")
         return 1
 
     policy = POLICY.read_text(encoding="utf-8")
-    drawer_code = strip_comments(DRAWER.read_text(encoding="utf-8"))
     native_drawer_code = strip_comments(NATIVE_DRAWER.read_text(encoding="utf-8"))
     settings = SETTINGS.read_text(encoding="utf-8")
     activity_code = strip_comments(ACTIVITY.read_text(encoding="utf-8"))
@@ -62,7 +63,7 @@ def main() -> int:
     m = re.search(r"const val MARQUEE_ITERATIONS = (\d+)", policy)
     if not m or not (0 <= int(m.group(1)) <= 3):
         problems.append("PerfPolicy.kt: MARQUEE_ITERATIONS must be 0..3")
-    if "Int.MAX_VALUE" in drawer_code or "Int.MAX_VALUE" in native_drawer_code:
+    if "Int.MAX_VALUE" in native_drawer_code:
         problems.append("Drawer: Int.MAX_VALUE marquee is forbidden")
 
     # 2) Native 60fps RecyclerView center-locked drawer invariants
@@ -76,8 +77,6 @@ def main() -> int:
         problems.append("NativeChannelDrawerView.kt: must use boundedCenterOffset + scrollToPositionWithOffset for natural bounded center scroll")
     if "ZoneId.systemDefault()" not in native_drawer_code:
         problems.append("NativeChannelDrawerView.kt: must format EPG times/dates in ZoneId.systemDefault()")
-    if "channels.subList(0, revealedRows" in drawer_code:
-        problems.append("PlayerDrawer.kt: old subList truncation cliff must stay removed")
 
     # 3) Prefetch deferred & capped; settings summaries remembered
     if "delay(PerfPolicy.URGENT_PREFETCH_DELAY_MS)" not in native_drawer_code:

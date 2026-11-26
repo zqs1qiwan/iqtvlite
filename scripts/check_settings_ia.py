@@ -126,7 +126,7 @@ def main() -> int:
             problems.append(f"SettingsDrawer.kt: missing binding tag {tag}")
 
     # 6) Unified visual tokens (neutral frosted FocusBgColor, no blue BgColor focus)
-    for fn in ("PlayerDrawer.kt", "SettingsDrawer.kt", "ChannelInfoBanner.kt", "RecentChannelsDialog.kt",
+    for fn in ("SettingsDrawer.kt", "ChannelInfoBanner.kt", "RecentChannelsDialog.kt",
                "QualitySelectorDialog.kt", "AudioTrackDialog.kt", "MainActivity.kt", "PlayerActivity.kt"):
         if "BrandFocus.BgColor" in (SRC / fn).read_text(encoding="utf-8"):
             problems.append(f"{fn}: focus background must not use blue BgColor")
