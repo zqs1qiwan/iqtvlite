@@ -45,13 +45,21 @@ window.WIKI_DATA = {
           <li><strong>CPU 架构：</strong>官方单包同时包含 <code>armeabi-v7a</code>（32 位老盒子）与 <code>arm64-v8a</code>，正式版体积约 <strong>8.7 MB</strong>。</li>
           <li><strong>交互方式：</strong>完整适配红外/蓝牙电视遥控器方向键（D-Pad）、实体频道 +/- 键与数字直达选台。</li>
         </ul>
-        <h2>安装与在线更新</h2>
+        <h2>安装与首次开机引导</h2>
         <ol>
           <li>前往 <a href="https://github.com/zqs1qiwan/iqtvlite/releases/latest" target="_blank" rel="noopener">GitHub Releases 最新版本</a> 下载 <code>IQTV-Lite-v0.3.2.apk</code>（或 <code>IQTV-Lite-latest.apk</code>）。</li>
           <li>通过 U 盘安装或使用 <code>adb install -r IQTV-Lite-latest.apk</code> 推送到电视/盒子。</li>
-          <li>安装后首次启动可通过底部「设置 → 通用 → 手机扫码管理与备份」在同一 Wi-Fi / 局域网内免打字导入源。</li>
           <li>后续更新可直接在电视端进入 <strong>「设置 → 关于与更新 → 检查更新」</strong>，自动在应用内下载并拉起系统安装。</li>
         </ol>
+        <h2>首次开机两步向导</h2>
+        <p>首次启动应用且尚未配置直播源时，会自动进入两步极简引导流程，之后每次启动都会直接全屏播放上次频道：</p>
+        <ol>
+          <li><strong>第 1 步 · 选择语言：</strong>选择 <strong>简体中文</strong> 或 <strong>English</strong>（日后仍可在系统设置中随时切换）。</li>
+          <li><strong>第 2 步 · 首次使用设置：</strong>左侧提供<strong>手机扫码快速导入</strong>，同一 Wi-Fi 下扫码填写并保存源地址后，电视端将<strong>自动解析并立即开播</strong>；右侧支持遥控器<strong>手动输入直播源地址（M3U / TXT）与可选 EPG 地址</strong>（留空则自动识别列表内的 <code>x-tvg-url</code>），确认后点击<strong>「保存并开始播放」</strong>。</li>
+        </ol>
+        <div class="callout">
+          <strong>提示：</strong>进入播放器后，多播放源切换、全局请求头、DoH 节点与完整 JSON 配置备份均可在底部或菜单进入 <strong>「设置 → 通用 → 手机扫码管理与备份」</strong> 完成。
+        </div>
       `
     },
     {
@@ -262,13 +270,21 @@ rtp://239.3.1.240:8000</code></pre>
           <li><strong>ABIs:</strong> Universal APK bundling both <code>armeabi-v7a</code> and <code>arm64-v8a</code> (~<strong>8.7 MB</strong> signed release APK).</li>
           <li><strong>Input:</strong> D-Pad remote first, with full short/long-press remapping, numeric keypad direct tuning, and hardware Channel +/- keys.</li>
         </ul>
-        <h2>Installation & Updates</h2>
+        <h2>Installation &amp; Updates</h2>
         <ol>
           <li>Download <code>IQTV-Lite-v0.3.2.apk</code> (or <code>IQTV-Lite-latest.apk</code>) from <a href="https://github.com/zqs1qiwan/iqtvlite/releases/latest" target="_blank" rel="noopener">GitHub Releases</a>.</li>
           <li>Sideload via USB drive or run <code>adb install -r IQTV-Lite-latest.apk</code>.</li>
-          <li>Open <strong>Settings → General → Phone QR Setup &amp; Backup</strong> to push M3U/TXT/EPG sources straight from your phone over home Wi-Fi.</li>
           <li>Later releases can be checked and installed directly inside <strong>Settings → About &amp; Updates → Check for Updates</strong>.</li>
         </ol>
+        <h2>2-Step First-Run Setup Wizard</h2>
+        <p>When launching IQTV Lite for the first time without a saved playlist, a lightweight two-step setup guides you straight into playback (all subsequent launches boot directly into fullscreen TV):</p>
+        <ol>
+          <li><strong>Step 1 — Choose Language:</strong> Pick <strong>简体中文</strong> or <strong>English</strong> (changeable later under Settings).</li>
+          <li><strong>Step 2 — First-Time Setup:</strong> Scan the QR code on the left card with your phone on the same Wi-Fi to push a source and <strong>auto-start playback immediately</strong>, or use the right card to manually enter a <strong>Playlist URL (<code>M3U</code> / <code>TXT</code>)</strong> and an optional <strong>EPG XMLTV URL</strong> (auto-detected from <code>x-tvg-url</code> when left blank), then press <strong>Save &amp; Start Watching</strong>.</li>
+        </ol>
+        <div class="callout">
+          <strong>Tip:</strong> Once inside the player, multi-source management, custom HTTP headers, DoH DNS, and full JSON backups remain available anytime under <strong>Settings → General → Phone QR Setup &amp; Backup</strong>.
+        </div>
       `
     },
     {
