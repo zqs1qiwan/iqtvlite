@@ -1194,7 +1194,6 @@ private fun SettingsPickerRouter(
                     SettingsPickerOption(
                         id = "grp_sort_mode",
                         title = t("分组排序：$sortLabel", "Sort: $sortLabel"),
-                        description = t("点击切换分组排列方式", "Click to change group order"),
                         selected = false,
                         onSelect = { actions.onOpenPicker(PICKER_GROUP_SORT) },
                     )
@@ -1419,7 +1418,6 @@ private fun SettingsSourcesManageView(
             tag = "picker_opt_${sources.size}",
             onClick = onOpenWebConfig,
         )
-        HelpText(t("多源启用 ≥2 个时，在选台列表按 ← 进入分组，再按 ← 展开播放源列表。", "With 2+ enabled sources, press ← from Groups to expand Sources."))
     }
 }
 
@@ -3146,8 +3144,8 @@ private fun SettingsAboutPage(
                 val info = updateState.info
                 InlineUpdateStatusBox(
                     text = t(
-                        "发现新版本 ${info.latestTag}（当前 ${info.currentVersion}），按 OK 开始下载安装。",
-                        "Update ${info.latestTag} available (current ${info.currentVersion}). Press OK to download."
+                        "发现新版本 ${info.latestTag}（当前 ${info.currentVersion}）",
+                        "Update ${info.latestTag} available (current ${info.currentVersion})"
                     ),
                     bg = TvDesignTokens.BrandLiteBlue.copy(alpha = 0.16f),
                     fg = TvDesignTokens.BrandLiteBlue,

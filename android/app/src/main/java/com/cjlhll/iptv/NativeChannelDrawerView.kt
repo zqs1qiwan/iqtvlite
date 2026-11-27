@@ -535,10 +535,7 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
             programsAdapter.notifyDataSetChanged()
             datesAdapter.notifyDataSetChanged()
             selectedDate?.let { d ->
-                val dateLabel = formatLocalDateLabel(d, ZoneId.systemDefault())
-                programsSubtitleView.text = if (availableDates.size > 1) {
-                    t("$dateLabel · 按 → 选日期", "$dateLabel · → Date")
-                } else dateLabel
+                programsSubtitleView.text = formatLocalDateLabel(d, ZoneId.systemDefault())
             }
         }
 
@@ -1186,11 +1183,7 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
         }
         visibleDatePrograms = dayPrograms
 
-        val dateLabel = formatLocalDateLabel(date, localZone)
-        val dateHint = if (availableDates.size > 1) {
-            t("$dateLabel · 按 → 选日期", "$dateLabel · → Date")
-        } else dateLabel
-        programsSubtitleView.text = dateHint
+        programsSubtitleView.text = formatLocalDateLabel(date, localZone)
 
         if (dayPrograms.isEmpty()) {
             programsEmptyView.text = t("当日暂无节目", "No programs today")

@@ -163,16 +163,12 @@ private fun LanguageSelectScreen(
                 LanguageChoiceCard(
                     title = "简体中文",
                     subtitle = "Chinese (Simplified)",
-                    hint = "按 OK 确认进入",
-                    recommended = defaultIsZh,
                     focusRequester = zhRequester,
                     onClick = { onLanguageChosen(AppLang.ZH) },
                 )
                 LanguageChoiceCard(
                     title = "English",
                     subtitle = "英语界面",
-                    hint = "Press OK to continue",
-                    recommended = !defaultIsZh,
                     focusRequester = enRequester,
                     onClick = { onLanguageChosen(AppLang.EN) },
                 )
@@ -193,8 +189,6 @@ private fun LanguageSelectScreen(
 private fun LanguageChoiceCard(
     title: String,
     subtitle: String,
-    hint: String,
-    recommended: Boolean,
     focusRequester: FocusRequester,
     onClick: () -> Unit,
 ) {
@@ -205,7 +199,7 @@ private fun LanguageChoiceCard(
     Column(
         modifier = Modifier
             .width(268.dp)
-            .height(146.dp)
+            .height(124.dp)
             .clip(RoundedCornerShape(12.dp))
             .background(bg)
             .border(if (focused) 1.5.dp else 1.dp, borderColor, RoundedCornerShape(12.dp))
@@ -215,28 +209,21 @@ private fun LanguageChoiceCard(
             .clickable(onClick = onClick)
             .padding(horizontal = 24.dp, vertical = 20.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.SpaceBetween,
+        verticalArrangement = Arrangement.Center,
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.headlineSmall.copy(
-                    fontSize = 23.sp,
-                    fontWeight = if (focused) FontWeight.Bold else FontWeight.SemiBold,
-                ),
-                color = if (focused) Color.White else TvDesignTokens.TextPrimary,
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = subtitle,
-                style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.5.sp),
-                color = if (focused) TvDesignTokens.TextSecondary else TvDesignTokens.TextMuted,
-            )
-        }
         Text(
-            text = hint,
-            style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.sp),
-            color = if (focused) Color(0xFF84B4FF) else if (recommended) TvDesignTokens.TextSecondary else TvDesignTokens.TextMuted,
+            text = title,
+            style = MaterialTheme.typography.headlineSmall.copy(
+                fontSize = 23.sp,
+                fontWeight = if (focused) FontWeight.Bold else FontWeight.SemiBold,
+            ),
+            color = if (focused) Color.White else TvDesignTokens.TextPrimary,
+        )
+        Spacer(modifier = Modifier.height(6.dp))
+        Text(
+            text = subtitle,
+            style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp),
+            color = if (focused) TvDesignTokens.TextSecondary else TvDesignTokens.TextMuted,
         )
     }
 }
