@@ -153,10 +153,15 @@ class V032PlaybackAndNetworkTest {
 
     @Test
     fun dohResolver_bypassHostFallsBackCleanlyToSystemLookup() {
+        assertEquals(DnsMode.SYSTEM, DnsMode.parse(null))
+        assertEquals(DnsMode.DOH_ALI, DnsMode.parse("ali"))
+        assertEquals(DnsMode.DOH_DNSPOD, DnsMode.parse("dnspod"))
+        assertEquals("https://doh.pub/dns-query", DnsMode.DOH_DNSPOD.dohUrl)
+
         val expected = listOf(InetAddress.getByName("192.168.2.1"))
         val out = DohResolver.resolve(
             hostname = "192.168.2.1",
-            mode = DnsMode.DOH_ALI,
+            mode = DnsMode.DOH_DNSPOD,
             pref = IpStackPreference.IPV6_FIRST,
             systemLookup = { expected },
         )

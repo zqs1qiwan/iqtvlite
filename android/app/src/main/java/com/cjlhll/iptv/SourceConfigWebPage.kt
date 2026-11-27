@@ -699,9 +699,10 @@ object SourceConfigWebPage {
 
       <div class="card">
         <h2 class="card-title" id="dispDnsTitle" style="margin-bottom:10px">加密 DNS (DoH)</h2>
-        <div class="seg-grid" id="dnsModeSeg">
+        <div class="seg-grid-2" id="dnsModeSeg">
           <div class="seg-card" data-dns="system"><strong id="dnsSysT">系统默认</strong><span id="dnsSysD">局域网最低延迟</span></div>
           <div class="seg-card" data-dns="ali"><strong id="dnsAliT">阿里 DoH</strong><span id="dnsAliD">223.5.5.5 防劫持</span></div>
+          <div class="seg-card" data-dns="dnspod"><strong id="dnsTxT">腾讯 DoH</strong><span id="dnsTxD">doh.pub 加密解析</span></div>
           <div class="seg-card" data-dns="cloudflare"><strong id="dnsCfT">Cloudflare</strong><span id="dnsCfD">1.1.1.1 加密解析</span></div>
         </div>
       </div>
@@ -927,6 +928,7 @@ object SourceConfigWebPage {
         dispDnsTitle: "加密 DNS (DoH)",
         dnsSysT: "系统默认", dnsSysD: "局域网最低延迟",
         dnsAliT: "阿里 DoH", dnsAliD: "223.5.5.5 防劫持",
+        dnsTxT: "腾讯 DoH", dnsTxD: "doh.pub 加密解析",
         dnsCfT: "Cloudflare", dnsCfD: "1.1.1.1 加密解析",
         dispBufTitle: "起播缓冲与自动更新",
         bufFastT: "快", bufFastD: "300ms 极速",
@@ -1036,6 +1038,7 @@ object SourceConfigWebPage {
         dispDnsTitle: "Encrypted DNS (DoH)",
         dnsSysT: "System DNS", dnsSysD: "Lowest LAN latency",
         dnsAliT: "AliDNS DoH", dnsAliD: "223.5.5.5 encrypted",
+        dnsTxT: "DNSPod DoH", dnsTxD: "doh.pub encrypted",
         dnsCfT: "Cloudflare", dnsCfD: "1.1.1.1 encrypted",
         dispBufTitle: "Startup Buffer & Auto Update",
         bufFastT: "Fast", bufFastD: "300ms Quick zap",
@@ -1140,6 +1143,7 @@ object SourceConfigWebPage {
       byId("dispDnsTitle").textContent = L.dispDnsTitle;
       byId("dnsSysT").textContent = L.dnsSysT; byId("dnsSysD").textContent = L.dnsSysD;
       byId("dnsAliT").textContent = L.dnsAliT; byId("dnsAliD").textContent = L.dnsAliD;
+      byId("dnsTxT").textContent = L.dnsTxT; byId("dnsTxD").textContent = L.dnsTxD;
       byId("dnsCfT").textContent = L.dnsCfT; byId("dnsCfD").textContent = L.dnsCfD;
       byId("dispBufTitle").textContent = L.dispBufTitle;
       byId("bufFastT").textContent = L.bufFastT; byId("bufFastD").textContent = L.bufFastD;

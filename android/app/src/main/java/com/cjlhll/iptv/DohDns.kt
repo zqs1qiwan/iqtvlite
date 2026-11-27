@@ -12,18 +12,21 @@ import java.util.concurrent.atomic.AtomicLong
 enum class DnsMode(val id: String, val dohUrl: String?) {
     SYSTEM("system", null),
     DOH_ALI("ali", "https://dns.alidns.com/dns-query"),
+    DOH_DNSPOD("dnspod", "https://doh.pub/dns-query"),
     DOH_CLOUDFLARE("cloudflare", "https://cloudflare-dns.com/dns-query");
 
     fun shortLabel(lang: AppLang): String = when (this) {
         SYSTEM -> if (lang == AppLang.EN) "System DNS" else "系统默认"
         DOH_ALI -> if (lang == AppLang.EN) "AliDNS (DoH)" else "阿里 DoH"
+        DOH_DNSPOD -> if (lang == AppLang.EN) "DNSPod DoH" else "腾讯 DoH"
         DOH_CLOUDFLARE -> if (lang == AppLang.EN) "Cloudflare DoH" else "Cloudflare DoH"
     }
 
     fun description(lang: AppLang): String = when (this) {
         SYSTEM -> if (lang == AppLang.EN) "Use system network DNS (lowest latency on LAN)" else "使用当前网络系统 DNS，适合纯内网与家庭宽带默认解析"
-        DOH_ALI -> if (lang == AppLang.EN) "Encrypted DNS-over-HTTPS via 223.5.5.5 with automatic system fallback" else "通过阿里云 DoH (RFC 8484) 加密解析公网域名，失败自动回退系统 DNS"
-        DOH_CLOUDFLARE -> if (lang == AppLang.EN) "Encrypted DNS-over-HTTPS via 1.1.1.1 with automatic system fallback" else "通过 Cloudflare DoH (RFC 8484) 加密解析公网域名，失败自动回退系统 DNS"
+        DOH_ALI -> if (lang == AppLang.EN) "Encrypted DNS-over-HTTPS via 223.5.5.5 with automatic system fallback" else "通过阿里云 DoH (223.5.5.5, RFC 8484) 加密解析公网域名，失败自动回退系统 DNS"
+        DOH_DNSPOD -> if (lang == AppLang.EN) "Encrypted DNS-over-HTTPS via Tencent DNSPod (doh.pub) with automatic system fallback" else "通过腾讯 DNSPod DoH (doh.pub, RFC 8484) 加密解析公网域名，失败自动回退系统 DNS"
+        DOH_CLOUDFLARE -> if (lang == AppLang.EN) "Encrypted DNS-over-HTTPS via 1.1.1.1 with automatic system fallback" else "通过 Cloudflare DoH (1.1.1.1, RFC 8484) 加密解析公网域名，失败自动回退系统 DNS"
     }
 
     companion object {
