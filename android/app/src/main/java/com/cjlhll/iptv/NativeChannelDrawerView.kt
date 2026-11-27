@@ -59,6 +59,7 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
         val channels: List<Channel> = emptyList(),
         val channelNumbers: Map<String, Int> = emptyMap(),
         val selectedChannelUrl: String? = null,
+        val selectedChannelKey: String? = null,
         val nowProgramByChannelUrl: Map<String, NowProgramUi> = emptyMap(),
         val epgData: EpgData? = null,
         val epgVersion: Int = 0,
@@ -67,6 +68,7 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
         val epgLoadFailed: Boolean = false,
         val initialFocusUrl: String? = null,
         val uiScale: UiScalePreset = UiScalePreset.DEFAULT,
+        val uiTransparencyPct: Int = 18,
         val lang: AppLang = AppLang.ZH,
         val favoriteUrls: Set<String> = emptySet(),
     )
@@ -463,12 +465,32 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
         groupsCountView.setTextColor(COLOR_TEXT_MUTED)
     }
 
+    private fun applySurfaceTransparency(pct: Int) {
+        val factor = Prefs.uiSurfaceAlpha(pct)
+        fun scaled(argb: Int): Int {
+            val baseAlpha = (argb ushr 24) and 0xFF
+            val alpha = (baseAlpha * factor).toInt().coerceIn(0x40, 0xFF)
+            return (alpha shl 24) or (argb and 0x00FFFFFF)
+        }
+        val deep = scaled(COLOR_SURFACE_DEEP)
+        val solid = scaled(COLOR_SURFACE_SOLID)
+        val translucent = scaled(COLOR_SURFACE_TRANSLUCENT)
+        sourcesPanel.setBackgroundColor(deep)
+        groupsPanel.setBackgroundColor(solid)
+        channelsPanel.setBackgroundColor(solid)
+        programsPanel.setBackgroundColor(translucent)
+        datesPanel.setBackgroundColor(translucent)
+    }
+
     fun updateSnapshot(newSnapshot: Snapshot) {
         val prev = snapshot
         snapshot = newSnapshot
 
         if (newSnapshot.uiScale != appliedUiScale) {
             applyUiScale(newSnapshot.uiScale)
+        }
+        if (prev.uiTransparencyPct != newSnapshot.uiTransparencyPct) {
+            applySurfaceTransparency(newSnapshot.uiTransparencyPct)
         }
 
         if (newSnapshot.epgVersion != cachedEpgVersion) {
@@ -482,7 +504,8 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
         val sourcesChanged = prev.sources != newSnapshot.sources || prev.activeSourceId != newSnapshot.activeSourceId
         val groupsChanged = prev.groups != newSnapshot.groups || prev.selectedGroup != newSnapshot.selectedGroup
         val channelsChanged = prev.channels !== newSnapshot.channels && prev.channels != newSnapshot.channels
-        val playingChanged = prev.selectedChannelUrl != newSnapshot.selectedChannelUrl
+        val playingChanged = prev.selectedChannelKey != newSnapshot.selectedChannelKey ||
+            prev.selectedChannelUrl != newSnapshot.selectedChannelUrl
         val nowProgramsChanged = prev.nowProgramByChannelUrl !== newSnapshot.nowProgramByChannelUrl
 
         applyLocalizedStaticHeaders()
@@ -1518,7 +1541,8 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
 
         override fun onBindViewHolder(holder: ChannelVH, position: Int) {
             val ch = snapshot.channels[position]
-            val num = snapshot.channelNumbers[ch.url] ?: (position + 1)
+            val idKey = ChannelGrouper.channelIdentityKey(ch)
+            val num = snapshot.channelNumbers[idKey] ?: snapshot.channelNumbers[ch.url] ?: (position + 1)
             holder.numTv.text = num.toString()
             val fav = ch.url in snapshot.favoriteUrls
             holder.titleTv.text = if (fav) "★ ${ch.title}" else ch.title
@@ -1600,7 +1624,12 @@ class NativeChannelDrawerView(context: Context) : LinearLayout(context) {
         private fun bindFocusAndPlaying(holder: ChannelVH, position: Int, ch: Channel) {
             val isFocused = position == focusedChannelIndex
             val isActiveFocus = isFocused && activeColumn == DrawerColumn.Channels
-            val isPlaying = ch.url == snapshot.selectedChannelUrl
+            val selKey = snapshot.selectedChannelKey
+            val isPlaying = if (selKey != null) {
+                ChannelGrouper.channelIdentityKey(ch) == selKey
+            } else {
+                ch.url == snapshot.selectedChannelUrl
+            }
 
             holder.rowBg.setColor(
                 when {

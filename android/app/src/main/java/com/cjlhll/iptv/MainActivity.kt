@@ -599,6 +599,8 @@ fun MainScreen() {
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
+                    val isRootActivity = (context as? Activity)?.isTaskRoot == true
+                    val hasSavedPlaylist = liveSource.isNotBlank() && !Prefs.getPlaylistFileName(context).isNullOrBlank()
                     TvActionButton(
                         text = if (isLoading) tr("正在加载…", "Loading…") else tr("保存并播放", "Save & Play"),
                         primary = true,
@@ -607,11 +609,26 @@ fun MainScreen() {
                         onClick = { loadAndPlay(liveSource, epgSource, save = true) },
                     )
                     TvActionButton(
-                        text = tr("返回播放", "Back to Player"),
+                        text = when {
+                            !isRootActivity -> tr("返回播放", "Back to Player")
+                            hasSavedPlaylist -> tr("进入播放", "Start Playback")
+                            else -> tr("退出应用", "Exit App")
+                        },
                         primary = false,
                         enabled = !isLoading,
                         modifier = Modifier.weight(1f),
-                        onClick = { (context as? Activity)?.finish() },
+                        onClick = {
+                            if (isRootActivity && hasSavedPlaylist) {
+                                val resumeLast = Prefs.isResumeLastChannel(context)
+                                val (lastUrl, lastTitle) = if (resumeLast) Prefs.getLastChannel(context) else null to null
+                                context.startActivity(Intent(context, PlayerActivity::class.java).apply {
+                                    putExtra("VIDEO_URL", lastUrl ?: "")
+                                    putExtra("VIDEO_TITLE", lastTitle ?: "")
+                                    putExtra("PLAYLIST_FILE_NAME", Prefs.getPlaylistFileName(context))
+                                })
+                            }
+                            (context as? Activity)?.finish()
+                        },
                     )
                 }
             }

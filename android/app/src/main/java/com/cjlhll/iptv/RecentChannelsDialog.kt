@@ -48,6 +48,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import kotlinx.coroutines.launch
@@ -70,6 +71,7 @@ fun RecentChannelsDialog(
     onClear: () -> Unit,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
+    textScale: Float = 1f,
 ) {
     val firstRequester = remember { FocusRequester() }
     val clearRequester = remember { FocusRequester() }
@@ -103,7 +105,10 @@ fun RecentChannelsDialog(
         ) {
             Text(
                 text = tr("最近观看", "Recent Channels"),
-                style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.SemiBold),
+                style = MaterialTheme.typography.headlineSmall.copy(
+                    fontSize = (22f * textScale).sp,
+                    fontWeight = FontWeight.SemiBold,
+                ),
                 color = TvDesignTokens.TextPrimary
             )
             Spacer(modifier = Modifier.height(10.dp))
@@ -111,7 +116,7 @@ fun RecentChannelsDialog(
             if (items.isEmpty()) {
                 Text(
                     text = tr("暂无最近观看", "No recent channels"),
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = MaterialTheme.typography.bodyMedium.copy(fontSize = (14f * textScale).sp),
                     color = TvDesignTokens.TextMuted,
                     modifier = Modifier
                         .padding(vertical = 12.dp)
@@ -129,6 +134,7 @@ fun RecentChannelsDialog(
                         RecentRow(
                             item = item,
                             index = index,
+                            textScale = textScale,
                             focusRequester = if (index == 0) firstRequester else null,
                             onClick = { onSelect(index) }
                         )
@@ -140,12 +146,14 @@ fun RecentChannelsDialog(
             RecentActionRow(
                 text = tr("清空最近观看", "Clear History"),
                 tag = RecentDialogTags.CLEAR,
+                textScale = textScale,
                 focusRequester = clearRequester,
                 onClick = onClear
             )
             RecentActionRow(
                 text = tr("关闭", "Close"),
                 tag = RecentDialogTags.CLOSE,
+                textScale = textScale,
                 focusRequester = null,
                 onClick = onClose
             )
@@ -158,6 +166,7 @@ fun RecentChannelsDialog(
 private fun RecentRow(
     item: RecentChannelUi,
     index: Int,
+    textScale: Float,
     focusRequester: FocusRequester?,
     onClick: () -> Unit,
 ) {
@@ -194,6 +203,7 @@ private fun RecentRow(
         Text(
             text = "${item.number}. ${item.title}",
             style = MaterialTheme.typography.bodyLarge.copy(
+                fontSize = (15.5f * textScale).sp,
                 fontWeight = if (focused || item.selected) FontWeight.SemiBold else FontWeight.Normal
             ),
             color = when {
@@ -210,6 +220,7 @@ private fun RecentRow(
 private fun RecentActionRow(
     text: String,
     tag: String,
+    textScale: Float = 1f,
     focusRequester: FocusRequester? = null,
     onClick: () -> Unit,
 ) {
@@ -232,6 +243,7 @@ private fun RecentActionRow(
         Text(
             text = text,
             style = MaterialTheme.typography.bodyMedium.copy(
+                fontSize = (14f * textScale).sp,
                 fontWeight = if (focused) FontWeight.SemiBold else FontWeight.Normal
             ),
             color = if (focused) TvDesignTokens.TextPrimary else TvDesignTokens.TextSecondary

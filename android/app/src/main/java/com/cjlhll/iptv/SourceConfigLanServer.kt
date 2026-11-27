@@ -181,7 +181,7 @@ class SourceConfigLanServer(
                     if (payload.has("playbackBufferMin")) {
                         Prefs.setPlaybackBufferMin(
                             appContext,
-                            LoadControlTuning.sanitize(payload.optInt("playbackBufferMin", LoadControlTuning.TIER_STABLE_MS))
+                            LoadControlTuning.sanitize(payload.optInt("playbackBufferMin", LoadControlTuning.DEFAULT_BUFFER_MIN_MS))
                         )
                     }
                     if (payload.has("autoUpdatePlaylist")) {
@@ -201,6 +201,12 @@ class SourceConfigLanServer(
                         val enabled = payload.optBoolean("logoLoad", true)
                         Prefs.setLogoLoadEnabled(appContext, enabled)
                         LogoLoader.setLogoLoadEnabledRuntime(enabled)
+                    }
+                    if (payload.has("ipStackPreference")) {
+                        Prefs.setIpStackPreference(
+                            appContext,
+                            IpStackPreference.parse(payload.optString("ipStackPreference"))
+                        )
                     }
                     onStateChanged()
                     jsonOk(JSONObject().put("ok", true).put("state", buildStateJson()).toString())
@@ -428,6 +434,7 @@ class SourceConfigLanServer(
                 put("globalCustomHeaders", Prefs.getGlobalCustomHeaders(appContext))
 
                 put("uiScale", Prefs.getUiScale(appContext).id)
+                put("ipStackPreference", Prefs.getIpStackPreference(appContext).id)
                 put("infoOkMode", if (Prefs.getInfoOkMode(appContext) == InfoCardPolicy.InfoOkMode.DIRECT) "direct" else "two_step")
                 put("playbackBufferMin", Prefs.getPlaybackBufferMin(appContext))
                 put("autoUpdatePlaylist", Prefs.getAutoUpdatePlaylist(appContext).name)

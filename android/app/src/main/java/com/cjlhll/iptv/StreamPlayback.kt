@@ -56,9 +56,30 @@ object StreamPlayback {
 
     fun restore(context: Context, url: String, title: String): Channel {
         val prefs = context.getSharedPreferences("iptv_stream", Context.MODE_PRIVATE)
-        return if (prefs.getString("url", null) == url) Channel(title=title, url=url,
-            id=prefs.getLong("id", 0L), userAgent=prefs.getString("ua", null), referrer=prefs.getString("referrer", null))
-        else Channel(title=title, url=url)
+        return if (prefs.getString("url", null) == url) {
+            val headers = runCatching {
+                val raw = prefs.getString("headers_json", null).orEmpty()
+                if (raw.isBlank()) emptyMap() else {
+                    val obj = org.json.JSONObject(raw)
+                    buildMap {
+                        val keys = obj.keys()
+                        while (keys.hasNext()) {
+                            val k = keys.next()
+                            val v = obj.optString(k)
+                            if (k.isNotBlank() && v.isNotBlank()) put(k, v)
+                        }
+                    }
+                }
+            }.getOrDefault(emptyMap())
+            Channel(
+                title = title,
+                url = url,
+                id = prefs.getLong("id", 0L),
+                userAgent = prefs.getString("ua", null),
+                referrer = prefs.getString("referrer", null),
+                customHeaders = headers,
+            )
+        } else Channel(title = title, url = url)
     }
     fun release(player: ExoPlayer) {
         // t228 (RELEASE-01): kill the timers first, then the policy, then the player.
@@ -89,11 +110,11 @@ object StreamPlayback {
                     .setUserAgent(headers.getValue("User-Agent"))
                     .setDefaultRequestProperties(headers)
             } else {
-                OkHttpDataSource.Factory(NetUtil.ipv4OkHttpClient)
+                OkHttpDataSource.Factory(NetUtil.okHttpClient)
                     .setUserAgent(headers.getValue("User-Agent"))
                     .setDefaultRequestProperties(headers)
             }
-        val factory = DefaultMediaSourceFactory(DefaultDataSource.Factory(context, http))
+        val factory = DefaultMediaSourceFactory(IptvStreamDataSourceFactory(context, http))
         player.volume = 0f
         player.trackSelectionParameters = player.trackSelectionParameters
             .buildUpon()
@@ -119,8 +140,15 @@ object StreamPlayback {
                 onFailure: (PlaybackFailure) -> Unit = {}): PreparedPlayback {
         val channel = request.channel
         val streamUrl = request.streamUrl
-        context.getSharedPreferences("iptv_stream", Context.MODE_PRIVATE).edit().putString("url", channel.url)
-            .putLong("id", channel.id).putString("ua", channel.userAgent).putString("referrer", channel.referrer).apply()
+        RtpDiagnostics.reset()
+        val headersJson = org.json.JSONObject(channel.customHeaders).toString()
+        context.getSharedPreferences("iptv_stream", Context.MODE_PRIVATE).edit()
+            .putString("url", channel.url)
+            .putLong("id", channel.id)
+            .putString("ua", channel.userAgent)
+            .putString("referrer", channel.referrer)
+            .putString("headers_json", headersJson)
+            .apply()
         val metrics = sessions.getOrPut(player) {
             Metrics(player).also {
                 player.addAnalyticsListener(it)
@@ -141,7 +169,7 @@ object StreamPlayback {
                     .setUserAgent(headers.getValue("User-Agent"))
                     .setDefaultRequestProperties(headers)
             } else {
-                OkHttpDataSource.Factory(NetUtil.ipv4OkHttpClient)
+                OkHttpDataSource.Factory(NetUtil.okHttpClient)
                     .setUserAgent(headers.getValue("User-Agent"))
                     .setDefaultRequestProperties(headers)
             }
@@ -149,9 +177,15 @@ object StreamPlayback {
             listOf(androidx.media3.common.Format.Builder()
                 .setSampleMimeType(androidx.media3.common.MimeTypes.APPLICATION_CEA608).setAccessibilityChannel(1).setLanguage("en").build())
         } else emptyList()
+        val baseSearchBytes = JingcaiExperiment.tsSearchBytes(experiment)
+        val isHighBitrateLive = streamUrl.startsWith("rtp://", ignoreCase = true) ||
+            streamUrl.startsWith("udp://", ignoreCase = true) ||
+            channel.title.contains("4K", ignoreCase = true) ||
+            channel.group.orEmpty().contains("4K", ignoreCase = true)
+        val effectiveSearchBytes = if (isHighBitrateLive) maxOf(baseSearchBytes, 2_632_000) else baseSearchBytes
         val extractors = androidx.media3.extractor.DefaultExtractorsFactory()
             .setTsSubtitleFormats(captions)
-            .setTsExtractorTimestampSearchBytes(JingcaiExperiment.tsSearchBytes(experiment))
+            .setTsExtractorTimestampSearchBytes(effectiveSearchBytes)
         // t20/t38：实读字节计数（直播永不 complete，不能用 onLoadCompleted.bytesLoaded）。
         // t38：时间轴实验（A/B/AUTO）额外做包级改写；其余模式 pipeline = null（纯计数、零改写）。
         JingcaiDiag.reset(experiment)
@@ -177,7 +211,7 @@ object StreamPlayback {
                 }
             }
         }
-        val upstreamFactory = DefaultDataSource.Factory(context, http)
+        val upstreamFactory = IptvStreamDataSourceFactory(context, http)
         val mediaDataSourceFactory: androidx.media3.datasource.DataSource.Factory =
             if (pipeline != null || probe != null || BuildConfig.DEBUG) {
                 androidx.media3.datasource.DataSource.Factory {
@@ -212,7 +246,13 @@ object StreamPlayback {
             )
         }
         // t225/t228: arm BEFORE prepare — a fast first frame must never arrive un-armed (ARM-01).
-        armWatchdog(player, context, channelId, experiment)
+        // Radio/audio-only channels do not produce video frames and must skip the video watchdog.
+        if (!channel.radio) {
+            armWatchdog(player, context, channelId, experiment)
+        } else {
+            watchdogJobs.remove(player)?.forEach { it.cancel() }
+            watchdogs.remove(player)?.cancel()
+        }
         if (zapTracking) ZapTrace.onPrepare(android.os.SystemClock.elapsedRealtime())
         player.prepare()
         // t27（冷启 rebuffer 实验③）：默认 0 = 立即 play（旧行为）；>0 时先攒缓冲再 play。
@@ -286,15 +326,19 @@ object StreamPlayback {
                 ZapRebuildPolicy.Action.GIVE_UP -> {
                     // t231/t20: one diagnostic line per failed channel (DEBUG gated).
                     // giveup=1 + 时间轴/buffer 诊断（t20 加）：help acceptance grep 与归因。
+                    val rtpSnap = RtpDiagnostics.snapshot()
                     if (Log.isLoggable(JingcaiExperiment.TAG, Log.DEBUG)) {
-                        Log.d(JingcaiExperiment.TAG, "${ZapRebuildPolicy.logLine(ZapRebuildPolicy.Action.GIVE_UP, key)} giveup=1 stage=$stage")
+                        Log.d(
+                            JingcaiExperiment.TAG,
+                            "${ZapRebuildPolicy.logLine(ZapRebuildPolicy.Action.GIVE_UP, key)} giveup=1 stage=$stage rtpLoss=${rtpSnap.lossPercent}% rtpRx=${rtpSnap.receivedPackets} rtpLost=${rtpSnap.lostPackets}",
+                        )
                         sessions[player]?.let { m -> Log.d(JingcaiExperiment.TAG, "diag ${m.diagnosticLine(experiment)}") }
                         Log.d(JingcaiExperiment.TAG, "IQTV-DIAG ${JingcaiDiag.fields()}")
                         sessions[player]?.let { m -> Log.d(JingcaiExperiment.TAG, "buffer ${m.bufferDiagnosticLine()}") }
                     }
                     android.widget.Toast.makeText(
                         context,
-                        FirstFrameWatchdogPolicy.GIVE_UP_MESSAGE,
+                        FirstFrameWatchdogPolicy.giveUpMessage(Prefs.getAppLanguage(context), rtpSnap.lossPercent),
                         android.widget.Toast.LENGTH_LONG
                     ).show()
                 }
@@ -459,7 +503,14 @@ object StreamPlayback {
             "encoding=${config.encoding} rate=${config.sampleRate} channelConfig=${config.channelConfig} bufferBytes=${config.bufferSize} tunneling=${config.tunneling} offload=${config.offload}"
 
         override fun onTracksChanged(eventTime: AnalyticsListener.EventTime, tracks: androidx.media3.common.Tracks) {
-            if (!observe(eventTime)) return
+            if (!matches(eventTime)) return
+            val hasVideo = tracks.groups.any { it.type == androidx.media3.common.C.TRACK_TYPE_VIDEO && it.length > 0 }
+            val hasAudio = tracks.groups.any { it.type == androidx.media3.common.C.TRACK_TYPE_AUDIO && it.length > 0 }
+            if (hasAudio && !hasVideo) {
+                // Radio / audio-only stream: disarm video first-frame watchdog once audio tracks are ready.
+                onFirstFrameForWatchdog(player)
+            }
+            if (!enabled) return
             var audioGroups = 0
             for ((groupIndex, group) in tracks.groups.withIndex()) {
                 if (group.type != androidx.media3.common.C.TRACK_TYPE_AUDIO) continue

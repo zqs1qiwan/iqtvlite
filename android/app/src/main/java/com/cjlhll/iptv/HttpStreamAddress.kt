@@ -104,6 +104,8 @@ object HttpStreamAddress {
     data class M3uExtras(
         val headerEpgUrl: String?,
         val perRawUrlHeaders: Map<String, Map<String, String>>,
+        val perEntryHeaders: List<Map<String, String>> = emptyList(),
+        val perEntryExtGrp: List<String?> = emptyList(),
     )
 
     private val extinfAttrRegex = Regex("""([A-Za-z0-9_-]+)\s*=\s*"([^"]*)"""")
@@ -112,7 +114,11 @@ object HttpStreamAddress {
     fun extractM3uExtras(content: String): M3uExtras {
         var headerEpg: String? = null
         val perUrl = HashMap<String, Map<String, String>>()
+        val perEntry = ArrayList<Map<String, String>>()
+        val perExtGrp = ArrayList<String?>()
         val pending = LinkedHashMap<String, String>()
+        var currentExtGrp: String? = null
+        var pendingExtinf = false
 
         for (rawLine in content.lineSequence()) {
             val line = rawLine.trim()
@@ -123,8 +129,12 @@ object HttpStreamAddress {
                         headerEpg = headerEpgRegex.find(line)?.groupValues?.getOrNull(1)?.trim()?.takeIf { it.isNotEmpty() }
                     }
                 }
+                line.startsWith("#EXTGRP:", ignoreCase = true) -> {
+                    currentExtGrp = line.substringAfter(':').trim().takeIf { it.isNotEmpty() }
+                }
                 line.startsWith("#EXTINF", ignoreCase = true) -> {
                     pending.clear()
+                    pendingExtinf = true
                     val headerPart = line.substringBeforeLast(',')
                     for (m in extinfAttrRegex.findAll(headerPart)) {
                         val k = m.groupValues[1].trim().lowercase()
@@ -172,14 +182,23 @@ object HttpStreamAddress {
                     }
                 }
                 !line.startsWith("#") -> {
-                    if (pending.isNotEmpty()) {
+                    val snapshot = if (pending.isNotEmpty()) HashMap(pending) else emptyMap()
+                    perEntry.add(snapshot)
+                    perExtGrp.add(currentExtGrp)
+                    if (snapshot.isNotEmpty()) {
                         val cleanKey = line.substringBefore('|').trim()
-                        perUrl[line] = HashMap(pending)
-                        if (cleanKey != line) perUrl.putIfAbsent(cleanKey, HashMap(pending))
+                        perUrl.putIfAbsent(line, snapshot)
+                        if (cleanKey != line) perUrl.putIfAbsent(cleanKey, snapshot)
                     }
+                    if (!pendingExtinf) pending.clear()
                 }
             }
         }
-        return M3uExtras(headerEpgUrl = headerEpg, perRawUrlHeaders = perUrl)
+        return M3uExtras(
+            headerEpgUrl = headerEpg,
+            perRawUrlHeaders = perUrl,
+            perEntryHeaders = perEntry,
+            perEntryExtGrp = perExtGrp,
+        )
     }
 }

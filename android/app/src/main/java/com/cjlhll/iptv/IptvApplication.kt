@@ -7,6 +7,7 @@ class IptvApplication : Application() {
         super.onCreate()
         LegacyPreferences.migrate(this)
         AppStrings.set(Prefs.getAppLanguage(this))
+        NetUtil.setIpStackPreference(Prefs.getIpStackPreference(this))
         // AutoUpdateScheduler honours the user's playlist/EPG schedule and backoff.
         AutoUpdateScheduler.start(this)
     }

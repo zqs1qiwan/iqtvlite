@@ -45,6 +45,9 @@ sealed interface PlayerOverlay {
     /** 居中音轨选择弹窗。 */
     data object AudioDialog : PlayerOverlay
 
+    /** 居中字幕选择弹窗。 */
+    data object SubtitleDialog : PlayerOverlay
+
     /** 居中最近观看弹窗。 */
     data object RecentDialog : PlayerOverlay
 
@@ -100,6 +103,7 @@ class PlayerUiController(
     val isSettingsOpen: Boolean get() = _overlay.value is PlayerOverlay.Settings
     val isQualityDialogOpen: Boolean get() = _overlay.value is PlayerOverlay.QualityDialog
     val isAudioDialogOpen: Boolean get() = _overlay.value is PlayerOverlay.AudioDialog
+    val isSubtitleDialogOpen: Boolean get() = _overlay.value is PlayerOverlay.SubtitleDialog
     val isRecentDialogOpen: Boolean get() = _overlay.value is PlayerOverlay.RecentDialog
     val isUpdateDialogOpen: Boolean get() = _overlay.value is PlayerOverlay.UpdateDialog
     val isInfoCardVisible: Boolean get() = _overlay.value is PlayerOverlay.InfoCard
@@ -221,6 +225,18 @@ class PlayerUiController(
 
     fun closeAudioDialog() {
         if (_overlay.value is PlayerOverlay.AudioDialog) {
+            _overlay.value = PlayerOverlay.None
+        }
+    }
+
+    fun openSubtitleDialog() {
+        clearDigits()
+        _captureRequest.value = null
+        _overlay.value = PlayerOverlay.SubtitleDialog
+    }
+
+    fun closeSubtitleDialog() {
+        if (_overlay.value is PlayerOverlay.SubtitleDialog) {
             _overlay.value = PlayerOverlay.None
         }
     }
@@ -365,6 +381,7 @@ class PlayerUiController(
             lastBackWithin2s = lastBackWithin2s,
             updateDialogOpen = cur is PlayerOverlay.UpdateDialog,
             inAppPipActive = inAppPipActive,
+            subtitleDialogOpen = cur is PlayerOverlay.SubtitleDialog,
         )
     }
 }

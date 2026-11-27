@@ -142,13 +142,13 @@ private fun LanguageSelectScreen(
             Spacer(modifier = Modifier.height(8.dp))
 
             Text(
-                text = "可在「设置 → 播放与画面 → 语言 / Language」随时切换",
+                text = "可在「设置 → 外观 → 语言 / Language」随时切换",
                 style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.5.sp),
                 color = TvDesignTokens.TextMuted,
                 textAlign = TextAlign.Center,
             )
             Text(
-                text = "You can change this anytime in Settings → Playback → Language",
+                text = "You can change this anytime in Settings → Appearance → Language",
                 style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.5.sp),
                 color = TvDesignTokens.TextMuted.copy(alpha = 0.8f),
                 textAlign = TextAlign.Center,

@@ -6,9 +6,9 @@ import android.net.Uri
 import android.os.Build
 import android.util.Log
 import androidx.core.content.FileProvider
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
 
@@ -21,11 +21,17 @@ object ApkDownloader {
         val isComplete: Boolean
     ) {
         val progress: Float
-            get() = if (totalBytes > 0) bytesDownloaded.toFloat() / totalBytes else 0f
+            get() = when {
+                isComplete -> 1f
+                totalBytes > 0 -> (bytesDownloaded.toFloat() / totalBytes).coerceIn(0f, 1f)
+                // Unknown Content-Length: gently creep toward 90% so user sees activity
+                else -> (bytesDownloaded.toFloat() / (16f * 1024f * 1024f)).coerceIn(0.02f, 0.90f)
+            }
     }
 
     suspend fun downloadWithProgress(context: Context, url: String, onProgress: (DownloadProgress) -> Unit): File? {
         return withContext(Dispatchers.IO) {
+            val file = File(context.cacheDir, "update_${System.currentTimeMillis()}.apk")
             try {
                 val client = NetUtil.ipv4OkHttpClient
                 val request = Request.Builder().url(url).build()
@@ -33,20 +39,21 @@ object ApkDownloader {
                 client.newCall(request).execute().use { response ->
                     if (!response.isSuccessful) {
                         Log.e(TAG, "Request failed: ${response.code}")
+                        file.delete()
                         return@withContext null
                     }
 
-                    val body = response.body ?: return@withContext null
+                    val body = response.body ?: run {
+                        file.delete()
+                        return@withContext null
+                    }
                     val totalBytes = body.contentLength()
-
-                    val fileName = "update_${System.currentTimeMillis()}.apk"
-                    val file = File(context.cacheDir, fileName)
+                    var bytesDownloaded = 0L
 
                     body.byteStream().use { input ->
                         file.outputStream().use { output ->
                             val buffer = ByteArray(8192)
                             var bytesRead: Int
-                            var bytesDownloaded = 0L
 
                             while (input.read(buffer).also { bytesRead = it } != -1) {
                                 output.write(buffer, 0, bytesRead)
@@ -61,16 +68,25 @@ object ApkDownloader {
                         }
                     }
 
+                    if (bytesDownloaded <= 0L) {
+                        file.delete()
+                        return@withContext null
+                    }
+
                     onProgress(DownloadProgress(
-                        bytesDownloaded = totalBytes,
-                        totalBytes = totalBytes,
+                        bytesDownloaded = bytesDownloaded,
+                        totalBytes = if (totalBytes > 0) totalBytes else bytesDownloaded,
                         isComplete = true
                     ))
 
                     file
                 }
+            } catch (e: CancellationException) {
+                file.delete()
+                throw e
             } catch (e: Exception) {
                 Log.e(TAG, "Download error: ${e.message}")
+                file.delete()
                 null
             }
         }

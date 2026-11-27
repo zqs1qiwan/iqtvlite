@@ -43,7 +43,8 @@ object UpdateChecker {
                         if (resp.isSuccessful) {
                             val body = resp.body?.string().orEmpty()
                             if (body.isNotBlank()) {
-                                return@withContext parseReleaseJson(body, currentVersion)
+                                val parsed = parseReleaseJson(body, currentVersion)
+                                if (parsed != null) return@withContext parsed
                             }
                         } else {
                             Log.w(TAG, "GitHub API latest returned HTTP ${resp.code}, trying web redirect")

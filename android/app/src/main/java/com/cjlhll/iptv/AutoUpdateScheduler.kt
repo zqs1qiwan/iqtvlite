@@ -108,11 +108,12 @@ object AutoUpdateScheduler {
                     startupDone = true
                     refreshGate.exit()
                 }
+                val lang = Prefs.getAppLanguage(appContext)
                 _events.tryEmit(
                     when {
-                        !attempted -> "源未配置"
-                        allOk -> "源已更新"
-                        else -> "源更新失败"
+                        !attempted -> AppStrings.tr(lang, "源未配置", "Source not configured")
+                        allOk -> AppStrings.tr(lang, "源已更新", "Sources updated")
+                        else -> AppStrings.tr(lang, "源更新失败", "Source update failed")
                     }
                 )
             }
@@ -127,17 +128,24 @@ object AutoUpdateScheduler {
                 // t189: a manual request must not stack on top of a running automatic/save pass.
                 if (!refreshGate.tryEnter()) return@withLock
                 try {
+                val lang = Prefs.getAppLanguage(appContext)
                 if (playlist) {
                     val ok = BackgroundSourceUpdater.refreshPlaylistUrgent(appContext)
                     onPlaylistResult(appContext, ok)
-                    _events.tryEmit(if (ok) "播放列表已更新" else "播放列表更新失败")
+                    _events.tryEmit(
+                        if (ok) AppStrings.tr(lang, "播放列表已更新", "Playlist updated")
+                        else AppStrings.tr(lang, "播放列表更新失败", "Playlist update failed")
+                    )
                 }
                 if (epg) {
                     val source = Prefs.getEpgSource(appContext)
                     val data = if (source.isBlank()) null else BackgroundSourceUpdater.refreshEpg(appContext, source)
                     val ok = data != null
                     onEpgResult(appContext, ok)
-                    _events.tryEmit(if (ok) "EPG已更新" else "EPG更新失败")
+                    _events.tryEmit(
+                        if (ok) AppStrings.tr(lang, "EPG 已更新", "EPG updated")
+                        else AppStrings.tr(lang, "EPG 更新失败", "EPG update failed")
+                    )
                 }
                 } finally {
                     refreshGate.exit()

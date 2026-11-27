@@ -47,11 +47,10 @@ class LoadControlConfigTest {
     }
 
     @Test
-    fun theDefaultIsTheStableTier() {
-        // t205: 300 showed a 5.8 s cold-start rebuffer on the box → default is 稳/500 until A/B.
-        org.junit.Assert.assertEquals(500, LoadControlTuning.DEFAULT_BUFFER_MIN_MS)
-        org.junit.Assert.assertEquals(500, LoadControlTuning.playbackBufferMinMs(0))
-        org.junit.Assert.assertEquals(500, LoadControlTuning.playbackBufferMinMs(999))
+    fun theDefaultIsTheFastTier() {
+        org.junit.Assert.assertEquals(300, LoadControlTuning.DEFAULT_BUFFER_MIN_MS)
+        org.junit.Assert.assertEquals(300, LoadControlTuning.playbackBufferMinMs(0))
+        org.junit.Assert.assertEquals(300, LoadControlTuning.playbackBufferMinMs(999))
     }
 
     @Test
@@ -59,12 +58,12 @@ class LoadControlConfigTest {
         org.junit.Assert.assertEquals(300, LoadControlTuning.sanitize(300))
         org.junit.Assert.assertEquals(400, LoadControlTuning.sanitize(400))
         org.junit.Assert.assertEquals(500, LoadControlTuning.sanitize(500))
-        org.junit.Assert.assertEquals(500, LoadControlTuning.sanitize(123))
-        org.junit.Assert.assertEquals(500, LoadControlTuning.sanitize(-1))
+        org.junit.Assert.assertEquals(300, LoadControlTuning.sanitize(123))
+        org.junit.Assert.assertEquals(300, LoadControlTuning.sanitize(-1))
         org.junit.Assert.assertEquals(400, LoadControlTuning.next(300))
         org.junit.Assert.assertEquals(500, LoadControlTuning.next(400))
         org.junit.Assert.assertEquals(300, LoadControlTuning.next(500))
-        org.junit.Assert.assertEquals("稳(500ms)", LoadControlTuning.tierLabel(999))
+        org.junit.Assert.assertEquals("快(300ms)", LoadControlTuning.tierLabel(999))
     }
 
     @Test

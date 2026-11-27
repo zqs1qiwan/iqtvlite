@@ -12,7 +12,7 @@ object SourceConfigWebPage {
 <html lang="${if (initialLang == "en") "en" else "zh-CN"}">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <title>$appName</title>
   <style>
     :root {
@@ -690,6 +690,14 @@ object SourceConfigWebPage {
       </div>
 
       <div class="card">
+        <h2 class="card-title" id="dispIpTitle" style="margin-bottom:10px">网络协议优先级</h2>
+        <div class="seg-grid-2" id="ipStackSeg">
+          <div class="seg-card" data-ip="ipv6_first"><strong id="ipV6T">IPv6 优先（推荐）</strong><span id="ipV6D">默认优先 IPv6，不可用自动回退 IPv4</span></div>
+          <div class="seg-card" data-ip="ipv4_first"><strong id="ipV4T">IPv4 优先</strong><span id="ipV4D">优先 IPv4，不可用自动回退 IPv6</span></div>
+        </div>
+      </div>
+
+      <div class="card">
         <h2 class="card-title" id="dispBufTitle" style="margin-bottom:10px">起播缓冲与自动更新</h2>
         <div class="seg-grid" id="bufferSeg" style="margin-bottom:14px">
           <div class="seg-card" data-buf="300"><strong id="bufFastT">快</strong><span id="bufFastD">300ms 极速</span></div>
@@ -818,6 +826,7 @@ object SourceConfigWebPage {
     var currentLang = "$initialLang";
     var selectedUiScale = "medium";
     var selectedInfoOk = "two_step";
+    var selectedIpStack = "ipv6_first";
     var selectedBuffer = 500;
     var editingSource = false;
     var editingSourceName = "";
@@ -883,6 +892,9 @@ object SourceConfigWebPage {
         dispOkTitle: "信息卡 OK 键行为",
         okTwoT: "两段式（推荐）", okTwoD: "先出信息卡，再按 OK 快切",
         okDirT: "直达最近观看", okDirD: "按一次 OK 直接聚焦最近台",
+        dispIpTitle: "网络协议优先级",
+        ipV6T: "IPv6 优先（默认）", ipV6D: "优先 IPv6，失败自动回退 IPv4",
+        ipV4T: "IPv4 优先", ipV4D: "优先 IPv4，失败自动回退 IPv6",
         dispBufTitle: "起播缓冲与自动更新",
         bufFastT: "快", bufFastD: "300ms 极速",
         bufBalT: "均衡", bufBalD: "400ms 平衡",
@@ -983,6 +995,9 @@ object SourceConfigWebPage {
         dispOkTitle: "Info Card OK Action",
         okTwoT: "Two-step (Recommended)", okTwoD: "First OK shows card, second focuses recent",
         okDirT: "Direct Recent Strip", okDirD: "First OK immediately focuses recent strip",
+        dispIpTitle: "IP Protocol Priority",
+        ipV6T: "IPv6 Preferred (Default)", ipV6D: "Try IPv6 first, fall back to IPv4",
+        ipV4T: "IPv4 Preferred", ipV4D: "Try IPv4 first, fall back to IPv6",
         dispBufTitle: "Startup Buffer & Auto Update",
         bufFastT: "Fast", bufFastD: "300ms Quick zap",
         bufBalT: "Balanced", bufBalD: "400ms Balanced",
@@ -1078,6 +1093,9 @@ object SourceConfigWebPage {
       byId("dispOkTitle").textContent = L.dispOkTitle;
       byId("okTwoT").textContent = L.okTwoT; byId("okTwoD").textContent = L.okTwoD;
       byId("okDirT").textContent = L.okDirT; byId("okDirD").textContent = L.okDirD;
+      byId("dispIpTitle").textContent = L.dispIpTitle;
+      byId("ipV6T").textContent = L.ipV6T; byId("ipV6D").textContent = L.ipV6D;
+      byId("ipV4T").textContent = L.ipV4T; byId("ipV4D").textContent = L.ipV4D;
       byId("dispBufTitle").textContent = L.dispBufTitle;
       byId("bufFastT").textContent = L.bufFastT; byId("bufFastD").textContent = L.bufFastD;
       byId("bufBalT").textContent = L.bufBalT; byId("bufBalD").textContent = L.bufBalD;
@@ -1365,12 +1383,16 @@ object SourceConfigWebPage {
     function renderDisplay() {
       selectedUiScale = (state && state.uiScale) || "medium";
       selectedInfoOk = (state && state.infoOkMode) || "two_step";
-      selectedBuffer = (state && state.playbackBufferMin) || 500;
+      selectedIpStack = (state && state.ipStackPreference) || "ipv6_first";
+      selectedBuffer = (state && state.playbackBufferMin) || 300;
       document.querySelectorAll("#uiScaleSeg .seg-card").forEach(function(c) {
         c.classList.toggle("selected", c.getAttribute("data-scale") === selectedUiScale);
       });
       document.querySelectorAll("#infoOkSeg .seg-card").forEach(function(c) {
         c.classList.toggle("selected", c.getAttribute("data-ok") === selectedInfoOk);
+      });
+      document.querySelectorAll("#ipStackSeg .seg-card").forEach(function(c) {
+        c.classList.toggle("selected", c.getAttribute("data-ip") === selectedIpStack);
       });
       document.querySelectorAll("#bufferSeg .seg-card").forEach(function(c) {
         c.classList.toggle("selected", Number(c.getAttribute("data-buf")) === selectedBuffer);
@@ -1392,6 +1414,12 @@ object SourceConfigWebPage {
         document.querySelectorAll("#infoOkSeg .seg-card").forEach(function(x) { x.classList.toggle("selected", x === c); });
       });
     });
+    document.querySelectorAll("#ipStackSeg .seg-card").forEach(function(c) {
+      c.addEventListener("click", function() {
+        selectedIpStack = c.getAttribute("data-ip");
+        document.querySelectorAll("#ipStackSeg .seg-card").forEach(function(x) { x.classList.toggle("selected", x === c); });
+      });
+    });
     document.querySelectorAll("#bufferSeg .seg-card").forEach(function(c) {
       c.addEventListener("click", function() {
         selectedBuffer = Number(c.getAttribute("data-buf"));
@@ -1403,6 +1431,7 @@ object SourceConfigWebPage {
         var res = await api("/api/display", {
           uiScale: selectedUiScale,
           infoOkMode: selectedInfoOk,
+          ipStackPreference: selectedIpStack,
           playbackBufferMin: selectedBuffer,
           autoUpdatePlaylist: byId("autoPlaylist").value,
           autoUpdateEpg: byId("autoEpg").value,

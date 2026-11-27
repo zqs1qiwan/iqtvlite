@@ -121,8 +121,8 @@ class PlayerActivity : ComponentActivity() {
     private var onOpenInfoCardFromOk: (() -> Boolean)? = null
     private var onInfoCardFocusedAction: ((InfoCardPolicy.FocusedKeyAction) -> Boolean)? = null
     private var onExtraBack: (() -> Boolean)? = null
-    private var subtitleDialogOpenFlag: Boolean = false
     private var isInPipMode by mutableStateOf(false)
+    private var uiTransparencyPctState by mutableIntStateOf(18)
     private var isInAppPipActive by mutableStateOf(false)
     private var onSwapPip: (() -> Boolean)? = null
     private var onExitPip: (() -> Unit)? = null
@@ -147,6 +147,7 @@ class PlayerActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         AppStrings.set(Prefs.getAppLanguage(this))
+        uiTransparencyPctState = Prefs.getUiTransparencyPct(this)
         digitsMode = Prefs.getRemoteSettings(this).digits
         remoteBindings = Prefs.getRemoteBindings(this)
     }
@@ -212,6 +213,7 @@ class PlayerActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         AppStrings.set(Prefs.getAppLanguage(this))
+        uiTransparencyPctState = Prefs.getUiTransparencyPct(this)
         digitsMode = Prefs.getRemoteSettings(this).digits
         remoteBindings = Prefs.getRemoteBindings(this)
 
@@ -372,7 +374,7 @@ class PlayerActivity : ComponentActivity() {
                             setOnSwapPip = { onSwapPip = it },
                             setOnExitPip = { onExitPip = it },
                             setOnExtraBack = { onExtraBack = it },
-                            onSubtitleDialogOpenChanged = { subtitleDialogOpenFlag = it },
+                            onSubtitleDialogOpenChanged = { },
                             digitMatchSelectedIndex = digitMatchSelectedIndex,
                             setOnDigitMatchJump = { onDigitMatchJump = it },
                             onChannelGroupsChanged = { activeChannelGroups = it },
@@ -402,7 +404,7 @@ class PlayerActivity : ComponentActivity() {
                     if (!isInPipMode && digitState.visible) {
                         val osdDigitColor = if (digitState.confirmed) BrandFocus.BlueColor else TvDesignTokens.TextPrimary
                         val badgeShape = RoundedCornerShape(10.dp)
-                        val uiAlpha = Prefs.uiSurfaceAlpha(Prefs.getUiTransparencyPct(this@PlayerActivity))
+                        val uiAlpha = Prefs.uiSurfaceAlpha(uiTransparencyPctState)
                         Column(
                             modifier = Modifier
                                 .align(Alignment.TopEnd)
@@ -624,6 +626,7 @@ class PlayerActivity : ComponentActivity() {
         when (uiController.decideBack(catchup = isCatchupPlayback, lastBackWithin2s = within2s, inAppPipActive = isInAppPipActive)) {
             BackKeyPolicy.Action.CLOSE_UPDATE_DIALOG -> uiController.closeUpdateDialog()
             BackKeyPolicy.Action.CLOSE_AUDIO_DIALOG -> uiController.closeAudioDialog()
+            BackKeyPolicy.Action.CLOSE_SUBTITLE_DIALOG -> uiController.closeSubtitleDialog()
             BackKeyPolicy.Action.CLOSE_RECENT -> uiController.closeRecentDialog()
             BackKeyPolicy.Action.CLOSE_QUALITY_DIALOG -> uiController.closeQualityDialog()
             BackKeyPolicy.Action.CLOSE_DRAWER -> closeDrawerSynced()
@@ -737,13 +740,18 @@ class PlayerActivity : ComponentActivity() {
         // 5. 左侧选台抽屉打开态：刷新无操作计时并直达原生 RecyclerView 抽屉（<0.5ms 同步消费，零重组、零焦锁）
         if (uiController.isDrawerOpen) {
             cancelLongPress()
+            if (event.repeatCount == 0 && (keyCode == KeyEvent.KEYCODE_MENU || keyCode == KeyEvent.KEYCODE_SETTINGS)) {
+                closeDrawerSynced()
+                uiController.openSettings()
+                return true
+            }
             uiController.noteDrawerInteraction()
             if (nativeDrawer.handleKeyEvent(keyCode)) return true
             return keyCode in NAV_AND_OK_KEYS
         }
 
         // 6. 其它阻断型覆盖层（设置 / 线路 / 音轨 / 字幕 / 最近观看 / 更新弹窗）：全部交给浮层消费，绝不透传到底层播放器
-        if (uiController.isBlockingOverlayOpen || subtitleDialogOpenFlag) {
+        if (uiController.isBlockingOverlayOpen) {
             cancelLongPress()
             return super.dispatchKeyEvent(event)
         }
@@ -751,6 +759,7 @@ class PlayerActivity : ComponentActivity() {
         // 7. 全屏/信息卡态下的数字键 0..9
         if (keyCode in KeyEvent.KEYCODE_0..KeyEvent.KEYCODE_9) {
             if (event.repeatCount == 0) {
+                uiTransparencyPctState = Prefs.getUiTransparencyPct(this)
                 numberConfirmJob?.cancel()
                 uiController.appendDigit(keyCode - KeyEvent.KEYCODE_0)
                 restartDigitTimeoutTimer()
@@ -848,12 +857,14 @@ class PlayerActivity : ComponentActivity() {
                     !uiController.isDrawerOpen &&
                     !uiController.isInfoCardVisible &&
                     !uiController.currentDigits.visible &&
-                    !subtitleDialogOpenFlag &&
                     !isInAppPipActive &&
                     !isInPipMode
                 if (!pureFullscreen) return null
             }
             return rightAction
+        }
+        if (resolved == null && !longPress && (keyCode == KeyEvent.KEYCODE_MENU || keyCode == KeyEvent.KEYCODE_SETTINGS)) {
+            return RemoteAction.OPEN_SETTINGS
         }
         return resolved
     }
@@ -945,7 +956,7 @@ fun VideoPlayerScreen(
     var channelGroups by remember { mutableStateOf<List<ChannelGroup>>(emptyList()) }
     var currentGroupIndex by remember { mutableIntStateOf(0) }
     var currentVariantIndex by remember { mutableIntStateOf(0) }
-    val triedVariantUrls = remember { mutableSetOf<String>() }
+    val triedVariantIndices = remember { mutableSetOf<Int>() }
 
     LaunchedEffect(channelGroups) { sidebarController.setChannelGroups(channelGroups) }
     LaunchedEffect(currentGroupIndex, currentVariantIndex) {
@@ -954,7 +965,7 @@ fun VideoPlayerScreen(
 
     var epgData by remember { mutableStateOf<EpgData?>(null) }
     var epgVersion by remember { mutableIntStateOf(0) }
-    val epgSourceConfigured = remember(context) { Prefs.getEpgSource(context).isNotBlank() }
+    var epgSourceConfigured by remember { mutableStateOf(Prefs.getEpgSource(context).isNotBlank()) }
     var epgLoadFailed by remember { mutableStateOf(false) }
     var nowProgramByUrl by remember { mutableStateOf<Map<String, NowProgramUi>>(emptyMap()) }
 
@@ -1013,13 +1024,11 @@ fun VideoPlayerScreen(
     var subtitleDisabled by remember { mutableStateOf(false) }
     var subtitleOverrideGroup by remember { mutableIntStateOf(-1) }
     var subtitleOverrideTrack by remember { mutableIntStateOf(-1) }
-    var subtitleDialogOpen by remember { mutableStateOf(false) }
+    val subtitleDialogOpen = overlay is PlayerOverlay.SubtitleDialog
 
     var videoAspectMode by remember { mutableStateOf(Prefs.getVideoAspectMode(context)) }
     LaunchedEffect(videoAspectMode) { playerView.resizeMode = videoAspectMode.resizeModeValue }
     LaunchedEffect(channelGroups) { playback.onChannelGroupsChanged(channelGroups) }
-    LaunchedEffect(subtitleDialogOpen) { playback.onSubtitleDialogOpenChanged(subtitleDialogOpen) }
-    LaunchedEffect(overlay) { if (overlay != PlayerOverlay.None) subtitleDialogOpen = false }
 
     var autoUpdatePlaylist by remember { mutableStateOf(Prefs.getAutoUpdatePlaylist(context)) }
     var autoUpdateEpg by remember { mutableStateOf(Prefs.getAutoUpdateEpg(context)) }
@@ -1047,6 +1056,21 @@ fun VideoPlayerScreen(
     var activeSourceId by remember { mutableStateOf(Prefs.getActiveSourceId(context)) }
     var globalUserAgent by remember { mutableStateOf(Prefs.getGlobalUserAgent(context)) }
     var globalCustomHeaders by remember { mutableStateOf(Prefs.getGlobalCustomHeaders(context)) }
+    var autoStartOnBoot by remember { mutableStateOf(Prefs.isAutoStartOnBoot(context)) }
+    var resumeLastChannel by remember { mutableStateOf(Prefs.isResumeLastChannel(context)) }
+    var homePipEnabled by remember { mutableStateOf(Prefs.isHomePipEnabled(context)) }
+    var doubleBackExitEnabled by remember { mutableStateOf(Prefs.isDoubleBackExitEnabled(context)) }
+    var epgRetentionDays by remember { mutableIntStateOf(Prefs.getEpgRetentionDays(context)) }
+    var epgUpdateOnPlaylistChange by remember { mutableStateOf(Prefs.isEpgUpdateOnPlaylistChange(context)) }
+    var videoDecoderMode by remember { mutableStateOf(Prefs.getVideoDecoderMode(context)) }
+    var rebuildOn4kZap by remember { mutableStateOf(Prefs.isRebuildOn4kZap(context)) }
+    var defaultSubtitlesEnabled by remember { mutableStateOf(Prefs.isDefaultSubtitlesEnabled(context)) }
+    var subtitlePreferredLang by remember { mutableStateOf(Prefs.getSubtitlePreferredLang(context)) }
+    var ipStackPreference by remember { mutableStateOf(Prefs.getIpStackPreference(context)) }
+    LaunchedEffect(globalUserAgent, globalCustomHeaders, sources, activeSourceId) {
+        val activeUa = sources.firstOrNull { it.id == activeSourceId }?.userAgent?.takeIf { it.isNotBlank() } ?: globalUserAgent
+        SourceLatencyProber.updateRequestDefaults(activeUa, PlaylistSources.parseCustomHeaders(globalCustomHeaders))
+    }
     val visibleSources = remember(sources) { PlaylistSources.visibleSources(sources) }
     var sourceSwitchJob by remember { mutableStateOf<Job?>(null) }
     var updateJob by remember { mutableStateOf<Job?>(null) }
@@ -1138,7 +1162,8 @@ fun VideoPlayerScreen(
 
     fun liveSelection() = PlaylistSelection(channelGroups, currentGroupIndex, selectedLiveNow())
 
-    fun prepareRequest(p: ExoPlayer, request: MediaPlaybackRequest): PreparedPlayback {
+    fun prepareRequest(p: ExoPlayer, request: MediaPlaybackRequest): PreparedPlayback? {
+        if (request.streamUrl.isBlank()) return null
         rebuildState[0] = request
         return StreamPlayback.prepare(
             p, context, request, playbackIntent,
@@ -1193,9 +1218,9 @@ fun VideoPlayerScreen(
         } else {
             PlaybackIntent.catchup(allChannels, req, playbackIntent.request)
         }
-        if (request == null) {
-            newPlayer.release()
-            playerView.player = null
+        if (request == null || request.streamUrl.isBlank()) {
+            playerView.player = newPlayer
+            player = newPlayer
             return
         }
         catchupRetryCount = 0
@@ -1270,6 +1295,13 @@ fun VideoPlayerScreen(
                     globalUserAgent = Prefs.getGlobalUserAgent(context)
                     globalCustomHeaders = Prefs.getGlobalCustomHeaders(context)
                     uiScale = Prefs.getUiScale(context)
+                    uiTransparencyPct = Prefs.getUiTransparencyPct(context)
+                    infoPanelTimeoutSec = Prefs.getInfoPanelTimeoutSec(context)
+                    showInfoOnZap = Prefs.isShowInfoOnZap(context)
+                    showClockInPlayer = Prefs.isShowClockInPlayer(context)
+                    showExactResolution = Prefs.isShowExactResolution(context)
+                    showFavoritesGroup = Prefs.isShowFavoritesGroup(context)
+                    showAllChannelsGroup = Prefs.isShowAllChannelsGroup(context)
                     infoOkMode = Prefs.getInfoOkMode(context)
                     playbackBufferMin = Prefs.getPlaybackBufferMin(context)
                     autoUpdatePlaylist = Prefs.getAutoUpdatePlaylist(context)
@@ -1278,6 +1310,18 @@ fun VideoPlayerScreen(
                     logoPrefetchEnabled = Prefs.isLogoPrefetchEnabled(context)
                     logoLoadEnabled = Prefs.isLogoLoadEnabled(context)
                     LogoLoader.setLogoLoadEnabledRuntime(logoLoadEnabled)
+                    ipStackPreference = Prefs.getIpStackPreference(context)
+                    autoStartOnBoot = Prefs.isAutoStartOnBoot(context)
+                    resumeLastChannel = Prefs.isResumeLastChannel(context)
+                    homePipEnabled = Prefs.isHomePipEnabled(context)
+                    doubleBackExitEnabled = Prefs.isDoubleBackExitEnabled(context)
+                    epgRetentionDays = Prefs.getEpgRetentionDays(context)
+                    epgUpdateOnPlaylistChange = Prefs.isEpgUpdateOnPlaylistChange(context)
+                    videoDecoderMode = Prefs.getVideoDecoderMode(context)
+                    rebuildOn4kZap = Prefs.isRebuildOn4kZap(context)
+                    defaultSubtitlesEnabled = Prefs.isDefaultSubtitlesEnabled(context)
+                    subtitlePreferredLang = Prefs.getSubtitlePreferredLang(context)
+                    epgSourceConfigured = Prefs.getEpgSource(context).isNotBlank()
                     remoteHabits = Prefs.getRemoteSettings(context)
                     remoteCbs.onRemoteSettingsChanged(remoteHabits)
                     remoteCbs.onBindingsChanged(Prefs.getRemoteBindings(context))
@@ -1405,10 +1449,24 @@ fun VideoPlayerScreen(
         channelGroups = update.groups
         policy.groupIndex?.let { currentGroupIndex = it }
         policy.variantIndex?.let { currentVariantIndex = it }
-        policy.prepare?.let { request ->
+        if (policy.prepare != null) {
             if (mode == PlaylistUpdateMode.Recovery) channelSwitch.show()
-            player?.let { prepareRequest(it, request) }
-            Prefs.setLastChannel(context, request.channel.url, request.channel.title)
+            player?.let { prepareRequest(it, policy.prepare) }
+            Prefs.setLastChannel(context, policy.prepare.channel.url, policy.prepare.channel.title)
+        } else if (mode == PlaylistUpdateMode.Initial &&
+            catchupRequest == null &&
+            player != null &&
+            playbackIntent.request == null &&
+            update.groups.isNotEmpty()
+        ) {
+            val idx = (policy.groupIndex ?: 0).coerceIn(0, update.groups.lastIndex)
+            val fallbackCh = update.groups[idx].defaultChannel
+            if (fallbackCh.url.isNotBlank()) {
+                currentGroupIndex = idx
+                currentVariantIndex = update.groups[idx].defaultVariantIndex.coerceIn(0, update.groups[idx].variants.lastIndex)
+                prepareRequest(player!!, MediaPlaybackRequest(fallbackCh))
+                Prefs.setLastChannel(context, fallbackCh.url, fallbackCh.title)
+            }
         }
         // 统一按标准台标尺寸预取一次（消除旧 80×50 100% 缓存未命中的二次预取）
         scope.launch {
@@ -1482,11 +1540,11 @@ fun VideoPlayerScreen(
             if (groupIndex != null && !playbackIntent.retainsUnlistedLive) {
                 val group = channelGroups[groupIndex]
                 if (group.variants.size > 1) {
-                    triedVariantUrls.add(failed.request.channel.url)
                     val failedIdx = ChannelGrouper.findVariantIndexByUrl(group, failed.request.channel.url)
+                    triedVariantIndices.add(failedIdx)
                     val nextIdx = (1 until group.variants.size)
                         .map { offset -> (failedIdx + offset) % group.variants.size }
-                        .firstOrNull { idx -> group.variants[idx].channel.url !in triedVariantUrls }
+                        .firstOrNull { idx -> idx !in triedVariantIndices }
                     if (nextIdx != null && playbackIntent.isCurrent(failed)) {
                         channelSwitch.show()
                         val nextCh = group.variants[nextIdx].channel
@@ -1496,7 +1554,7 @@ fun VideoPlayerScreen(
                         Prefs.setLastChannel(context, nextCh.url, nextCh.title)
                         continue
                     } else {
-                        triedVariantUrls.clear()
+                        triedVariantIndices.clear()
                     }
                 }
             }
@@ -1526,6 +1584,7 @@ fun VideoPlayerScreen(
 
     // 相邻频道实验预热
     LaunchedEffect(zapPreconnectEnabled, multicastPrewarmEnabled, drawerOpen, firstFrameRendered, currentGroupIndex) {
+        if (!zapPreconnectEnabled && !multicastPrewarmEnabled) return@LaunchedEffect
         val urls = channelGroups.map { it.variants.firstOrNull()?.channel?.url ?: "" }
         if (urls.isEmpty()) return@LaunchedEffect
         val idle = firstFrameRendered && !drawerOpen
@@ -1578,7 +1637,7 @@ fun VideoPlayerScreen(
             }
             epgLoadFailed = cachedEpg == null
             PerfTrace.d { "epg_cache_load ms=${System.currentTimeMillis() - t0} firstFrame=$firstFrameRendered" }
-            if (cachedEpg != null) {
+            if (cachedEpg != null && Prefs.getEpgSource(context) == epgSource) {
                 epgData = cachedEpg
                 epgVersion++
             }
@@ -1641,7 +1700,7 @@ fun VideoPlayerScreen(
         recentEntries = recentCache.record(group, number, variantIndex)
         val gen = recentCache.generationSnapshot()
         recentWriteJob?.cancel()
-        recentWriteJob = scope.launch {
+        recentWriteJob = scope.launch(Dispatchers.IO) {
             delay(400L)
             flushRecentChannels(gen)
         }
@@ -1655,7 +1714,7 @@ fun VideoPlayerScreen(
     }
 
     fun playGroupVariant(groupIndex: Int, variantIndex: Int, armZap: Boolean = true) {
-        triedVariantUrls.clear()
+        triedVariantIndices.clear()
         ZapPreconnect.cancel()
         MulticastPrewarm.cancel()
         StreamPlayback.onUserZap()
@@ -1929,10 +1988,7 @@ fun VideoPlayerScreen(
                 uiController.noteInfoCardInteraction(promoteManual = true)
             }
             InfoCardQuickActionId.AUDIO -> uiController.openAudioDialog()
-            InfoCardQuickActionId.SUBTITLE -> {
-                uiController.hideInfoCard()
-                subtitleDialogOpen = true
-            }
+            InfoCardQuickActionId.SUBTITLE -> uiController.openSubtitleDialog()
             InfoCardQuickActionId.PIP -> if (pipChannel != null) exitInAppPip() else enterInAppPip()
             InfoCardQuickActionId.SETTINGS -> uiController.openSettings()
         }
@@ -1954,12 +2010,14 @@ fun VideoPlayerScreen(
     // 持久化最近观看（暂停/退后台不丢）
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_STOP || event == Lifecycle.Event.ON_PAUSE) flushRecentChannels()
+            if (event == Lifecycle.Event.ON_STOP || event == Lifecycle.Event.ON_PAUSE) {
+                kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch { flushRecentChannels() }
+            }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
-            flushRecentChannels()
+            kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch { flushRecentChannels() }
         }
     }
 
@@ -2003,19 +2061,13 @@ fun VideoPlayerScreen(
     val latestTriggerQuickAction = rememberUpdatedState<(InfoCardQuickActionId) -> Unit> { triggerQuickAction(it) }
     val latestSwapPip = rememberUpdatedState<() -> Boolean> { swapInAppPip() }
     val latestExitPip = rememberUpdatedState<() -> Unit> { exitInAppPip() }
-    val latestSubtitleDialogOpen = rememberUpdatedState(subtitleDialogOpen)
     val latestInfoOkMode = rememberUpdatedState(infoOkMode)
     val latestSeekOverlay = rememberUpdatedState(isSeekOverlayVisible)
 
     DisposableEffect(Unit) {
         playback.setOnSwapPip { latestSwapPip.value() }
         playback.setOnExitPip { latestExitPip.value() }
-        playback.setOnExtraBack {
-            if (latestSubtitleDialogOpen.value) {
-                subtitleDialogOpen = false
-                true
-            } else false
-        }
+        playback.setOnExtraBack { false }
         playback.setOnNumberJump { number ->
             val gs = latestChannelGroups.value
             if (number !in 1..gs.size) false else {
@@ -2145,8 +2197,14 @@ fun VideoPlayerScreen(
             groupConfig = activeGroupConfig,
         )
     }
-    val filteredChannels = remember(channelGroups, selectedGroup, favoriteUrls) {
-        ChannelGrouper.numberedDisplayChannelsForGroup(channelGroups, selectedGroup, favoriteUrls).map { it.channel }
+    val allNumberedChannels = remember(channelGroups) { ChannelGrouper.numberedDisplayChannels(channelGroups) }
+    val filteredChannels = remember(channelGroups, selectedGroup, favoriteUrls, allNumberedChannels) {
+        ChannelGrouper.numberedDisplayChannelsForGroup(
+            groups = channelGroups,
+            groupName = selectedGroup,
+            favoriteUrls = favoriteUrls,
+            precomputedAll = allNumberedChannels,
+        ).map { it.channel }
     }
     val channelNumbersMap = remember(channelGroups) { ChannelGrouper.globalNumberByUrl(channelGroups) }
 
@@ -2179,10 +2237,14 @@ fun VideoPlayerScreen(
         probingUrls = probingUrls - urls.toSet()
     }
 
-    val logoCacheSummary by produceState(initialValue = "", settingsDrawerOpen, logoCacheTick) {
+    val logoCacheSummary by produceState(initialValue = "", settingsDrawerOpen, logoCacheTick, appLanguage) {
         value = if (settingsDrawerOpen) {
             val s = LogoLoader.stats(context)
-            "内存 ${s.memoryEntries} 条 · 磁盘 ${s.diskFiles} 个 / ${s.diskBytes / 1024} KB"
+            if (appLanguage == AppLang.EN) {
+                "Mem ${s.memoryEntries} · Disk ${s.diskFiles} / ${s.diskBytes / 1024} KB"
+            } else {
+                "内存 ${s.memoryEntries} 条 · 磁盘 ${s.diskFiles} 个 / ${s.diskBytes / 1024} KB"
+            }
         } else ""
     }
 
@@ -2191,9 +2253,6 @@ fun VideoPlayerScreen(
         if (source.url.isBlank()) return
         sourceSwitchJob?.cancel()
         val prevEpg = Prefs.getEpgSource(context)
-        Prefs.setActiveSource(context, source.id)
-        sources = Prefs.getSources(context)
-        activeSourceId = source.id
         Toast.makeText(
             context,
             AppStrings.tr(appLanguage, "正在切换播放源：${source.name}…", "Switching source: ${source.name}…"),
@@ -2203,37 +2262,36 @@ fun VideoPlayerScreen(
         sourceSwitchJob = scope.launch {
             try {
                 val fileName = PlaylistCache.fileNameForSource(source.url)
-                var content = withContext(Dispatchers.IO) { PlaylistCache.read(context, fileName) }
-                if (content.isNullOrBlank()) {
-                    val expectedVersion = SourceStore.beginChange(context)
-                    val client = NetUtil.ipv4OkHttpClient.newBuilder()
+                val cachedContent = withContext(Dispatchers.IO) { PlaylistCache.read(context, fileName) }
+                var expectedVersion = 0L
+                val fromNetwork: Boolean
+                val resolvedContent: String
+                if (cachedContent.isNullOrBlank()) {
+                    fromNetwork = true
+                    expectedVersion = SourceStore.beginChange(context)
+                    val client = NetUtil.okHttpClient.newBuilder()
                         .callTimeout(25, java.util.concurrent.TimeUnit.SECONDS)
                         .build()
                     val ua = source.userAgent.ifBlank { globalUserAgent }.ifBlank { HttpStreamAddress.DEFAULT_USER_AGENT }
-                    val req = okhttp3.Request.Builder().url(source.url).header("User-Agent", ua).build()
-                    val fetched = withContext(Dispatchers.IO) {
+                    val reqBuilder = okhttp3.Request.Builder().url(source.url).header("User-Agent", ua)
+                    for ((k, v) in PlaylistSources.parseCustomHeaders(globalCustomHeaders)) {
+                        if (!k.equals("User-Agent", ignoreCase = true)) {
+                            reqBuilder.header(k, v)
+                        }
+                    }
+                    val req = reqBuilder.build()
+                    resolvedContent = withContext(Dispatchers.IO) {
                         client.newCall(req).execute().use { resp ->
                             if (!resp.isSuccessful) throw java.io.IOException("HTTP ${resp.code}")
                             resp.body?.string() ?: throw java.io.IOException("empty response")
                         }
                     }
-                    val detectedEpg = HttpStreamAddress.extractM3uExtras(fetched).headerEpgUrl.orEmpty()
-                    val effectiveEpg = source.epgUrl.ifBlank { detectedEpg }.ifBlank { prevEpg }
-                    withContext(Dispatchers.IO) {
-                        SourceStore.commitSource(context, source.url, effectiveEpg, fetched, expectedVersion)
-                    }
-                    content = fetched
                 } else {
-                    val detectedEpg = withContext(Dispatchers.Default) {
-                        HttpStreamAddress.extractM3uExtras(content!!).headerEpgUrl.orEmpty()
-                    }
-                    val effectiveEpg = source.epgUrl.ifBlank { detectedEpg }.ifBlank { prevEpg }
-                    Prefs.setLiveSource(context, source.url)
-                    Prefs.setPlaylistFileName(context, fileName)
-                    if (effectiveEpg.isNotBlank()) Prefs.setEpgSource(context, effectiveEpg)
+                    fromNetwork = false
+                    resolvedContent = cachedContent
                 }
 
-                val parsedGroups = parsePlaylist(content!!, source.url)
+                val parsedGroups = parsePlaylist(resolvedContent, source.url)
                 if (parsedGroups.isEmpty()) {
                     Toast.makeText(
                         context,
@@ -2243,6 +2301,28 @@ fun VideoPlayerScreen(
                     return@launch
                 }
 
+                val detectedEpg = withContext(Dispatchers.Default) {
+                    HttpStreamAddress.extractM3uExtras(resolvedContent).headerEpgUrl.orEmpty()
+                }
+                val effectiveEpg = source.epgUrl.ifBlank { detectedEpg }
+
+                if (fromNetwork) {
+                    withContext(Dispatchers.IO) {
+                        SourceStore.commitSource(context, source.url, effectiveEpg, resolvedContent, expectedVersion)
+                    }
+                } else {
+                    Prefs.setLiveSource(context, source.url)
+                    Prefs.setPlaylistFileName(context, fileName)
+                }
+                Prefs.setEpgSource(context, effectiveEpg)
+                Prefs.setActiveSource(context, source.id)
+                sources = Prefs.getSources(context)
+                activeSourceId = source.id
+                SourceLatencyProber.updateRequestDefaults(
+                    source.userAgent.ifBlank { globalUserAgent },
+                    PlaylistSources.parseCustomHeaders(globalCustomHeaders),
+                )
+
                 SourceLatencyProber.updateChannels(ChannelGrouper.allChannels(parsedGroups))
                 channelGroups = parsedGroups
                 currentGroupIndex = 0
@@ -2251,7 +2331,7 @@ fun VideoPlayerScreen(
                 val firstChannel = parsedGroups.first().defaultChannel
                 catchupRequest = null
                 playbackIntent.beginSelection()
-                val activePlayer = ensureHardwarePlayerForNewZap()
+                val activePlayer = ensureHardwarePlayerForNewZap(firstChannel)
                 if (activePlayer != null) {
                     prepareRequest(activePlayer, MediaPlaybackRequest(firstChannel))
                 }
@@ -2262,8 +2342,29 @@ fun VideoPlayerScreen(
                     AppStrings.tr(appLanguage, "已切换至「${source.name}」（${parsedGroups.size} 台）", "Switched to \"${source.name}\" (${parsedGroups.size} channels)"),
                     Toast.LENGTH_SHORT,
                 ).show()
-                if (Prefs.getEpgSource(context) != prevEpg) {
-                    requestManualEpg()
+
+                epgSourceConfigured = effectiveEpg.isNotBlank()
+                if (effectiveEpg.isBlank()) {
+                    epgData = null
+                    nowProgramByUrl = emptyMap()
+                    epgLoadFailed = false
+                    epgVersion++
+                    withContext(Dispatchers.IO) { EpgSqlStore.clearAll(context) }
+                } else if (effectiveEpg != prevEpg || epgData == null) {
+                    epgData = null
+                    nowProgramByUrl = emptyMap()
+                    epgLoadFailed = false
+                    epgVersion++
+                    val cachedEpg = withContext(Dispatchers.IO) {
+                        EpgRepository.load(context, effectiveEpg, forceRefresh = false)
+                    }
+                    if (Prefs.getEpgSource(context) == effectiveEpg && cachedEpg != null) {
+                        epgData = cachedEpg
+                        epgVersion++
+                    }
+                    if (epgUpdateOnPlaylistChange || cachedEpg == null) {
+                        requestManualEpg()
+                    }
                 }
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
@@ -2279,8 +2380,10 @@ fun VideoPlayerScreen(
     }
 
     // ── 原生 RecyclerView 选台抽屉绑定（仅数据变化或开合时同步，翻台 0 重组） ────
-    val selectedDrawerChannelUrl = if (currentLive.retainedOutsideList) null
-        else channelGroups.getOrNull(currentGroupIndex)?.defaultChannel?.url
+    val selectedDrawerChannel = if (currentLive.retainedOutsideList) null
+        else channelGroups.getOrNull(currentGroupIndex)?.defaultChannel
+    val selectedDrawerChannelUrl = selectedDrawerChannel?.url
+    val selectedDrawerChannelKey = selectedDrawerChannel?.let { ChannelGrouper.channelIdentityKey(it) }
 
     val latestPlayChannel = rememberUpdatedState(::playChannel)
     val latestAllChannels = rememberUpdatedState(allChannels)
@@ -2343,6 +2446,7 @@ fun VideoPlayerScreen(
         epgProgramProvider,
         epgLoadFailed,
         uiScale,
+        uiTransparencyPct,
         appLanguage,
         drawerOpen,
         favoriteUrls,
@@ -2356,6 +2460,7 @@ fun VideoPlayerScreen(
                 channels = filteredChannels,
                 channelNumbers = channelNumbersMap,
                 selectedChannelUrl = selectedDrawerChannelUrl,
+                selectedChannelKey = selectedDrawerChannelKey,
                 nowProgramByChannelUrl = nowProgramByUrl,
                 epgData = epgData,
                 epgVersion = epgVersion,
@@ -2364,6 +2469,7 @@ fun VideoPlayerScreen(
                 epgLoadFailed = epgLoadFailed,
                 initialFocusUrl = sidebarController.lastFocusedUrlFor(selectedGroup),
                 uiScale = uiScale,
+                uiTransparencyPct = uiTransparencyPct,
                 lang = appLanguage,
                 favoriteUrls = favoriteUrls,
             )
@@ -2374,18 +2480,28 @@ fun VideoPlayerScreen(
     // ── UI 渲染层 ────────────────────────────────────────────────────────────
     Box(modifier = Modifier.fillMaxSize()) {
         val digitOsd by uiController.digitOsd.collectAsState()
-        if (showClockInPlayer && !playback.isInPipMode && !digitOsd.visible) {
+        if (showClockInPlayer && !playback.isInPipMode && !digitOsd.visible && !(inAppPipActive && drawerOpen)) {
             PlayerClockOverlay(
                 textScale = uiScale.textScale,
                 modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(top = 18.dp, end = 26.dp),
+                    .align(if (inAppPipActive) Alignment.TopStart else Alignment.TopEnd)
+                    .padding(
+                        top = 18.dp,
+                        start = if (inAppPipActive) 26.dp else 0.dp,
+                        end = if (inAppPipActive) 0.dp else 26.dp,
+                    ),
             )
         }
 
         ChannelSwitchOverlay(
             controller = channelSwitch,
-            modifier = Modifier.align(Alignment.BottomEnd).padding(24.dp)
+            modifier = Modifier
+                .align(if (infoCardOverlay != null || inAppPipActive) Alignment.TopEnd else Alignment.BottomEnd)
+                .padding(
+                    top = if (inAppPipActive) 202.dp else 24.dp,
+                    end = 26.dp,
+                    bottom = 24.dp,
+                ),
         )
 
         val audioSummaryText = remember(audioTracks, audioOverrideGroup, audioOverrideTrack, appLanguage) {
@@ -2446,12 +2562,12 @@ fun VideoPlayerScreen(
             autoCheckUpdate = autoCheckUpdate,
             updateState = inlineUpdateState,
             notice = settingsNotice,
-            autoStartOnBoot = Prefs.isAutoStartOnBoot(context),
-            resumeLastChannel = Prefs.isResumeLastChannel(context),
-            homePipEnabled = Prefs.isHomePipEnabled(context),
-            doubleBackExitEnabled = Prefs.isDoubleBackExitEnabled(context),
-            epgRetentionDays = Prefs.getEpgRetentionDays(context),
-            epgUpdateOnPlaylistChange = Prefs.isEpgUpdateOnPlaylistChange(context),
+            autoStartOnBoot = autoStartOnBoot,
+            resumeLastChannel = resumeLastChannel,
+            homePipEnabled = homePipEnabled,
+            doubleBackExitEnabled = doubleBackExitEnabled,
+            epgRetentionDays = epgRetentionDays,
+            epgUpdateOnPlaylistChange = epgUpdateOnPlaylistChange,
             uiTransparencyPct = uiTransparencyPct,
             infoPanelTimeoutSec = infoPanelTimeoutSec,
             showInfoOnZap = showInfoOnZap,
@@ -2459,12 +2575,13 @@ fun VideoPlayerScreen(
             showExactResolution = showExactResolution,
             showFavoritesGroup = showFavoritesGroup,
             showAllChannelsGroup = showAllChannelsGroup,
-            videoDecoderMode = Prefs.getVideoDecoderMode(context),
-            rebuildOn4kZap = Prefs.isRebuildOn4kZap(context),
-            defaultSubtitlesEnabled = Prefs.isDefaultSubtitlesEnabled(context),
-            subtitlePreferredLang = Prefs.getSubtitlePreferredLang(context),
+            videoDecoderMode = videoDecoderMode,
+            rebuildOn4kZap = rebuildOn4kZap,
+            defaultSubtitlesEnabled = defaultSubtitlesEnabled,
+            subtitlePreferredLang = subtitlePreferredLang,
             allGroupNames = remember(channelGroups) { ChannelGrouper.allRawGroupNames(channelGroups) },
             activeGroupConfig = activeGroupConfig,
+            ipStackPreference = ipStackPreference,
         )
 
         val settingsActions = remember(
@@ -2495,6 +2612,17 @@ fun VideoPlayerScreen(
             showExactResolution,
             showFavoritesGroup,
             showAllChannelsGroup,
+            autoStartOnBoot,
+            resumeLastChannel,
+            homePipEnabled,
+            doubleBackExitEnabled,
+            epgRetentionDays,
+            epgUpdateOnPlaylistChange,
+            videoDecoderMode,
+            rebuildOn4kZap,
+            defaultSubtitlesEnabled,
+            subtitlePreferredLang,
+            ipStackPreference,
             groupConfigsVersion,
         ) {
             SettingsActions(
@@ -2550,7 +2678,24 @@ fun VideoPlayerScreen(
                     remoteCbs.onBindingsChanged(updated)
                 },
                 onSelectRemoteOk = { habit ->
-                    val updated = RemoteBindings.applyOkHabit(remoteCbs.remoteBindings, habit)
+                    var updated = RemoteBindings.applyOkHabit(remoteCbs.remoteBindings, habit)
+                    val hasSettingsKey = updated.firstOrNull { it.action == RemoteAction.OPEN_SETTINGS }
+                        ?.let { it.shortPressKeycodes.isNotEmpty() || it.longPressKeycodes.isNotEmpty() } == true
+                    if (habit == RemoteHabits.Ok.OPEN_DRAWER && !hasSettingsKey) {
+                        updated = RemoteBindings.bind(
+                            updated,
+                            RemoteAction.OPEN_SETTINGS,
+                            RemoteBindings.KEY_DPAD_CENTER,
+                            longPress = true,
+                        )
+                        notifySettings(
+                            AppStrings.tr(
+                                appLanguage,
+                                "已自动绑定 [长按 OK] 打开设置（也可按菜单键）",
+                                "Bound [Long OK] to Settings (or press Menu)",
+                            ),
+                        )
+                    }
                     Prefs.setRemoteOk(context, habit)
                     remoteCbs.onBindingsChanged(updated)
                 },
@@ -2587,7 +2732,7 @@ fun VideoPlayerScreen(
                 onSelectGlobalUserAgent = { ua ->
                     Prefs.setGlobalUserAgent(context, ua)
                     globalUserAgent = ua
-                    val label = ua.ifBlank { AppStrings.tr(appLanguage, "自动（默认 VLC）", "Auto (VLC)") }
+                    val label = ua.ifBlank { AppStrings.tr(appLanguage, "自动", "Auto") }
                     notifySettings(
                         AppStrings.tr(appLanguage, "全局 User-Agent：$label（下次切台生效）", "Global User-Agent: $label (next tune)"),
                     )
@@ -2650,7 +2795,13 @@ fun VideoPlayerScreen(
                             }.getOrNull()
                             if (file != null) {
                                 inlineUpdateState = InlineUpdateState.Available(info)
-                                ApkDownloader.installApk(context, file)
+                                if (!ApkDownloader.installApk(context, file)) {
+                                    inlineUpdateState = InlineUpdateState.Failed(
+                                        messageZh = "调起系统安装器失败，请检查安装未知应用权限",
+                                        messageEn = "Failed to launch installer. Check unknown-sources permission.",
+                                        info = info,
+                                    )
+                                }
                             } else {
                                 inlineUpdateState = InlineUpdateState.Failed(
                                     messageZh = "安装包下载失败，请稍后重试",
@@ -2742,6 +2893,16 @@ fun VideoPlayerScreen(
                     uiController.cancelCapture()
                     notifySettings(AppStrings.tr(appLanguage, "已恢复默认遥控配置", "Restored default remote bindings"))
                 },
+                onResetCustomBindings = {
+                    val upDown = RemoteBindings.deriveUpDownHabit(remoteCbs.remoteBindings)
+                    val ok = RemoteBindings.deriveOkHabit(remoteCbs.remoteBindings)
+                    val chKeys = RemoteBindings.deriveChannelKeysEnabled(remoteCbs.remoteBindings)
+                    var updated = RemoteBindings.applyUpDownHabit(RemoteBindings.DEFAULT, upDown, chKeys)
+                    updated = RemoteBindings.applyOkHabit(updated, ok)
+                    remoteCbs.onBindingsChanged(updated)
+                    uiController.cancelCapture()
+                    notifySettings(AppStrings.tr(appLanguage, "已重置自定义按键（保留快捷习惯）", "Reset custom keys (habits kept)"))
+                },
                 onRefreshPlaylistNow = {
                     notifySettings(AppStrings.tr(appLanguage, "正在刷新播放列表…", "Refreshing playlist…"))
                     AutoUpdateScheduler.refreshNow(context, playlist = true, epg = false)
@@ -2751,28 +2912,39 @@ fun VideoPlayerScreen(
                     requestManualEpg()
                 },
                 onToggleAutoStart = { enabled ->
+                    autoStartOnBoot = enabled
                     Prefs.setAutoStartOnBoot(context, enabled)
-                    groupConfigsVersion++
                 },
                 onToggleResumeLast = { enabled ->
+                    resumeLastChannel = enabled
                     Prefs.setResumeLastChannel(context, enabled)
-                    groupConfigsVersion++
                 },
                 onToggleHomePip = { enabled ->
+                    homePipEnabled = enabled
                     Prefs.setHomePipEnabled(context, enabled)
-                    groupConfigsVersion++
                 },
                 onToggleDoubleBackExit = { enabled ->
+                    doubleBackExitEnabled = enabled
                     Prefs.setDoubleBackExitEnabled(context, enabled)
-                    groupConfigsVersion++
+                },
+                onSelectIpStackPreference = { pref ->
+                    ipStackPreference = pref
+                    Prefs.setIpStackPreference(context, pref)
+                    notifySettings(
+                        AppStrings.tr(
+                            appLanguage,
+                            "网络协议栈已切换为「${if (pref == IpStackPreference.IPV6_FIRST) "IPv6 优先" else "IPv4 优先"}」（支持自动回退）",
+                            "Network stack: ${if (pref == IpStackPreference.IPV6_FIRST) "IPv6 first" else "IPv4 first"} (with fallback)",
+                        ),
+                    )
                 },
                 onSelectEpgRetentionDays = { days ->
+                    epgRetentionDays = days
                     Prefs.setEpgRetentionDays(context, days)
-                    groupConfigsVersion++
                 },
                 onToggleEpgOnPlaylistChange = { enabled ->
+                    epgUpdateOnPlaylistChange = enabled
                     Prefs.setEpgUpdateOnPlaylistChange(context, enabled)
-                    groupConfigsVersion++
                 },
                 onSelectUiTransparencyPct = { pct ->
                     uiTransparencyPct = pct
@@ -2803,21 +2975,21 @@ fun VideoPlayerScreen(
                     Prefs.setShowAllChannelsGroup(context, enabled)
                 },
                 onSelectVideoDecoderMode = { mode ->
+                    videoDecoderMode = mode
                     Prefs.setVideoDecoderMode(context, mode)
-                    groupConfigsVersion++
                     notifySettings(AppStrings.tr(appLanguage, "解码器设置将在下次换台生效", "Decoder change applies on next zap"))
                 },
                 onToggleRebuild4kZap = { enabled ->
+                    rebuildOn4kZap = enabled
                     Prefs.setRebuildOn4kZap(context, enabled)
-                    groupConfigsVersion++
                 },
                 onToggleDefaultSubtitles = { enabled ->
+                    defaultSubtitlesEnabled = enabled
                     Prefs.setDefaultSubtitlesEnabled(context, enabled)
-                    groupConfigsVersion++
                 },
                 onSelectSubtitlePreferredLang = { langCode ->
+                    subtitlePreferredLang = langCode
                     Prefs.setSubtitlePreferredLang(context, langCode)
-                    groupConfigsVersion++
                 },
                 onUpdateSourceGroupConfig = { sourceId, cfg ->
                     Prefs.saveSourceGroupConfig(context, sourceId, cfg)
@@ -2834,11 +3006,30 @@ fun VideoPlayerScreen(
                     globalUserAgent = Prefs.getGlobalUserAgent(context)
                     globalCustomHeaders = Prefs.getGlobalCustomHeaders(context)
                     uiScale = Prefs.getUiScale(context)
+                    uiTransparencyPct = Prefs.getUiTransparencyPct(context)
+                    infoPanelTimeoutSec = Prefs.getInfoPanelTimeoutSec(context)
+                    showInfoOnZap = Prefs.isShowInfoOnZap(context)
+                    showClockInPlayer = Prefs.isShowClockInPlayer(context)
+                    showExactResolution = Prefs.isShowExactResolution(context)
+                    showFavoritesGroup = Prefs.isShowFavoritesGroup(context)
+                    showAllChannelsGroup = Prefs.isShowAllChannelsGroup(context)
                     infoOkMode = Prefs.getInfoOkMode(context)
                     playbackBufferMin = Prefs.getPlaybackBufferMin(context)
                     autoUpdatePlaylist = Prefs.getAutoUpdatePlaylist(context)
                     autoUpdateEpg = Prefs.getAutoUpdateEpg(context)
                     favoriteUrls = Prefs.getFavoriteUrls(context)
+                    ipStackPreference = Prefs.getIpStackPreference(context)
+                    autoStartOnBoot = Prefs.isAutoStartOnBoot(context)
+                    resumeLastChannel = Prefs.isResumeLastChannel(context)
+                    homePipEnabled = Prefs.isHomePipEnabled(context)
+                    doubleBackExitEnabled = Prefs.isDoubleBackExitEnabled(context)
+                    epgRetentionDays = Prefs.getEpgRetentionDays(context)
+                    epgUpdateOnPlaylistChange = Prefs.isEpgUpdateOnPlaylistChange(context)
+                    videoDecoderMode = Prefs.getVideoDecoderMode(context)
+                    rebuildOn4kZap = Prefs.isRebuildOn4kZap(context)
+                    defaultSubtitlesEnabled = Prefs.isDefaultSubtitlesEnabled(context)
+                    subtitlePreferredLang = Prefs.getSubtitlePreferredLang(context)
+                    epgSourceConfigured = Prefs.getEpgSource(context).isNotBlank()
                     val newBindings = Prefs.getRemoteBindings(context)
                     remoteCbs.onBindingsChanged(newBindings)
                     val newHabits = Prefs.getRemoteSettings(context)
@@ -2846,6 +3037,53 @@ fun VideoPlayerScreen(
                     remoteCbs.onRemoteSettingsChanged(newHabits)
                     groupConfigsVersion++
                     notifySettings(AppStrings.tr(appLanguage, "已同步手机端配置", "Synced WebUI settings"))
+                },
+                onResetAllSettings = {
+                    Prefs.resetPreferencesToDefaults(context)
+                    ZapPreconnect.cancel()
+                    MulticastPrewarm.cancel()
+                    val nextLang = Prefs.getAppLanguage(context)
+                    appLanguage = nextLang
+                    AppStrings.set(nextLang)
+                    uiScale = Prefs.getUiScale(context)
+                    uiTransparencyPct = Prefs.getUiTransparencyPct(context)
+                    infoPanelTimeoutSec = Prefs.getInfoPanelTimeoutSec(context)
+                    showInfoOnZap = Prefs.isShowInfoOnZap(context)
+                    showClockInPlayer = Prefs.isShowClockInPlayer(context)
+                    showExactResolution = Prefs.isShowExactResolution(context)
+                    showFavoritesGroup = Prefs.isShowFavoritesGroup(context)
+                    showAllChannelsGroup = Prefs.isShowAllChannelsGroup(context)
+                    infoOkMode = Prefs.getInfoOkMode(context)
+                    logoPrefetchEnabled = Prefs.isLogoPrefetchEnabled(context)
+                    logoLoadEnabled = Prefs.isLogoLoadEnabled(context)
+                    LogoLoader.setLogoLoadEnabledRuntime(logoLoadEnabled)
+                    playbackBufferMin = Prefs.getPlaybackBufferMin(context)
+                    zapPreconnectEnabled = Prefs.getZapPreconnectEnabled(context)
+                    multicastPrewarmEnabled = Prefs.getMulticastPrewarmEnabled(context)
+                    jingcaiExperiment = JingcaiExperiment.parse(Prefs.getJingcaiExperiment(context))
+                    autoUpdatePlaylist = Prefs.getAutoUpdatePlaylist(context)
+                    autoUpdateEpg = Prefs.getAutoUpdateEpg(context)
+                    autoCheckUpdate = Prefs.isAutoCheckUpdateEnabled(context)
+                    globalUserAgent = Prefs.getGlobalUserAgent(context)
+                    globalCustomHeaders = Prefs.getGlobalCustomHeaders(context)
+                    videoAspectMode = Prefs.getVideoAspectMode(context)
+                    ipStackPreference = Prefs.getIpStackPreference(context)
+                    autoStartOnBoot = Prefs.isAutoStartOnBoot(context)
+                    resumeLastChannel = Prefs.isResumeLastChannel(context)
+                    homePipEnabled = Prefs.isHomePipEnabled(context)
+                    doubleBackExitEnabled = Prefs.isDoubleBackExitEnabled(context)
+                    epgRetentionDays = Prefs.getEpgRetentionDays(context)
+                    epgUpdateOnPlaylistChange = Prefs.isEpgUpdateOnPlaylistChange(context)
+                    videoDecoderMode = Prefs.getVideoDecoderMode(context)
+                    rebuildOn4kZap = Prefs.isRebuildOn4kZap(context)
+                    defaultSubtitlesEnabled = Prefs.isDefaultSubtitlesEnabled(context)
+                    subtitlePreferredLang = Prefs.getSubtitlePreferredLang(context)
+                    epgSourceConfigured = Prefs.getEpgSource(context).isNotBlank()
+                    remoteHabits = Prefs.getRemoteSettings(context)
+                    remoteCbs.onRemoteSettingsChanged(remoteHabits)
+                    remoteCbs.onBindingsChanged(Prefs.getRemoteBindings(context))
+                    groupConfigsVersion++
+                    notifySettings(AppStrings.tr(nextLang, "已还原全部默认设置", "Settings restored to defaults"))
                 },
                 onWebPushSource = { live, epg ->
                     sources = Prefs.getSources(context)
@@ -2874,6 +3112,7 @@ fun VideoPlayerScreen(
             visible = audioDialogOpen,
             items = AudioTrackUi.buildItems(audioTracks, audioOverrideGroup, audioOverrideTrack, appLanguage),
             hasAudio = audioTracks.isNotEmpty(),
+            textScale = uiScale.textScale,
             onSelect = { item ->
                 applyAudioOverride(item.groupIndex, item.trackIndex)
                 uiController.closeAudioDialog()
@@ -2886,17 +3125,19 @@ fun VideoPlayerScreen(
             visible = subtitleDialogOpen && !playback.isInPipMode,
             items = SubtitleTrackUi.buildItems(subtitleTracks, subtitleDisabled, subtitleOverrideGroup, subtitleOverrideTrack, appLanguage),
             hasSubtitles = subtitleTracks.isNotEmpty(),
+            textScale = uiScale.textScale,
             onSelect = { item ->
                 applySubtitleOverride(item)
-                subtitleDialogOpen = false
+                uiController.closeSubtitleDialog()
                 uiController.showInfoCard(focused = false, manual = true)
             },
-            onClose = { subtitleDialogOpen = false },
+            onClose = { uiController.closeSubtitleDialog() },
         )
 
         RecentChannelsDialog(
             visible = recentChannelsOpen,
             items = recentResolved,
+            textScale = uiScale.textScale,
             onSelect = { index ->
                 recentResolved.getOrNull(index)?.let { item ->
                     if (switchToRecent(item)) uiController.closeRecentDialog()
@@ -2916,6 +3157,7 @@ fun VideoPlayerScreen(
             visible = qualityDialogOpen,
             channelTitle = qualityDialogGroup?.displayTitle.orEmpty(),
             variants = qualityVariants,
+            textScale = uiScale.textScale,
             onSelect = { variantIndex ->
                 playGroupVariant(qualityDialogGroupIndex, variantIndex, armZap = true)
             },

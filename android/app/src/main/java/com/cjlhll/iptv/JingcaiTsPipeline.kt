@@ -47,12 +47,18 @@ class JingcaiTsPipeline(
     private var filtering = mode == JingcaiExperiment.Mode.A
     private var rewritingPmt = mode == JingcaiExperiment.Mode.B
     private var diagLogged = false
+    private var seenPatForLeadingDrop = mode != JingcaiExperiment.Mode.G
 
     private val auto get() = mode == JingcaiExperiment.Mode.AUTO
 
-    /** 是否对字节流做了任何改写（OFF/E1/E2/E3/C 恒 false）。 */
+    /** 是否对字节流做了任何改写（OFF/E1/E2/E3/C/F/H 恒 false）。 */
     val mutates: Boolean
-        get() = mode == JingcaiExperiment.Mode.A || mode == JingcaiExperiment.Mode.B || auto
+        get() = mode == JingcaiExperiment.Mode.A ||
+            mode == JingcaiExperiment.Mode.B ||
+            auto ||
+            mode == JingcaiExperiment.Mode.D ||
+            mode == JingcaiExperiment.Mode.E ||
+            mode == JingcaiExperiment.Mode.G
 
     fun push(src: ByteArray, off: Int, len: Int) {
         ensure(len)
@@ -108,6 +114,15 @@ class JingcaiTsPipeline(
         while (written + JingcaiTimeline.TS_SIZE <= staging.size) {
             if (end - start < JingcaiTimeline.TS_SIZE) break
             val p = start
+            if (!seenPatForLeadingDrop) {
+                if (JingcaiTimeline.packetPid(buf, p) == 0 /* PAT PID 0x0000 */) {
+                    seenPatForLeadingDrop = true
+                } else {
+                    start += JingcaiTimeline.TS_SIZE
+                    filtered++
+                    continue
+                }
+            }
             inspect(p)
             var drop = false
             if (filtering && pcrPid >= 0 && JingcaiTimeline.isPcrOnlyPacket(buf, p, pcrPid)) {

@@ -141,8 +141,8 @@ where
     let mut stats = M3uStats::default();
     let mut header = M3uHeader::default();
 
-    // 待处理的条目状态
-    let mut pending: Option<M3uEntry> = None;
+    // 待处理的条目状态 + 在 `#EXTINF` 创建时捕获的 `#EXTGRP:` 快照
+    let mut pending: Option<(M3uEntry, Option<String>)> = None;
     // 当前条目是否来自 `#EXTINF` —— 决定后续的裸 URL 是「备用线路」还是「独立条目」
     let mut pending_from_extinf = false;
     // `#EXTGRP:` 指令设置的默认分组
@@ -173,24 +173,30 @@ where
                 ..Default::default()
             };
             apply_entry_attrs(&attrs, &mut entry);
-            // 上一条条目在此结束
-            if let Some(mut prev) = pending.take() {
+            // 上一条条目在此结束（使用它自身快照的 extgrp，不被后续 #EXTGRP 覆盖）
+            if let Some((mut prev, prev_extgrp)) = pending.take() {
                 if prev.urls.is_empty() {
                     // 有 #EXTINF 但没有 URL → 跳过（孤儿条目）
                     stats.skipped += 1;
                 } else {
-                    finalize_entry(&mut prev, &header, extgrp_group.as_deref());
+                    finalize_entry(&mut prev, &header, prev_extgrp.as_deref());
                     stats.entries += 1;
                     on_entry(prev)?;
                 }
             }
-            pending = Some(entry);
+            pending = Some((entry, extgrp_group.clone()));
             pending_from_extinf = true;
             continue;
         }
         if let Some(rest) = trimmed.strip_prefix("#EXTGRP:") {
-            // Kodi 语义：开始指令，后续条目若无 group-title 则使用它
-            extgrp_group = Some(rest.trim().to_string());
+            let grp = Some(rest.trim().to_string());
+            // 兼容两种常见写法：#EXTGRP 在 #EXTINF 之前作为块默认，或在 #EXTINF 与 URL 之间覆盖当前条目（已有 URL 则说明属于下一条）
+            if let Some((ref entry, ref mut cur_extgrp)) = pending.as_mut() {
+                if entry.urls.is_empty() {
+                    *cur_extgrp = grp.clone();
+                }
+            }
+            extgrp_group = grp;
             continue;
         }
         if let Some(rest) = trimmed.strip_prefix("#EXTVLCOPT:") {
@@ -199,17 +205,17 @@ where
                 let value = v.trim().to_string();
                 match key.as_str() {
                     "http-user-agent" | "user-agent" => {
-                        if let Some(entry) = pending.as_mut() {
+                        if let Some((entry, _)) = pending.as_mut() {
                             entry.user_agent = Some(value.clone());
                         }
                     }
                     "http-referrer" | "referrer" => {
-                        if let Some(entry) = pending.as_mut() {
+                        if let Some((entry, _)) = pending.as_mut() {
                             entry.referrer = Some(value.clone());
                         }
                     }
                     _ => {
-                        if let Some(entry) = pending.as_mut() {
+                        if let Some((entry, _)) = pending.as_mut() {
                             entry.vlc_options.insert(key, value);
                         }
                     }
@@ -221,7 +227,7 @@ where
             if let Some((k, v)) = rest.split_once('=') {
                 let key = k.trim().to_ascii_lowercase();
                 let value = v.trim().to_string();
-                if let Some(entry) = pending.as_mut() {
+                if let Some((entry, _)) = pending.as_mut() {
                     match key.as_str() {
                         "user-agent" => entry.user_agent = Some(value),
                         "referrer" | "referer" => entry.referrer = Some(value),
@@ -235,7 +241,7 @@ where
         }
         if let Some(rest) = trimmed.strip_prefix("#KODIPROP:") {
             if let Some((k, v)) = rest.split_once('=') {
-                if let Some(entry) = pending.as_mut() {
+                if let Some((entry, _)) = pending.as_mut() {
                     entry
                         .kodi_props
                         .insert(k.trim().to_string(), v.trim().to_string());
@@ -251,15 +257,15 @@ where
         // ---- 这是一个 URL 行 ----
         if pending_from_extinf {
             // 来自 #EXTINF 的条目：连续的 URL 是**同一频道的备用线路**
-            if let Some(entry) = pending.as_mut() {
+            if let Some((entry, _)) = pending.as_mut() {
                 entry.urls.push(trimmed.to_string());
             }
             continue;
         }
 
         // 裸 URL 列表（无 #EXTINF）→ 每行一个独立条目
-        if let Some(mut prev) = pending.take() {
-            finalize_entry(&mut prev, &header, extgrp_group.as_deref());
+        if let Some((mut prev, prev_extgrp)) = pending.take() {
+            finalize_entry(&mut prev, &header, prev_extgrp.as_deref());
             stats.entries += 1;
             on_entry(prev)?;
         }
@@ -273,12 +279,12 @@ where
     }
 
     // 末尾残留的条目
-    if let Some(mut entry) = pending.take() {
+    if let Some((mut entry, entry_extgrp)) = pending.take() {
         if entry.urls.is_empty() {
             // 有 #EXTINF 但没有有效 URL（例如老白直播里用 `#http://...` 注释掉的失效频道）
             stats.skipped += 1;
         } else {
-            finalize_entry(&mut entry, &header, extgrp_group.as_deref());
+            finalize_entry(&mut entry, &header, entry_extgrp.as_deref());
             stats.entries += 1;
             on_entry(entry)?;
         }
@@ -768,5 +774,35 @@ mod tests {
         let p = parse(input).unwrap();
         assert_eq!(p.entries[0].urls.len(), 2);
         assert_eq!(p.entries[0].primary_url(), Some("http://x/primary"));
+    }
+
+    #[test]
+    fn extgrp_switch_does_not_overwrite_previous_entry() {
+        let input = "#EXTM3U\n\
+                     #EXTINF:-1,A\n\
+                     http://x/a\n\
+                     #EXTGRP:News\n\
+                     #EXTINF:-1,B\n\
+                     http://x/b\n";
+        let p = parse(input).unwrap();
+        assert!(p.entries[0].groups.is_empty());
+        assert_eq!(p.entries[1].groups, vec!["News".to_string()]);
+    }
+
+    #[test]
+    fn semicolon_group_title_expands_into_all_groups() {
+        let input = "#EXTM3U\n\
+                     #EXTINF:-1 group-title=\"[高清]北京;[高清]卫视;4K\",BRTV北京卫视[81][4K SDR]\n\
+                     rtp://239.3.1.22:8001\n";
+        let p = parse(input).unwrap();
+        assert_eq!(p.entries.len(), 1);
+        assert_eq!(
+            p.entries[0].groups,
+            vec![
+                "[高清]北京".to_string(),
+                "[高清]卫视".to_string(),
+                "4K".to_string()
+            ]
+        );
     }
 }

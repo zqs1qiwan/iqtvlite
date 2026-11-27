@@ -73,6 +73,7 @@ object Prefs {
     private const val KEY_VIDEO_DECODER_MODE = "pref_video_decoder_mode"
     private const val KEY_DEFAULT_SUBTITLES_ENABLED = "pref_default_subtitles_enabled"
     private const val KEY_SUBTITLE_PREFERRED_LANG = "pref_subtitle_preferred_lang"
+    private const val KEY_IP_STACK_PREFERENCE = "pref_ip_stack_preference"
 
     private fun getPrefs(context: Context): SharedPreferences {
         return context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
@@ -596,7 +597,7 @@ object Prefs {
     }
 
     fun getUiTransparencyPct(context: Context): Int =
-        getPrefs(context).getInt(KEY_UI_TRANSPARENCY_PCT, 50).coerceIn(0, 90)
+        getPrefs(context).getInt(KEY_UI_TRANSPARENCY_PCT, 18).coerceIn(0, 90)
 
     fun setUiTransparencyPct(context: Context, pct: Int) {
         getPrefs(context).edit().putInt(KEY_UI_TRANSPARENCY_PCT, pct.coerceIn(0, 90)).apply()
@@ -648,7 +649,7 @@ object Prefs {
     }
 
     fun isRebuildOn4kZap(context: Context): Boolean =
-        getPrefs(context).getBoolean(KEY_REBUILD_ON_4K_ZAP, true)
+        getPrefs(context).getBoolean(KEY_REBUILD_ON_4K_ZAP, false)
 
     fun setRebuildOn4kZap(context: Context, enabled: Boolean) {
         getPrefs(context).edit().putBoolean(KEY_REBUILD_ON_4K_ZAP, enabled).apply()
@@ -675,6 +676,14 @@ object Prefs {
         getPrefs(context).edit().putString(KEY_SUBTITLE_PREFERRED_LANG, lang).apply()
     }
 
+    fun getIpStackPreference(context: Context): IpStackPreference =
+        IpStackPreference.parse(getPrefs(context).getString(KEY_IP_STACK_PREFERENCE, null))
+
+    fun setIpStackPreference(context: Context, preference: IpStackPreference) {
+        getPrefs(context).edit().putString(KEY_IP_STACK_PREFERENCE, preference.id).apply()
+        NetUtil.setIpStackPreference(preference)
+    }
+
     private val VOLATILE_BACKUP_KEYS = setOf(
         KEY_SOURCE_VERSION,
         KEY_PLAYLIST_FILE_NAME,
@@ -685,6 +694,64 @@ object Prefs {
         KEY_EPG_LAST_FAILURE,
         KEY_EPG_FAIL_COUNT,
     )
+
+    private val BOOLEAN_BACKUP_KEYS = setOf(
+        KEY_LOGO_PREFETCH_ENABLED,
+        KEY_LOGO_LOAD_ENABLED,
+        KEY_ZAP_PRECONNECT,
+        KEY_MULTICAST_PREWARM,
+        KEY_REMOTE_CHANNEL_KEYS,
+        KEY_AUTO_CHECK_UPDATE,
+        KEY_AUTO_START_ON_BOOT,
+        KEY_RESUME_LAST_CHANNEL,
+        KEY_HOME_PIP_ENABLED,
+        KEY_DOUBLE_BACK_EXIT,
+        KEY_EPG_UPDATE_ON_PLAYLIST_CHANGE,
+        KEY_SHOW_INFO_ON_ZAP,
+        KEY_SHOW_CLOCK_IN_PLAYER,
+        KEY_SHOW_EXACT_RESOLUTION,
+        KEY_SHOW_FAVORITES_GROUP,
+        KEY_SHOW_ALL_CHANNELS_GROUP,
+        KEY_REBUILD_ON_4K_ZAP,
+        KEY_DEFAULT_SUBTITLES_ENABLED,
+        KEY_RECENT_CLEARED,
+    )
+
+    private val INT_BACKUP_KEYS = setOf(
+        KEY_PLAYBACK_BUFFER_MIN,
+        KEY_EPG_RETENTION_DAYS,
+        KEY_UI_TRANSPARENCY_PCT,
+        KEY_INFO_PANEL_TIMEOUT_SEC,
+    )
+
+    private val STRING_SET_BACKUP_KEYS = setOf(
+        KEY_FAVORITE_URLS,
+    )
+
+    private val PRESERVED_ON_RESET_KEYS = setOf(
+        KEY_LIVE_SOURCE,
+        KEY_EPG_SOURCE,
+        KEY_PLAYLIST_SOURCES,
+        KEY_ACTIVE_SOURCE_ID,
+        KEY_FAVORITE_URLS,
+        KEY_RECENT_CHANNELS,
+        KEY_RECENT_CLEARED,
+        KEY_LAST_CHANNEL_URL,
+        KEY_LAST_CHANNEL_TITLE,
+    ) + VOLATILE_BACKUP_KEYS
+
+    /** 还原全部产品设置到默认状态，保留已导入的播放列表、收藏与观看历史。 */
+    fun resetPreferencesToDefaults(context: Context) {
+        val prefs = getPrefs(context)
+        val editor = prefs.edit()
+        for (key in prefs.all.keys) {
+            if (key !in PRESERVED_ON_RESET_KEYS) {
+                editor.remove(key)
+            }
+        }
+        editor.commit()
+        NetUtil.setIpStackPreference(IpStackPreference.IPV6_FIRST)
+    }
 
     fun exportBackupJson(context: Context): String {
         val all = getPrefs(context).all
@@ -710,12 +777,13 @@ object Prefs {
         val keys = prefsObj.keys()
         while (keys.hasNext()) {
             val k = keys.next()
+            if (k in VOLATILE_BACKUP_KEYS) continue
             val v = prefsObj.opt(k)
-            when (v) {
-                is Boolean -> editor.putBoolean(k, v)
-                is Number -> if (k in LONG_KEYS) editor.putLong(k, v.toLong()) else editor.putInt(k, v.toInt())
-                is String -> editor.putString(k, v)
-                is org.json.JSONArray -> {
+            when {
+                k in BOOLEAN_BACKUP_KEYS && v is Boolean -> editor.putBoolean(k, v)
+                k in INT_BACKUP_KEYS && v is Number -> editor.putInt(k, v.toInt())
+                k in LONG_KEYS && v is Number -> editor.putLong(k, v.toLong())
+                k in STRING_SET_BACKUP_KEYS && v is org.json.JSONArray -> {
                     val set = LinkedHashSet<String>()
                     for (i in 0 until v.length()) {
                         val s = v.optString(i)
@@ -723,8 +791,28 @@ object Prefs {
                     }
                     editor.putStringSet(k, set)
                 }
+                k !in BOOLEAN_BACKUP_KEYS && k !in INT_BACKUP_KEYS && k !in LONG_KEYS && k !in STRING_SET_BACKUP_KEYS -> {
+                    when (v) {
+                        is Boolean -> editor.putBoolean(k, v)
+                        is Number -> editor.putInt(k, v.toInt())
+                        is String -> editor.putString(k, v)
+                        is org.json.JSONArray -> {
+                            val set = LinkedHashSet<String>()
+                            for (i in 0 until v.length()) {
+                                val s = v.optString(i)
+                                if (s.isNotBlank()) set.add(s)
+                            }
+                            editor.putStringSet(k, set)
+                        }
+                    }
+                }
             }
         }
-        editor.commit()
+        val ok = editor.commit()
+        if (ok) {
+            AppStrings.set(getAppLanguage(context))
+            NetUtil.setIpStackPreference(getIpStackPreference(context))
+        }
+        ok
     }.getOrDefault(false)
 }

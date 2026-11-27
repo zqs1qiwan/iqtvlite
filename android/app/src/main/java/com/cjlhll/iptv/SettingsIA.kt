@@ -53,12 +53,15 @@ object SettingsIA {
             "settings_resume_last",
             "settings_home_pip",
             "settings_double_back_exit",
+            "settings_ip_stack",
             "settings_global_ua",
             "settings_global_headers",
             "settings_source_config",
+            "settings_reset_defaults",
         ),
         SettingsPage.PLAYLISTS to listOf(
             "settings_source_manage",
+            "settings_group_manage",
             "settings_refresh_playlist",
             "settings_auto_playlist",
             "settings_recent_entry",
@@ -294,7 +297,7 @@ object SettingsSummary {
      */
     fun logoFromCacheSummary(cacheSummary: String?, lang: AppLang = AppLang.ZH): String {
         if (cacheSummary.isNullOrBlank()) return EMPTY
-        val match = MEMORY_DISK_REGEX.find(cacheSummary) ?: return EMPTY
+        val match = MEMORY_DISK_REGEX.find(cacheSummary) ?: MEMORY_DISK_EN_REGEX.find(cacheSummary) ?: return EMPTY
         val memory = match.groupValues[1].toIntOrNull() ?: return EMPTY
         val disk = match.groupValues[2].toIntOrNull() ?: return EMPTY
         return logo(memory, disk, lang)
@@ -309,6 +312,7 @@ object SettingsSummary {
     }
 
     private val MEMORY_DISK_REGEX = Regex("""内存\s*(\d+)\s*条\s*·\s*磁盘\s*(\d+)\s*个""")
+    private val MEMORY_DISK_EN_REGEX = Regex("""Mem\s*(\d+)\s*·\s*Disk\s*(\d+)""")
 
     /** 半角单位宽度：ASCII 记 1，其它（CJK/全角标点）记 2。 */
     fun displayUnits(text: String): Int = text.sumOf { if (it.code < 0x80) 1 else 2 }

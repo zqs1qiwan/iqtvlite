@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -85,7 +86,8 @@ object LogoLoader {
     // PRUNE-01: the first write must not trigger a full directory scan.
     @Volatile private var lastPruneAt = System.currentTimeMillis()
 
-    private val inFlight = HashSet<String>()
+    private val inFlight = java.util.concurrent.ConcurrentHashMap<String, CompletableDeferred<ImageBitmap?>>()
+    private const val MAX_LOGO_DOWNLOAD_BYTES = 4 * 1024 * 1024
 
     private val hexChars = charArrayOf(
         '0', '1', '2', '3', '4', '5', '6', '7',
@@ -198,17 +200,28 @@ object LogoLoader {
         if (now != null && now == identity) runCatching { file.delete() }
     }
 
-    private fun tryMarkInFlight(key: String): Boolean {
-        return synchronized(inFlight) {
-            if (inFlight.contains(key)) false else {
-                inFlight.add(key)
-                true
-            }
+    /** t126: public load with single-flight CompletableDeferred de-duplication (no polling). */
+    suspend fun load(context: Context, url: String, targetWidthPx: Int, targetHeightPx: Int): ImageBitmap? {
+        if (url.isBlank()) return null
+        if (targetWidthPx <= 0 || targetHeightPx <= 0) return null
+        val memoryKey = memoryKey(url, targetWidthPx, targetHeightPx)
+        getCached(memoryKey)?.let { return it }
+        val diskKey = withContext(Dispatchers.Default) { diskKey(url, targetWidthPx, targetHeightPx) }
+        val created = CompletableDeferred<ImageBitmap?>()
+        val existing = inFlight.putIfAbsent(diskKey, created)
+        if (existing != null) {
+            return existing.await() ?: getCached(memoryKey)
         }
-    }
-
-    private fun unmarkInFlight(key: String) {
-        synchronized(inFlight) { inFlight.remove(key) }
+        return try {
+            val result = loadInternal(context, url, targetWidthPx, targetHeightPx, diskKey)
+            created.complete(result)
+            result
+        } catch (t: Throwable) {
+            created.complete(null)
+            throw t
+        } finally {
+            inFlight.remove(diskKey, created)
+        }
     }
 
     // t130: cache management API — all disk work on Dispatchers.IO (never the main thread).
@@ -387,30 +400,6 @@ object LogoLoader {
     internal fun writeAtomicallyDefensively(file: File, encode: (java.io.OutputStream) -> Unit): Boolean =
         runCatching { LogoDiskStore.writeAtomically(file, encode) }.getOrElse { false }
 
-    /** t126: public load with in-flight de-duplication (one network/decode per url+size at a time). */
-    suspend fun load(context: Context, url: String, targetWidthPx: Int, targetHeightPx: Int): ImageBitmap? {
-        if (url.isBlank()) return null
-        if (targetWidthPx <= 0 || targetHeightPx <= 0) return null
-        val memoryKey = memoryKey(url, targetWidthPx, targetHeightPx)
-        getCached(memoryKey)?.let { return it }
-        val diskKey = withContext(Dispatchers.Default) { diskKey(url, targetWidthPx, targetHeightPx) }
-        if (!tryMarkInFlight(diskKey)) {
-            // Another coroutine is loading the same logo; wait briefly for it to publish to memory.
-            var waited = 0
-            while (waited < 1500) {
-                getCached(memoryKey)?.let { return it }
-                delay(50)
-                waited += 50
-            }
-            return getCached(memoryKey)
-        }
-        return try {
-            loadInternal(context, url, targetWidthPx, targetHeightPx, diskKey)
-        } finally {
-            unmarkInFlight(diskKey)
-        }
-    }
-
     private suspend fun loadInternal(
         context: Context,
         url: String,
@@ -486,12 +475,28 @@ object LogoLoader {
             }
 
             try {
+                val safeUrl = url.trim().replace(" ", "%20")
                 val bytes = withContext(Dispatchers.IO) {
-                    val request = Request.Builder().url(url).build()
+                    val request = Request.Builder().url(safeUrl).build()
                     try {
                         getClient().newCall(request).execute().use { response ->
                             if (!response.isSuccessful) return@use null
-                            response.body?.bytes()
+                            val body = response.body ?: return@use null
+                            val contentLen = body.contentLength()
+                            if (contentLen > MAX_LOGO_DOWNLOAD_BYTES) return@use null
+                            body.byteStream().use { stream ->
+                                val out = java.io.ByteArrayOutputStream()
+                                val buf = ByteArray(8192)
+                                var total = 0
+                                while (true) {
+                                    val n = stream.read(buf)
+                                    if (n < 0) break
+                                    total += n
+                                    if (total > MAX_LOGO_DOWNLOAD_BYTES) return@use null
+                                    out.write(buf, 0, n)
+                                }
+                                out.toByteArray()
+                            }
                         }
                     } catch (e: CancellationException) {
                         throw e
@@ -593,7 +598,7 @@ object LogoLoader {
         batchGapMs: Long = 0L,
     ) {
         // t154: the single guard for every prefetch entry point (drawer urgent + filler + startup).
-        if (!Prefs.isLogoPrefetchEnabled(context)) return
+        if (!Prefs.isLogoLoadEnabled(context) || !Prefs.isLogoPrefetchEnabled(context)) return
         if (targetWidthPx <= 0 || targetHeightPx <= 0) return
         if (urls.isEmpty()) return
         val unique = urls.asSequence().map { it.trim() }.filter { it.isNotBlank() }.distinct().take(limit).toList()

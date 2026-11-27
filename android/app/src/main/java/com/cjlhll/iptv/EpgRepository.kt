@@ -93,7 +93,9 @@ object EpgRepository {
                 }
             }
             val parsed = XmlTvParser.parseFile(candidate)
-            EpgSqlStore.replaceAll(context, source, parsed)
+            if (!EpgSqlStore.replaceAll(context, source, parsed)) {
+                return@withContext EpgLoadResult.Failure(source, "source changed before commit")
+            }
             // 清理占空间的旧版 Java .ser 文件
             if (legacySer.exists()) runCatching { legacySer.delete() }
             EpgLoadResult.Success(source, SQL_READY_SENTINEL)

@@ -11,6 +11,7 @@ object BackKeyPolicy {
 
     enum class Action {
         CLOSE_UPDATE_DIALOG,
+        CLOSE_SUBTITLE_DIALOG,
         CLOSE_AUDIO_DIALOG,
         CLOSE_RECENT,
         CLOSE_QUALITY_DIALOG,
@@ -49,8 +50,10 @@ object BackKeyPolicy {
         lastBackWithin2s: Boolean,
         updateDialogOpen: Boolean = false,
         inAppPipActive: Boolean = false,
+        subtitleDialogOpen: Boolean = false,
     ): Action = when {
         updateDialogOpen -> Action.CLOSE_UPDATE_DIALOG
+        subtitleDialogOpen -> Action.CLOSE_SUBTITLE_DIALOG
         audioDialogOpen -> Action.CLOSE_AUDIO_DIALOG
         recentOpen -> Action.CLOSE_RECENT
         qualityDialogOpen -> Action.CLOSE_QUALITY_DIALOG

@@ -53,6 +53,7 @@ object EpgSqlStore {
     @Volatile private var cachedSource: String? = null
     @Volatile private var aliasMap: Map<String, String> = emptyMap()
     @Volatile private var knownChannelIds: Set<String> = emptySet()
+    private val writeLock = Any()
     private val resolvedIdCache = ConcurrentHashMap<String, String>()
     private const val NOT_FOUND = "\u0000"
 
@@ -74,62 +75,124 @@ object EpgSqlStore {
         }.getOrDefault(false)
     }
 
-    /** 原子写入全量 EPG 索引到 SQLite，并刷新内存轻量别名表。 */
-    fun replaceAll(context: Context, source: String, data: EpgData) {
+    /**
+     * 原子写入 EPG 索引到 SQLite，结合 `epgRetentionDays` 裁剪过期节目并保留同一 EPG 源窗口内的历史回看数据。
+     * 返回 false 表示切源竞态下源已失效并被安全丢弃。
+     */
+    fun replaceAll(context: Context, source: String, data: EpgData): Boolean {
         val t0 = System.currentTimeMillis()
-        val d = db(context)
-        d.beginTransaction()
-        try {
-            d.execSQL("DELETE FROM meta")
-            d.execSQL("DELETE FROM aliases")
-            d.execSQL("DELETE FROM programs")
-
-            val insAlias = d.compileStatement("INSERT OR REPLACE INTO aliases(norm_key, channel_id) VALUES(?, ?)")
-            for ((k, id) in data.normalizedDisplayNameToChannelId) {
-                insAlias.clearBindings()
-                insAlias.bindString(1, k)
-                insAlias.bindString(2, id)
-                insAlias.executeInsert()
+        val nowMs = t0
+        val retentionDays = Prefs.getEpgRetentionDays(context)
+        val cutoffMs = nowMs - retentionDays * 86_400_000L
+        synchronized(writeLock) {
+            val activeEpg = Prefs.getEpgSource(context).trim()
+            if (activeEpg.isNotEmpty() && !activeEpg.equals(source.trim(), ignoreCase = true)) {
+                Log.i(TAG, "skip stale EPG write for $source (active=$activeEpg)")
+                return false
             }
-            insAlias.close()
+            val d = db(context)
+            d.beginTransaction()
+            try {
+                val prevSource = d.rawQuery("SELECT v FROM meta WHERE k = 'source'", null).use { c ->
+                    if (c.moveToFirst()) c.getString(0).orEmpty() else ""
+                }
+                val sameSource = prevSource == source
 
-            val insProg = d.compileStatement(
-                "INSERT INTO programs(channel_id, start_ms, end_ms, title, offset_sec) VALUES(?, ?, ?, ?, ?)"
-            )
-            var count = 0
-            for ((chId, list) in data.programsByChannelId) {
-                for (p in list) {
-                    insProg.clearBindings()
-                    insProg.bindString(1, chId)
-                    insProg.bindLong(2, p.startMillis)
-                    insProg.bindLong(3, p.endMillis)
-                    insProg.bindString(4, p.title)
-                    val off = p.sourceOffsetSeconds
-                    if (off == null) insProg.bindNull(5) else insProg.bindLong(5, off.toLong())
-                    insProg.executeInsert()
-                    count++
+                d.execSQL("DELETE FROM meta")
+                d.execSQL("DELETE FROM aliases")
+                if (!sameSource) {
+                    d.execSQL("DELETE FROM programs")
+                } else {
+                    d.delete("programs", "end_ms < ?", arrayOf(cutoffMs.toString()))
+                }
+
+                val insAlias = d.compileStatement("INSERT OR REPLACE INTO aliases(norm_key, channel_id) VALUES(?, ?)")
+                for ((k, id) in data.normalizedDisplayNameToChannelId) {
+                    insAlias.clearBindings()
+                    insAlias.bindString(1, k)
+                    insAlias.bindString(2, id)
+                    insAlias.executeInsert()
+                }
+                insAlias.close()
+
+                val delOverlap = if (sameSource) {
+                    d.compileStatement("DELETE FROM programs WHERE channel_id = ? AND start_ms >= ?")
+                } else null
+                val insProg = d.compileStatement(
+                    "INSERT INTO programs(channel_id, start_ms, end_ms, title, offset_sec) VALUES(?, ?, ?, ?, ?)"
+                )
+                var count = 0
+                for ((chId, list) in data.programsByChannelId) {
+                    val freshList = list.filter { it.endMillis >= cutoffMs }
+                    if (freshList.isEmpty()) continue
+                    if (delOverlap != null) {
+                        val minStart = freshList.minOf { it.startMillis }
+                        delOverlap.clearBindings()
+                        delOverlap.bindString(1, chId)
+                        delOverlap.bindLong(2, minStart)
+                        delOverlap.executeUpdateDelete()
+                    }
+                    for (p in freshList) {
+                        insProg.clearBindings()
+                        insProg.bindString(1, chId)
+                        insProg.bindLong(2, p.startMillis)
+                        insProg.bindLong(3, p.endMillis)
+                        insProg.bindString(4, p.title)
+                        val off = p.sourceOffsetSeconds
+                        if (off == null) insProg.bindNull(5) else insProg.bindLong(5, off.toLong())
+                        insProg.executeInsert()
+                        count++
+                    }
+                }
+                delOverlap?.close()
+                insProg.close()
+
+                val insMeta = d.compileStatement("INSERT OR REPLACE INTO meta(k, v) VALUES(?, ?)")
+                insMeta.bindString(1, "source")
+                insMeta.bindString(2, source)
+                insMeta.executeInsert()
+                insMeta.clearBindings()
+                insMeta.bindString(1, "updated_at")
+                insMeta.bindString(2, nowMs.toString())
+                insMeta.executeInsert()
+                insMeta.close()
+
+                val ids = HashSet<String>(maxOf(data.programsByChannelId.size, 64))
+                d.rawQuery("SELECT DISTINCT channel_id FROM programs", null).use { c ->
+                    while (c.moveToNext()) ids.add(c.getString(0))
+                }
+
+                d.setTransactionSuccessful()
+                cachedSource = source
+                aliasMap = HashMap(data.normalizedDisplayNameToChannelId)
+                knownChannelIds = ids
+                resolvedIdCache.clear()
+                Log.i(TAG, "saved programs=$count aliases=${aliasMap.size} retentionDays=$retentionDays in ${System.currentTimeMillis() - t0}ms")
+                return true
+            } finally {
+                d.endTransaction()
+            }
+        }
+    }
+
+    fun clearAll(context: Context) {
+        synchronized(writeLock) {
+            runCatching {
+                val d = db(context)
+                d.beginTransaction()
+                try {
+                    d.execSQL("DELETE FROM meta")
+                    d.execSQL("DELETE FROM aliases")
+                    d.execSQL("DELETE FROM programs")
+                    d.setTransactionSuccessful()
+                } finally {
+                    d.endTransaction()
                 }
             }
-            insProg.close()
-
-            val insMeta = d.compileStatement("INSERT OR REPLACE INTO meta(k, v) VALUES(?, ?)")
-            insMeta.bindString(1, "source")
-            insMeta.bindString(2, source)
-            insMeta.executeInsert()
-            insMeta.clearBindings()
-            insMeta.bindString(1, "updated_at")
-            insMeta.bindString(2, System.currentTimeMillis().toString())
-            insMeta.executeInsert()
-            insMeta.close()
-
-            d.setTransactionSuccessful()
-            cachedSource = source
-            aliasMap = HashMap(data.normalizedDisplayNameToChannelId)
-            knownChannelIds = HashSet(data.programsByChannelId.keys)
+            cachedSource = null
+            aliasMap = emptyMap()
+            knownChannelIds = emptySet()
             resolvedIdCache.clear()
-            Log.i(TAG, "saved programs=$count aliases=${aliasMap.size} in ${System.currentTimeMillis() - t0}ms")
-        } finally {
-            d.endTransaction()
         }
     }
 

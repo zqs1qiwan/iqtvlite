@@ -28,6 +28,21 @@ object SourceLatencyProber {
 
     private val cache = ConcurrentHashMap<String, CacheEntry>()
     private val channels = ConcurrentHashMap<String, Channel>()
+    @Volatile private var defaultGlobalUa: String? = null
+    @Volatile private var defaultGlobalHeaders: Map<String, String> = emptyMap()
+
+    fun updateRequestDefaults(
+        globalUserAgent: String?,
+        globalCustomHeaders: Map<String, String>,
+    ) {
+        val nextUa = globalUserAgent?.trim()?.takeIf { it.isNotEmpty() }
+        if (nextUa != defaultGlobalUa || globalCustomHeaders != defaultGlobalHeaders) {
+            cache.clear()
+        }
+        defaultGlobalUa = nextUa
+        defaultGlobalHeaders = HashMap(globalCustomHeaders)
+    }
+
     fun updateChannels(values: List<Channel>) {
         val updated = values.associateBy { it.url }
         for ((url, old) in channels) {
@@ -39,19 +54,21 @@ object SourceLatencyProber {
         channels.clear(); channels.putAll(updated)
     }
     private fun request(url: String): Request.Builder {
-        val channel = channels[url]
+        val channel = channels[url] ?: Channel(title = "", url = url)
+        val merged = MediaPlaybackRequest(channel).httpHeaders(
+            globalUserAgent = defaultGlobalUa,
+            globalCustomHeaders = defaultGlobalHeaders,
+        )
         return Request.Builder().url(url).apply {
-            channel?.customHeaders?.forEach { (k, v) ->
+            merged.forEach { (k, v) ->
                 if (k.isNotBlank() && v.isNotBlank()) header(k, v)
             }
-            header("User-Agent", channel?.userAgent ?: HttpStreamAddress.DEFAULT_USER_AGENT)
-            channel?.referrer?.let { header("Referer", it) }
         }
     }
     private val probeSemaphore = Semaphore(6)
 
     private val client: OkHttpClient by lazy {
-        NetUtil.ipv4OkHttpClient.newBuilder()
+        NetUtil.okHttpClient.newBuilder()
             .connectTimeout(PROBE_TIMEOUT_MS, TimeUnit.MILLISECONDS)
             .readTimeout(PROBE_TIMEOUT_MS, TimeUnit.MILLISECONDS)
             .writeTimeout(PROBE_TIMEOUT_MS, TimeUnit.MILLISECONDS)
@@ -100,13 +117,70 @@ object SourceLatencyProber {
 
     private fun measure(url: String): Int? {
         val startNs = System.nanoTime()
-        val ok = runCatching { tryHead(url) }.getOrDefault(false) ||
-            runCatching { tryGetSample(url) }.getOrDefault(false)
+        val lower = url.trim().lowercase()
+        val ok = when {
+            lower.startsWith("rtp://") || lower.startsWith("udp://") ->
+                runCatching { probeMulticastUdp(url) }.getOrDefault(false)
+            lower.startsWith("rtsp://") -> runCatching { probeTcpConnect(url, 554) }.getOrDefault(false)
+            else -> runCatching { tryHead(url) }.getOrDefault(false) ||
+                runCatching { tryGetSample(url) }.getOrDefault(false)
+        }
         if (!ok) {
             Log.d(TAG, "probe failed line=${url.hashCode()}")
             return null
         }
         return ((System.nanoTime() - startNs) / 1_000_000L).toInt().coerceAtLeast(1)
+    }
+
+    private fun probeTcpConnect(url: String, defaultPort: Int): Boolean {
+        val uri = java.net.URI(url)
+        val host = uri.host ?: return false
+        val port = if (uri.port > 0) uri.port else defaultPort
+        val addrs = NetUtil.orderAddresses(java.net.InetAddress.getAllByName(host).toList())
+        for (addr in addrs) {
+            val connected = runCatching {
+                java.net.Socket().use { sock ->
+                    sock.connect(java.net.InetSocketAddress(addr, port), 1_500)
+                }
+                true
+            }.getOrDefault(false)
+            if (connected) return true
+        }
+        return false
+    }
+
+    private fun probeMulticastUdp(url: String): Boolean {
+        val ep = RtpPacketParser.parseEndpoint(url) ?: return false
+        val groupAddr = NetUtil.orderAddresses(java.net.InetAddress.getAllByName(ep.host).toList()).firstOrNull()
+            ?: return false
+        val buf = ByteArray(2048)
+        val pkt = java.net.DatagramPacket(buf, buf.size)
+        return if (ep.isMulticast || groupAddr.isMulticastAddress) {
+            val ms = java.net.MulticastSocket(null)
+            var joined = emptyList<java.net.NetworkInterface>()
+            try {
+                ms.reuseAddress = true
+                ms.soTimeout = 1_500
+                MulticastNetworkSupport.bindMulticastSocket(ms, groupAddr, ep.port)
+                joined = MulticastNetworkSupport.joinMulticastOnActiveInterfaces(ms, groupAddr, ep.port)
+                ms.receive(pkt)
+                pkt.length > 0
+            } finally {
+                MulticastNetworkSupport.leaveMulticastInterfaces(ms, groupAddr, ep.port, joined)
+                runCatching { ms.close() }
+            }
+        } else {
+            val ds = java.net.DatagramSocket(null)
+            try {
+                ds.reuseAddress = true
+                ds.soTimeout = 1_500
+                ds.bind(java.net.InetSocketAddress(ep.port))
+                ds.receive(pkt)
+                pkt.length > 0
+            } finally {
+                runCatching { ds.close() }
+            }
+        }
     }
 
     private fun tryHead(url: String): Boolean {

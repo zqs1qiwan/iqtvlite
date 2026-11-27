@@ -25,7 +25,8 @@ object XmlTvParser {
             val rows = programmes.getJSONArray(id)
             result[id] = List(rows.length()) { index ->
                 val row = rows.getJSONArray(index)
-                EpgProgram(id, row.getLong(0), row.getLong(1), row.getString(2), if (row.isNull(3)) null else row.getInt(3))
+                val cleanTitle = TextSanitize.programTitle(row.getString(2)) ?: row.getString(2)
+                EpgProgram(id, row.getLong(0), row.getLong(1), cleanTitle, if (row.isNull(3)) null else row.getInt(3))
             }
         }
         return EpgData(result, displayNames)

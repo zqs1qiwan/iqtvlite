@@ -64,8 +64,8 @@ class ZapTraceTest {
             assertEquals(tier, LoadControlTuning.playbackBufferMinMs(tier))
             assertTrue("$tier must not exceed bufferForPlayback", tier <= LoadControlTuning.BUFFER_FOR_PLAYBACK_MS)
         }
-        // the default is the safe tier until the device A/B decides
-        assertEquals(500, LoadControlTuning.playbackBufferMinMs())
+        // the default is the fast tier (300ms)
+        assertEquals(300, LoadControlTuning.playbackBufferMinMs())
     }
 
     @Test

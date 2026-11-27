@@ -221,7 +221,7 @@ object LoadControlTuning {
     const val TIER_FAST_MS = 300
     const val TIER_BALANCED_MS = 400
     const val TIER_STABLE_MS = 500
-    const val DEFAULT_BUFFER_MIN_MS = TIER_STABLE_MS
+    const val DEFAULT_BUFFER_MIN_MS = TIER_FAST_MS
 
     val TIERS: List<Int> = listOf(TIER_FAST_MS, TIER_BALANCED_MS, TIER_STABLE_MS)
 

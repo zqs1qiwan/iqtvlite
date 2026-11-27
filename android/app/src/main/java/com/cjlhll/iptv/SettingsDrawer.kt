@@ -154,11 +154,12 @@ data class SettingsUiState(
     val showFavoritesGroup: Boolean = true,
     val showAllChannelsGroup: Boolean = true,
     val videoDecoderMode: String = "HARDWARE",
-    val rebuildOn4kZap: Boolean = true,
+    val rebuildOn4kZap: Boolean = false,
     val defaultSubtitlesEnabled: Boolean = true,
     val subtitlePreferredLang: String = "auto",
     val allGroupNames: List<String> = emptyList(),
     val activeGroupConfig: Prefs.SourceGroupConfig = Prefs.SourceGroupConfig(),
+    val ipStackPreference: IpStackPreference = IpStackPreference.IPV6_FIRST,
 )
 
 /** 设置抽屉动作集合。 */
@@ -224,6 +225,9 @@ data class SettingsActions(
     val onUpdateSourceGroupConfig: (String, Prefs.SourceGroupConfig) -> Unit = { _, _ -> },
     val onWebStateSynced: () -> Unit = {},
     val onWebPushSource: (String, String) -> Unit = { _, _ -> },
+    val onResetAllSettings: () -> Unit = {},
+    val onSelectIpStackPreference: (IpStackPreference) -> Unit = {},
+    val onResetCustomBindings: () -> Unit = {},
 )
 
 /**
@@ -250,6 +254,7 @@ fun SettingsDrawer(
 
     val pageLastFocus = remember { mutableMapOf<String, String>() }
     val requesters = remember { mutableMapOf<String, FocusRequester>() }
+    var focusedGroupManageName by remember { mutableStateOf<String?>(null) }
 
     val rootScroll = rememberScrollState()
     val generalScroll = rememberScrollState()
@@ -386,7 +391,34 @@ fun SettingsDrawer(
                     if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                     // 三级选择器内按 LEFT / BACK 返回上一级（子详情回到播放源列表，其余回二级页）
                     if (picker != null) {
+                        if (picker == PICKER_GROUP_MANAGE &&
+                            state.activeGroupConfig.sortMode == "MANUAL" &&
+                            focusedGroupManageName != null &&
+                            (event.key == Key.DirectionLeft || event.key == Key.DirectionRight)
+                        ) {
+                            val sid = state.activeSourceId ?: "default"
+                            val cfg = state.activeGroupConfig
+                            val currentOrder = if (cfg.manualOrder.isNotEmpty()) {
+                                val existing = cfg.manualOrder.filter { it in state.allGroupNames }
+                                existing + state.allGroupNames.filter { it !in existing }
+                            } else {
+                                state.allGroupNames
+                            }
+                            val idx = currentOrder.indexOf(focusedGroupManageName)
+                            if (idx >= 0) {
+                                val delta = if (event.key == Key.DirectionLeft) -1 else 1
+                                val nextIdx = (idx + delta).coerceIn(0, currentOrder.lastIndex)
+                                if (nextIdx != idx) {
+                                    val mutable = currentOrder.toMutableList()
+                                    val item = mutable.removeAt(idx)
+                                    mutable.add(nextIdx, item)
+                                    actions.onUpdateSourceGroupConfig(sid, cfg.copy(manualOrder = mutable))
+                                }
+                                return@onPreviewKeyEvent true
+                            }
+                        }
                         if (event.key == Key.DirectionLeft || event.key == Key.Back) {
+                            focusedGroupManageName = null
                             if (picker.startsWith(PICKER_SOURCE_DETAIL_PREFIX)) {
                                 actions.onOpenPicker(PICKER_SOURCES_MANAGE)
                             } else {
@@ -420,13 +452,14 @@ fun SettingsDrawer(
                     true
                 }
         ) {
-            // 静态缓存背景层
+            // 动态透明度背景层（响应“用户界面透明度”设置）
+            val drawerAlpha = Prefs.uiSurfaceAlpha(state.uiTransparencyPct)
             Box(
                 modifier = Modifier
                     .fillMaxHeight()
                     .width(drawerWidth)
                     .align(Alignment.CenterEnd)
-                    .graphicsLayer { alpha = TvDesignTokens.ALPHA_SETTINGS }
+                    .graphicsLayer { alpha = drawerAlpha }
                     .background(TvDesignTokens.SurfaceObsidian)
             )
             // 内容层
@@ -448,6 +481,7 @@ fun SettingsDrawer(
                             textScale = textScale,
                             scroll = pickerScroll,
                             requesterOf = ::requesterOf,
+                            onGroupFocusChanged = { focusedGroupManageName = it },
                         )
                     }
                     page == null -> SettingsRootPage(
@@ -467,15 +501,18 @@ fun SettingsDrawer(
                         resumeLastChannel = state.resumeLastChannel,
                         homePipEnabled = state.homePipEnabled,
                         doubleBackExitEnabled = state.doubleBackExitEnabled,
+                        ipStackPreference = state.ipStackPreference,
                         globalUserAgent = state.globalUserAgent,
                         globalCustomHeaders = state.globalCustomHeaders,
                         onToggleAutoStart = actions.onToggleAutoStart,
                         onToggleResumeLast = actions.onToggleResumeLast,
                         onToggleHomePip = actions.onToggleHomePip,
                         onToggleDoubleBackExit = actions.onToggleDoubleBackExit,
+                        onOpenIpStackPicker = { actions.onOpenPicker(PICKER_IP_STACK) },
                         onOpenGlobalUaPicker = { actions.onOpenPicker(PICKER_GLOBAL_UA) },
                         onOpenGlobalHeadersPicker = { actions.onOpenPicker(PICKER_GLOBAL_HEADERS) },
                         onSourceConfigClick = actions.onSourceConfigClick,
+                        onOpenResetDefaults = { actions.onOpenPicker(PICKER_RESET_DEFAULTS) },
                         textScale = textScale,
                         scroll = scrollFor(SettingsPage.GENERAL),
                         requesterOf = ::requesterOf,
@@ -586,6 +623,7 @@ fun SettingsDrawer(
                         onToggleChannelKeys = actions.onToggleRemoteChannelKeys,
                         bindings = state.remoteBindings,
                         onOpenActionPicker = { action -> actions.onOpenPicker("$PICKER_REMOTE_ACTION_PREFIX${action.name}") },
+                        onResetCustomBindings = actions.onResetCustomBindings,
                         onResetBindings = actions.onResetRemoteBindings,
                         textScale = textScale,
                         scroll = scrollFor(SettingsPage.REMOTE),
@@ -664,7 +702,9 @@ private const val PICKER_SUBTITLE_LANG = "subtitle_lang"
 private const val PICKER_GROUP_MANAGE = "group_manage"
 private const val PICKER_GROUP_SORT = "group_sort"
 private const val PICKER_WEB_QR = "web_qr"
+private const val PICKER_IP_STACK = "ip_stack"
 private const val PICKER_ABOUT_PROJECT = "about_project"
+private const val PICKER_RESET_DEFAULTS = "reset_defaults"
 
 private data class UaPreset(
     val value: String,
@@ -675,11 +715,11 @@ private data class UaPreset(
 )
 
 private val GLOBAL_UA_PRESETS: List<UaPreset> = listOf(
-    UaPreset("auto", "自动（跟随源 / 默认 VLC）", "Auto (Source / Default VLC)", "优先使用地址 | 参数与 #EXTINF，未指定时使用默认 VLC", "Uses stream | params & #EXTINF first, falls back to VLC"),
-    UaPreset("VLC/3.0.20 LibVLC/3.0.20", "VLC 播放器", "VLC Player", "VLC/3.0.20 LibVLC/3.0.20（通用 IPTV 推荐）", "VLC/3.0.20 LibVLC/3.0.20 (recommended)"),
-    UaPreset("aliplayer", "阿里云播放器 (aliplayer)", "Aliplayer (aliplayer)", "适配专享加密与 aliplayer 鉴权线路", "Compatible with streams requiring aliplayer UA"),
+    UaPreset("auto", "自动", "Auto", "跟随直播源配置，未指定时自动匹配通用标识", "Follows playlist setting when present"),
+    UaPreset("VLC/3.0.20 LibVLC/3.0.20", "VLC 播放器", "VLC Player", "兼容绝大多数常规直播源", "Compatible with most standard streams"),
+    UaPreset("aliplayer", "阿里云播放器", "Aliplayer", "适合部分需专用播放器标识的直播源", "For streams requiring aliplayer"),
     UaPreset("AptvPlayer/1.4.2", "APTV 播放器", "APTV Player", "AptvPlayer/1.4.2", "AptvPlayer/1.4.2"),
-    UaPreset("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36", "Chrome 桌面端", "Chrome Desktop", "兼容校验浏览器 UA 的直链", "For streams requiring desktop browser User-Agent"),
+    UaPreset("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36", "Chrome 浏览器", "Chrome Browser", "适合校验浏览器访问的直链", "For streams requiring a browser User-Agent"),
 )
 
 @Composable
@@ -692,6 +732,7 @@ private fun SettingsPickerRouter(
     textScale: Float,
     scroll: ScrollState,
     requesterOf: (String) -> FocusRequester,
+    onGroupFocusChanged: (String?) -> Unit = {},
 ) {
     val lang = state.language
     fun t(zh: String, en: String): String = if (lang == AppLang.EN) en else zh
@@ -715,6 +756,20 @@ private fun SettingsPickerRouter(
             scroll = scroll,
             requesterOf = requesterOf,
             onClose = actions.onClosePicker,
+        )
+        return
+    }
+    if (pickerId == PICKER_RESET_DEFAULTS) {
+        SettingsResetDefaultsView(
+            lang = lang,
+            textScale = textScale,
+            scroll = scroll,
+            requesterOf = requesterOf,
+            onConfirm = {
+                actions.onResetAllSettings()
+                actions.onClosePicker()
+            },
+            onCancel = actions.onClosePicker,
         )
         return
     }
@@ -811,8 +866,8 @@ private fun SettingsPickerRouter(
         PICKER_INFO_OK_MODE -> t("信息卡 OK 行为", "Info Card OK Action") to listOf(
             SettingsPickerOption(
                 id = "two_step",
-                title = t("两段式（推荐）", "Two-step (Recommended)"),
-                description = t("按一次 OK 显示信息卡，再按一次 OK 进入最近观看快切", "First OK opens info card, second OK focuses recent channels"),
+                title = t("两段式", "Two-step"),
+                description = t("按一次确认键显示频道信息，再按一次进入最近观看快切", "First OK shows channel info, second OK opens recent channels"),
                 selected = state.infoOkMode == InfoCardPolicy.InfoOkMode.TWO_STEP,
                 onSelect = {
                     actions.onSelectInfoOkMode(InfoCardPolicy.InfoOkMode.TWO_STEP)
@@ -822,7 +877,7 @@ private fun SettingsPickerRouter(
             SettingsPickerOption(
                 id = "direct",
                 title = t("直达最近观看", "Direct Recent Strip"),
-                description = t("按一次 OK 出卡后立即聚焦最近观看条，左右即可切台", "Single OK opens info card directly focused on recent strip"),
+                description = t("按一次确认键直接聚焦最近观看与快捷控制", "Single OK jumps directly to recent channels and quick controls"),
                 selected = state.infoOkMode == InfoCardPolicy.InfoOkMode.DIRECT,
                 onSelect = {
                     actions.onSelectInfoOkMode(InfoCardPolicy.InfoOkMode.DIRECT)
@@ -832,9 +887,9 @@ private fun SettingsPickerRouter(
         )
         PICKER_PLAYBACK_BUFFER -> t("起播缓冲", "Playback Buffer") to LoadControlTuning.TIERS.map { tier ->
             val desc = when (tier) {
-                LoadControlTuning.TIER_FAST_MS -> t("最快出画，适合高速稳定局域网", "Fastest zap on low-latency networks")
-                LoadControlTuning.TIER_BALANCED_MS -> t("速度与抗抖动均衡", "Balanced speed and stability")
-                else -> t("默认推荐，弱网与高码率 4K 更稳", "Recommended for 4K and unstable streams")
+                LoadControlTuning.TIER_FAST_MS -> t("切台最快，适合高速稳定网络", "Fastest channel switching on stable networks")
+                LoadControlTuning.TIER_BALANCED_MS -> t("兼顾切台速度与播放稳定性", "Balanced speed and stability")
+                else -> t("弱网或高码率 4K 更不易卡顿", "More resilient on slower networks or 4K streams")
             }
             SettingsPickerOption(
                 id = "buf_$tier",
@@ -847,22 +902,43 @@ private fun SettingsPickerRouter(
                 },
             )
         }
-        PICKER_JINGCAI -> t("码流兼容模式", "Stream Compatibility") to JingcaiExperiment.Mode.entries.map { mode ->
+        PICKER_IP_STACK -> t("网络协议优先级", "IP Protocol Priority") to IpStackPreference.entries.map { pref ->
             SettingsPickerOption(
-                id = mode.id,
-                title = mode.localizedLabel(lang),
-                description = if (mode == JingcaiExperiment.Mode.OFF) {
-                    t("默认关闭，标准码流无需开启", "Off by default for standard streams")
+                id = pref.id,
+                title = pref.shortLabel(lang),
+                description = if (pref == IpStackPreference.IPV6_FIRST) {
+                    t("默认优先 IPv6 连接，不可用时自动回退 IPv4", "Prefer IPv6 first and automatically fall back to IPv4")
                 } else {
-                    t("实验性兼容策略，重新选台生效", "Experimental mode; takes effect on next tune")
+                    t("优先 IPv4 连接，不可用时自动回退 IPv6", "Prefer IPv4 first and automatically fall back to IPv6")
                 },
-                selected = state.jingcaiExperiment == mode,
+                selected = state.ipStackPreference == pref,
                 onSelect = {
-                    actions.onSelectJingcaiExperiment(mode)
+                    actions.onSelectIpStackPreference(pref)
                     actions.onClosePicker()
                 },
             )
         }
+        PICKER_JINGCAI -> t("码流兼容模式", "Stream Compatibility") to JingcaiExperiment.Mode.entries
+            .filter { mode ->
+                // C 与 H 为纯占位/手动对照模式，默认隐藏，除非当前已经选中
+                (mode != JingcaiExperiment.Mode.C && mode != JingcaiExperiment.Mode.H) || state.jingcaiExperiment == mode
+            }
+            .map { mode ->
+                SettingsPickerOption(
+                    id = mode.id,
+                    title = mode.localizedLabel(lang),
+                    description = if (mode == JingcaiExperiment.Mode.OFF) {
+                        t("常规频道保持关闭即可", "Keep off for normal channels")
+                    } else {
+                        t("仅当个别频道只出声不出画或卡死时尝试，下次切台生效", "Try only if a stream has audio without video or freezes; applies on next tune")
+                    },
+                    selected = state.jingcaiExperiment == mode,
+                    onSelect = {
+                        actions.onSelectJingcaiExperiment(mode)
+                        actions.onClosePicker()
+                    },
+                )
+            }
         PICKER_AUTO_PLAYLIST -> t("自动更新列表", "Auto-update Playlist") to AutoUpdateConfig.Interval.entries.map { iv ->
             SettingsPickerOption(
                 id = iv.name,
@@ -922,8 +998,8 @@ private fun SettingsPickerRouter(
         PICKER_VIDEO_DECODER -> t("视频解码器", "Video Decoder") to listOf(
             SettingsPickerOption(
                 id = "HARDWARE",
-                title = t("硬件解码（推荐）", "Hardware (Recommended)"),
-                description = t("低功耗流畅硬解，4K 自动防花屏重建", "Low-power hardware decode with 4K anti-artifacting"),
+                title = t("硬件解码", "Hardware"),
+                description = t("省电流畅，适合绝大多数电视与盒子", "Smooth and power-efficient for most devices"),
                 selected = state.videoDecoderMode != "SOFTWARE",
                 onSelect = {
                     actions.onSelectVideoDecoderMode("HARDWARE")
@@ -932,8 +1008,8 @@ private fun SettingsPickerRouter(
             ),
             SettingsPickerOption(
                 id = "SOFTWARE",
-                title = t("软件解码（FFmpeg）", "Software (FFmpeg)"),
-                description = t("用于特殊编码兼容性兜底，CPU 占用较高", "Fallback for non-standard streams; higher CPU usage"),
+                title = t("软件解码", "Software"),
+                description = t("兼容极少数特殊视频格式，耗电与占用较高", "Fallback for uncommon video formats; higher CPU usage"),
                 selected = state.videoDecoderMode == "SOFTWARE",
                 onSelect = {
                     actions.onSelectVideoDecoderMode("SOFTWARE")
@@ -944,7 +1020,7 @@ private fun SettingsPickerRouter(
         PICKER_SUBTITLE_LANG -> t("首选字幕语言", "Preferred Subtitle Language") to listOf(
             SettingsPickerOption(
                 id = "auto",
-                title = t("自动（跟随流默认）", "Auto"),
+                title = t("自动", "Auto"),
                 selected = state.subtitlePreferredLang == "auto",
                 onSelect = { actions.onSelectSubtitlePreferredLang("auto"); actions.onClosePicker() },
             ),
@@ -962,9 +1038,9 @@ private fun SettingsPickerRouter(
             ),
         )
         PICKER_GROUP_SORT -> t("频道组排序方式", "Group Sorting") to listOf(
-            "DEFAULT" to t("默认（按节目列表顺序）", "Default (Playlist Order)"),
+            "DEFAULT" to t("按节目列表顺序", "Playlist Order"),
             "NAME" to t("按名称排序", "By Name"),
-            "MANUAL" to t("人工手动排序", "Manual Order"),
+            "MANUAL" to t("手动排序", "Manual Order"),
         ).map { (mode, label) ->
             SettingsPickerOption(
                 id = mode,
@@ -981,16 +1057,16 @@ private fun SettingsPickerRouter(
             val sid = state.activeSourceId ?: "default"
             val cfg = state.activeGroupConfig
             val sortLabel = when (cfg.sortMode) {
-                "NAME" -> t("按名称", "By Name")
-                "MANUAL" -> t("手动", "Manual")
-                else -> t("默认", "Default")
+                "NAME" -> t("按名称排序", "By Name")
+                "MANUAL" -> t("手动排序", "Manual Order")
+                else -> t("按节目列表顺序", "Playlist Order")
             }
             val opts = buildList {
                 add(
                     SettingsPickerOption(
                         id = "grp_sort_mode",
                         title = t("分组排序：$sortLabel", "Sort: $sortLabel"),
-                        description = t("点击切换 默认 / 按名称 / 手动", "Click to choose Default / Name / Manual"),
+                        description = t("点击切换分组排列方式", "Click to change group order"),
                         selected = false,
                         onSelect = { actions.onOpenPicker(PICKER_GROUP_SORT) },
                     )
@@ -1015,13 +1091,25 @@ private fun SettingsPickerRouter(
                         },
                     )
                 )
-                state.allGroupNames.forEach { gName ->
+                val orderedNames = if (cfg.sortMode == "MANUAL" && cfg.manualOrder.isNotEmpty()) {
+                    val kept = cfg.manualOrder.filter { it in state.allGroupNames }
+                    kept + state.allGroupNames.filter { it !in kept }
+                } else {
+                    state.allGroupNames
+                }
+                orderedNames.forEach { gName ->
                     val visible = gName !in cfg.hiddenGroups
+                    val desc = if (cfg.sortMode == "MANUAL") {
+                        val visLabel = if (visible) t("可见 · OK 隐藏", "Visible · OK hide") else t("已隐藏 · OK 显示", "Hidden · OK show")
+                        "$visLabel · ${t("←/→ 调整顺序", "←/→ Reorder")}"
+                    } else {
+                        if (visible) t("当前可见（点击隐藏）", "Visible (click to hide)") else t("已隐藏（点击显示）", "Hidden (click to show)")
+                    }
                     add(
                         SettingsPickerOption(
                             id = "grp_toggle_$gName",
                             title = gName,
-                            description = if (visible) t("当前可见（点击隐藏）", "Visible (click to hide)") else t("已隐藏（点击显示）", "Hidden (click to show)"),
+                            description = desc,
                             selected = visible,
                             onSelect = {
                                 val nextHidden = if (visible) cfg.hiddenGroups + gName else cfg.hiddenGroups - gName
@@ -1120,6 +1208,10 @@ private fun SettingsPickerRouter(
         textScale = textScale,
         scroll = scroll,
         requesterOf = requesterOf,
+        onOptionFocused = { id ->
+            val grp = if (id.startsWith("grp_toggle_")) id.removePrefix("grp_toggle_") else null
+            onGroupFocusChanged(grp)
+        },
     )
 }
 
@@ -1130,6 +1222,7 @@ private fun SettingsOptionPickerView(
     textScale: Float,
     scroll: ScrollState,
     requesterOf: (String) -> FocusRequester,
+    onOptionFocused: (String) -> Unit = {},
 ) {
     Column(
         modifier = Modifier
@@ -1146,6 +1239,7 @@ private fun SettingsOptionPickerView(
                 textScale = textScale,
                 focusRequester = requesterOf("picker_opt_$index"),
                 tag = "picker_opt_$index",
+                onFocus = { onOptionFocused(opt.id) },
                 onClick = opt.onSelect,
             )
             if (index != options.lastIndex) RowGap()
@@ -1278,6 +1372,7 @@ private fun SettingsWebQrView(
     DisposableEffect(appContext) {
         var server: SourceConfigLanServer? = null
         val disposed = java.util.concurrent.atomic.AtomicBoolean(false)
+        val serverLock = Any()
         val thread = Thread {
             val created = SourceConfigLanServer(
                 appContext = appContext,
@@ -1292,17 +1387,19 @@ private fun SettingsWebQrView(
                 },
             )
             val started = runCatching { created.start() }
-            if (disposed.get()) {
-                created.stop()
-            } else {
-                server = created
-                mainHandler.post {
-                    started.onSuccess { info ->
-                        lanUrl = info.url
-                        lanError = null
-                    }.onFailure { e ->
-                        lanUrl = null
-                        lanError = e.message ?: t("局域网服务启动失败", "LAN server start failed")
+            synchronized(serverLock) {
+                if (disposed.get()) {
+                    runCatching { created.stop() }
+                } else {
+                    server = created
+                    mainHandler.post {
+                        started.onSuccess { info ->
+                            lanUrl = info.url
+                            lanError = null
+                        }.onFailure { e ->
+                            lanUrl = null
+                            lanError = e.message ?: t("局域网服务启动失败", "LAN server start failed")
+                        }
                     }
                 }
             }
@@ -1310,8 +1407,11 @@ private fun SettingsWebQrView(
         thread.isDaemon = true
         thread.start()
         onDispose {
-            disposed.set(true)
-            runCatching { server?.stop() }
+            val toStop = synchronized(serverLock) {
+                disposed.set(true)
+                server.also { server = null }
+            }
+            runCatching { toStop?.stop() }
         }
     }
 
@@ -1392,6 +1492,50 @@ private fun SettingsWebQrView(
 }
 
 /** 关于项目与开源许可证详情页。 */
+@Composable
+private fun SettingsResetDefaultsView(
+    lang: AppLang,
+    textScale: Float,
+    scroll: ScrollState,
+    requesterOf: (String) -> FocusRequester,
+    onConfirm: () -> Unit,
+    onCancel: () -> Unit,
+) {
+    fun t(zh: String, en: String) = if (lang == AppLang.EN) en else zh
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(scroll)
+            .testTag(SETTINGS_LIST_TAG)
+    ) {
+        SettingsTopTitle(title = t("还原默认设置", "Restore Default Settings"), tag = "settings_picker_title", textScale = textScale)
+        HelpText(
+            text = t(
+                "将外观、播放解码、遥控按键等全部设置恢复为出厂默认状态。已添加的节目列表、收藏与观看记录不会被删除。",
+                "Resets appearance, playback, and remote settings back to defaults. Your playlists, favorites, and watch history will be kept.",
+            ),
+            color = TvDesignTokens.TextSecondary,
+            start = 4.dp,
+        )
+        Spacer(modifier = Modifier.height(10.dp))
+        SettingsItem(
+            text = t("确认还原默认设置", "Confirm Restore Defaults"),
+            textScale = textScale,
+            focusRequester = requesterOf("picker_opt_0"),
+            tag = "picker_opt_0",
+            onClick = onConfirm,
+        )
+        RowGap()
+        SettingsItem(
+            text = t("取消", "Cancel"),
+            textScale = textScale,
+            focusRequester = requesterOf("picker_opt_1"),
+            tag = "picker_opt_1",
+            onClick = onCancel,
+        )
+    }
+}
+
 @Composable
 private fun SettingsAboutProjectView(
     lang: AppLang,
@@ -1793,29 +1937,32 @@ private fun SettingsGeneralPage(
     resumeLastChannel: Boolean,
     homePipEnabled: Boolean,
     doubleBackExitEnabled: Boolean,
+    ipStackPreference: IpStackPreference,
     globalUserAgent: String,
     globalCustomHeaders: String,
     onToggleAutoStart: (Boolean) -> Unit,
     onToggleResumeLast: (Boolean) -> Unit,
     onToggleHomePip: (Boolean) -> Unit,
     onToggleDoubleBackExit: (Boolean) -> Unit,
+    onOpenIpStackPicker: () -> Unit,
     onOpenGlobalUaPicker: () -> Unit,
     onOpenGlobalHeadersPicker: () -> Unit,
     onSourceConfigClick: () -> Unit,
+    onOpenResetDefaults: () -> Unit,
     textScale: Float,
     scroll: ScrollState,
     requesterOf: (String) -> FocusRequester,
     onFocused: (String) -> Unit,
 ) {
     fun t(zh: String, en: String) = if (lang == AppLang.EN) en else zh
-    val globalUaSummary = globalUserAgent.trim().ifBlank { t("自动（默认 VLC）", "Auto (Default VLC)") }
+    val globalUaSummary = globalUserAgent.trim().ifBlank { t("自动", "Auto") }
     val customHeadersCount = remember(globalCustomHeaders) {
         PlaylistSources.parseCustomHeaders(globalCustomHeaders).size
     }
     val globalHeadersSummary = if (customHeadersCount > 0) {
         t("已配置 $customHeadersCount 条", "$customHeadersCount configured")
     } else {
-        t("未配置（扫码网页编辑）", "None (Edit via WebUI)")
+        t("未配置，可扫码添加", "None (Scan QR to add)")
     }
     Column(modifier = Modifier.fillMaxSize()) {
         SettingsPageHeader(SettingsPage.GENERAL, lang, textScale)
@@ -1866,7 +2013,17 @@ private fun SettingsGeneralPage(
                 onFocused = onFocused,
                 onClick = { onToggleDoubleBackExit(!doubleBackExitEnabled) },
             )
-        SettingsGroupHeader(t("网络请求头与备份", "Headers & Backup"))
+        SettingsGroupHeader(t("网络与备份", "Network & Backup"))
+        SettingsChoiceRow(
+            title = t("网络协议优先级", "IP Protocol Priority"),
+            value = ipStackPreference.shortLabel(lang),
+            textScale = textScale,
+            focusRequester = requesterOf("settings_ip_stack"),
+            tag = "settings_ip_stack",
+            onFocused = onFocused,
+            onClick = onOpenIpStackPicker,
+        )
+        RowGap()
         SettingsChoiceRow(
             title = t("User-Agent 设置", "User-Agent"),
             value = globalUaSummary,
@@ -1888,13 +2045,23 @@ private fun SettingsGeneralPage(
         )
         RowGap()
         SettingsChoiceRow(
-            title = t("备份 / 恢复数据（扫码 WebUI）", "Backup / Restore (QR WebUI)"),
-            value = t("手机扫码管理播放源与备份配置", "Manage sources & backup JSON via phone"),
+            title = t("手机扫码管理与备份", "Phone QR Setup & Backup"),
+            value = t("手机扫码管理播放源与备份恢复", "Manage playlists & backup via phone"),
             textScale = textScale,
             focusRequester = requesterOf("settings_source_config"),
             tag = "settings_source_config",
             onFocused = onFocused,
             onClick = onSourceConfigClick,
+        )
+        RowGap()
+        SettingsChoiceRow(
+            title = t("还原默认设置", "Restore Default Settings"),
+            value = t("恢复出厂设置，保留节目列表与收藏", "Reset preferences while keeping playlists & favorites"),
+            textScale = textScale,
+            focusRequester = requesterOf("settings_reset_defaults"),
+            tag = "settings_reset_defaults",
+            onFocused = onFocused,
+            onClick = onOpenResetDefaults,
         )
         }
     }
@@ -1937,7 +2104,7 @@ private fun SettingsPlaylistsPage(
         ) {
             SettingsGroupHeader(t("当前节目列表", "Playlists"))
         SettingsChoiceRow(
-            title = t("节目列表管理（隐藏 / 切换）", "Playlists (Show / Switch)"),
+            title = t("节目列表管理", "Manage Playlists"),
             value = sourceManageSummary,
             textScale = textScale,
             focusRequester = requesterOf("settings_source_manage"),
@@ -1947,8 +2114,8 @@ private fun SettingsPlaylistsPage(
         )
         RowGap()
         SettingsChoiceRow(
-            title = t("管理频道组（排序 / 隐藏）", "Manage Channel Groups"),
-            value = t("分组排序与显示开关", "Group sort order & visibility"),
+            title = t("频道分组管理", "Channel Groups"),
+            value = t("设置分组排列顺序与显示状态", "Adjust group order and visibility"),
             textScale = textScale,
             focusRequester = requesterOf("settings_group_manage"),
             tag = "settings_group_manage",
@@ -2025,7 +2192,7 @@ private fun SettingsEpgPage(
             )
             RowGap()
             SettingsChoiceRow(
-                title = t("更新频率（小时）", "Update Interval"),
+                title = t("更新频率", "Update Interval"),
                 value = autoUpdateEpgLabel,
                 textScale = textScale,
                 focusRequester = requesterOf("settings_auto_epg"),
@@ -2277,7 +2444,7 @@ private fun SettingsPlaybackPage(
     onFocused: (String) -> Unit,
 ) {
     fun t(zh: String, en: String) = if (lang == AppLang.EN) en else zh
-    val decoderLabel = if (videoDecoderMode == "SOFTWARE") t("软件解码 (FFmpeg)", "Software (FFmpeg)") else t("硬件解码", "Hardware")
+    val decoderLabel = if (videoDecoderMode == "SOFTWARE") t("软件解码", "Software") else t("硬件解码", "Hardware")
     val subLangLabel = when (subtitlePreferredLang) {
         "zh" -> t("中文", "Chinese")
         "en" -> t("英文", "English")
@@ -2314,7 +2481,8 @@ private fun SettingsPlaybackPage(
             )
             RowGap()
             SettingsToggleRow(
-                title = t("4K 切台防花屏重建", "4K zap anti-artifacting"),
+                title = t("4K 切台防花屏", "4K Anti-Artifacting"),
+                subtitle = t("仅在切换 4K 频道出现花屏或绿屏时开启", "Turn on only if switching 4K channels causes visual artifacts"),
                 checked = rebuildOn4kZap,
                 textScale = textScale,
                 focusRequester = requesterOf("settings_rebuild_4k_zap"),
@@ -2357,7 +2525,7 @@ private fun SettingsPlaybackPage(
             if (qualityMenuEnabled) {
                 RowGap()
                 SettingsItem(
-                    text = t("线路选择（当前频道）", "Stream Sources (Current)"),
+                    text = t("切换当前频道线路", "Switch Channel Source"),
                     textScale = textScale,
                     focusRequester = requesterOf("settings_quality_menu"),
                     tag = "settings_quality_menu",
@@ -2365,9 +2533,10 @@ private fun SettingsPlaybackPage(
                     onClick = onQualityMenuClick,
                 )
             }
-            SettingsGroupHeader(t("高级优化（实验）", "Advanced (Experimental)"))
+            SettingsGroupHeader(t("高级优化", "Advanced"))
             SettingsToggleRow(
                 title = t("预连接相邻频道", "Neighbour Preconnect"),
+                subtitle = t("提前连接上下台加快换台，限流源建议关闭", "Pre-connects adjacent channels for faster zapping; keep off on strict servers"),
                 checked = zapPreconnectEnabled,
                 textScale = textScale,
                 focusRequester = requesterOf("settings_zap_preconnect"),
@@ -2378,6 +2547,7 @@ private fun SettingsPlaybackPage(
             RowGap()
             SettingsToggleRow(
                 title = t("组播预热", "Multicast Prewarm"),
+                subtitle = t("仅家庭宽带内网组播源需要，普通网络请保持关闭", "Only for home ISP multicast streams; keep off for normal internet sources"),
                 checked = multicastPrewarmEnabled,
                 textScale = textScale,
                 focusRequester = requesterOf("settings_multicast_prewarm"),
@@ -2412,6 +2582,7 @@ private fun SettingsRemotePage(
     onToggleChannelKeys: () -> Unit,
     bindings: List<KeyBinding>,
     onOpenActionPicker: (RemoteAction) -> Unit,
+    onResetCustomBindings: () -> Unit,
     onResetBindings: () -> Unit,
     textScale: Float,
     scroll: ScrollState,
@@ -2428,7 +2599,7 @@ private fun SettingsRemotePage(
                 .verticalScroll(scroll)
                 .testTag(SETTINGS_LIST_TAG)
         ) {
-            SettingsGroupHeader(t("功能按键指定（点击配置）", "Key Assignments (Click to Assign)"))
+            SettingsGroupHeader(t("功能按键指定", "Key Assignments"))
         for (action in RemoteBindings.CONFIGURABLE_ACTIONS) {
             val binding = bindings.firstOrNull { it.action == action }
             val shortStr = RemoteBindings.bindingSummary(binding, false, lang)
@@ -2502,12 +2673,12 @@ private fun SettingsRemotePage(
         )
         RowGap()
         SettingsItem(
-            text = t("重置全部自定义映射", "Reset All Custom Bindings"),
+            text = t("重置全部自定义映射", "Reset Custom Key Bindings"),
             textScale = textScale,
             focusRequester = requesterOf("settings_remote_bindings_reset"),
             tag = "settings_remote_bindings_reset",
             onFocused = onFocused,
-            onClick = onResetBindings,
+            onClick = onResetCustomBindings,
         )
         }
     }
@@ -2854,6 +3025,7 @@ private fun SettingsToggleRow(
     onClick: () -> Unit,
     tag: String? = null,
     onFocused: ((String) -> Unit)? = null,
+    subtitle: String = "",
 ) {
     var focused by remember { mutableStateOf(false) }
     val bringIntoView = remember { BringIntoViewRequester() }
@@ -2885,17 +3057,27 @@ private fun SettingsToggleRow(
             .padding(horizontal = 14.dp, vertical = 11.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.titleMedium.copy(
-                fontSize = (15.5f * textScale).sp,
-                fontWeight = if (focused) FontWeight.SemiBold else FontWeight.Medium,
-            ),
-            color = if (focused) TvDesignTokens.TextPrimary else TvDesignTokens.TextPrimary.copy(alpha = 0.90f),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
-        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium.copy(
+                    fontSize = (15.5f * textScale).sp,
+                    fontWeight = if (focused) FontWeight.SemiBold else FontWeight.Medium,
+                ),
+                color = if (focused) TvDesignTokens.TextPrimary else TvDesignTokens.TextPrimary.copy(alpha = 0.90f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (subtitle.isNotBlank()) {
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodySmall.copy(fontSize = (11.5f * textScale).sp),
+                    color = if (focused) TvDesignTokens.TextSecondary else TvDesignTokens.TextMuted,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
         Spacer(modifier = Modifier.width(12.dp))
         Box(
             modifier = Modifier
@@ -3012,6 +3194,7 @@ private fun SettingsRadioRow(
     textScale: Float,
     focusRequester: FocusRequester?,
     tag: String,
+    onFocus: () -> Unit = {},
     onClick: () -> Unit,
 ) {
     var focused by remember { mutableStateOf(false) }
@@ -3030,7 +3213,10 @@ private fun SettingsRadioRow(
             .background(bg, shape)
             .onFocusChanged {
                 focused = it.isFocused
-                if (it.isFocused) scope.launch { runCatching { bringIntoView.bringIntoView() } }
+                if (it.isFocused) {
+                    onFocus()
+                    scope.launch { runCatching { bringIntoView.bringIntoView() } }
+                }
             }
             .focusable()
             .clickable {

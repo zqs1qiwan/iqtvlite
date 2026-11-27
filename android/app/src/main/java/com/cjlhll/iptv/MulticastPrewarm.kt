@@ -33,6 +33,7 @@ object MulticastPrewarm {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val running = AtomicBoolean(false)
     private var job: Job? = null
+    @Volatile private var activeSocket: MulticastSocket? = null
 
     @Volatile private var lastPassAt = 0L
 
@@ -52,39 +53,61 @@ object MulticastPrewarm {
         val endpoint = MulticastPrewarmPolicy.parse(urls.getOrNull(neighbour) ?: return) ?: return
         if (!running.compareAndSet(false, true)) return
         lastPassAt = now
+        val appContext = context.applicationContext
         job = scope.launch {
             val t0 = System.currentTimeMillis()
             var bytes = 0L
             var idrSeen = false
             var socket: MulticastSocket? = null
+            var joinedIfaces: List<java.net.NetworkInterface> = emptyList()
+            val groupAddr = runCatching { InetAddress.getByName(endpoint.host) }.getOrNull()
+            val wifiLock = runCatching {
+                (appContext.getSystemService(Context.WIFI_SERVICE) as? android.net.wifi.WifiManager)
+                    ?.createMulticastLock("iqtvlite-prewarm")
+                    ?.apply { setReferenceCounted(false); acquire() }
+            }.getOrNull()
             try {
+                if (groupAddr == null) return@launch
                 withTimeoutOrNull(MulticastPrewarmPolicy.TIMEOUT_MS) {
-                    socket = MulticastSocket(endpoint.port)
-                    socket?.joinGroup(InetAddress.getByName(endpoint.host))
+                    socket = MulticastSocket(null).apply {
+                        reuseAddress = true
+                        runCatching { receiveBufferSize = 512 * 1024 }
+                        soTimeout = 600
+                        MulticastNetworkSupport.bindMulticastSocket(this, groupAddr, endpoint.port)
+                    }
+                    activeSocket = socket
+                    joinedIfaces = socket?.let { ms ->
+                        MulticastNetworkSupport.joinMulticastOnActiveInterfaces(ms, groupAddr, endpoint.port)
+                    }.orEmpty()
                     val buffer = ByteArray(48 * 1024)
+                    val packet = DatagramPacket(buffer, buffer.size)
                     while (!MulticastPrewarmPolicy.reachedBudget(bytes)) {
-                        val packet = DatagramPacket(buffer, buffer.size)
-                        socket?.receive(packet)
+                        try {
+                            socket?.receive(packet)
+                        } catch (_: java.net.SocketTimeoutException) {
+                            break
+                        }
                         val len = packet.length
-                        bytes += len
-                        // A TS packet carrying an H.264 IDR has NAL type 5 not far after the 0x47 sync
-                        // byte; a crate-level scan is enough to know "the group is live and has video".
-                        if (!idrSeen && len > 5) idrSeen = looksLikeIdr(buffer, len)
+                        if (len <= 0) continue
+                        val packed = RtpPacketParser.extractPayloadPacked(buffer, len)
+                        val payloadLen = packed.toInt()
+                        val payloadOff = (packed ushr 32).toInt()
+                        if (payloadLen > 0) {
+                            bytes += payloadLen
+                            // Scan stripped MPEG-TS payload (works for both rtp:// and raw udp://).
+                            if (!idrSeen && payloadLen > 5) idrSeen = looksLikeIdr(buffer, payloadOff, payloadLen)
+                        } else {
+                            bytes += len
+                        }
                     }
                 }
             } catch (e: Exception) {
                 // silent by design
             } finally {
-                try {
-                    socket?.leaveGroup(InetAddress.getByName(endpoint.host))
-                } catch (e: Exception) {
-                    // ignore
-                }
-                try {
-                    socket?.close()
-                } catch (e: Exception) {
-                    // ignore
-                }
+                MulticastNetworkSupport.leaveMulticastInterfaces(socket, groupAddr, endpoint.port, joinedIfaces)
+                runCatching { socket?.close() }
+                if (activeSocket === socket) activeSocket = null
+                runCatching { if (wifiLock?.isHeld == true) wifiLock.release() }
                 running.set(false)
                 if (Log.isLoggable(TAG, Log.DEBUG)) {
                     Log.d(
@@ -97,13 +120,16 @@ object MulticastPrewarm {
         }
     }
 
-    /** Cheap IDR sniff: an H.264 NAL of type 5 within the first bytes of a TS payload. */
-    private fun looksLikeIdr(buf: ByteArray, len: Int): Boolean {
-        var i = 0
-        while (i + 4 < len) {
+    /** Cheap IDR sniff: an H.264 NAL of type 5 (or HEVC IDR NAL 19/20) within a TS payload. */
+    private fun looksLikeIdr(buf: ByteArray, offset: Int, len: Int): Boolean {
+        var i = offset
+        val limit = offset + len
+        while (i + 4 < limit) {
             if (buf[i] == 0x00.toByte() && buf[i + 1] == 0x00.toByte() && buf[i + 2] == 0x01.toByte()) {
-                val nal = buf[i + 3].toInt() and 0x1F
-                if (nal == 5) return true
+                val b3 = buf[i + 3].toInt() and 0xFF
+                val h264Nal = b3 and 0x1F
+                val hevcNal = (b3 ushr 1) and 0x3F
+                if (h264Nal == 5 || hevcNal == 19 || hevcNal == 20) return true
                 i += 3
             } else {
                 i++
@@ -112,8 +138,10 @@ object MulticastPrewarm {
         return false
     }
 
-    /** Called on every real zap and when the experiment is disabled. */
+    /** Called on every real zap and when the experiment is disabled; closes socket to unblock receive(). */
     fun cancel() {
+        runCatching { activeSocket?.close() }
+        activeSocket = null
         job?.cancel()
         job = null
         running.set(false)

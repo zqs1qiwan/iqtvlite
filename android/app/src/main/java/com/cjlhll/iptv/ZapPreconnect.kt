@@ -3,6 +3,7 @@ package com.cjlhll.iptv
 import android.content.Context
 import android.util.Log
 import java.io.IOException
+import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.Socket
 import java.net.URI
@@ -80,19 +81,31 @@ object ZapPreconnect {
         }
     }
 
-    /** One connect-only warm. Never throws, never reads the body. */
-    private fun connectOnce(url: String): Boolean = try {
-        val uri = URI(url)
-        val host = uri.host ?: return false
-        val port = if (uri.port > 0) uri.port else if (uri.scheme.equals("https", true)) 443 else 80
-        Socket().use { socket ->
-            socket.connect(InetSocketAddress(host, port), PreconnectPolicy.TIMEOUT_MS.toInt())
+    /** One connect-only warm. Never throws, never reads the body. Respects dual-stack preference + fallback. */
+    private fun connectOnce(url: String): Boolean {
+        return try {
+            val uri = URI(url)
+            val host = uri.host ?: return false
+            val port = if (uri.port > 0) uri.port else if (uri.scheme.equals("https", true)) 443 else 80
+            val addrs = NetUtil.orderAddresses(InetAddress.getAllByName(host).toList())
+            if (addrs.isEmpty()) return false
+            val perAttemptTimeout = (PreconnectPolicy.TIMEOUT_MS.toInt() / minOf(addrs.size, 2)).coerceAtLeast(600)
+            for (addr in addrs) {
+                try {
+                    Socket().use { socket ->
+                        socket.connect(InetSocketAddress(addr, port), perAttemptTimeout)
+                    }
+                    return true
+                } catch (_: IOException) {
+                    // Fall back to the next resolved address (e.g., IPv6 -> IPv4 or vice versa)
+                }
+            }
+            false
+        } catch (e: IOException) {
+            false
+        } catch (e: Exception) {
+            false
         }
-        true
-    } catch (e: IOException) {
-        false
-    } catch (e: Exception) {
-        false
     }
 
     /** Called on every zap: a warm must never compete with the real connection. */

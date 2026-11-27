@@ -595,7 +595,6 @@ dependencies = [
  "flate2",
  "iqtvlite-core",
  "iqtvlite-epg",
- "iqtvlite-store",
  "jni 0.22.4",
  "serde_json",
  "tracing",

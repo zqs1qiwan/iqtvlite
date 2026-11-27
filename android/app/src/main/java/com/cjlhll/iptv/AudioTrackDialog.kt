@@ -47,6 +47,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import kotlinx.coroutines.launch
@@ -60,6 +61,7 @@ fun AudioTrackDialog(
     onSelect: (AudioTrackUi.Item) -> Unit,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
+    textScale: Float = 1f,
 ) {
     val scrollState = rememberScrollState()
     val requesters = remember(items.size) { List(items.size) { FocusRequester() } }
@@ -90,7 +92,10 @@ fun AudioTrackDialog(
         ) {
             Text(
                 text = tr("音轨选择", "Audio Tracks"),
-                style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.SemiBold),
+                style = MaterialTheme.typography.headlineSmall.copy(
+                    fontSize = (22f * textScale).sp,
+                    fontWeight = FontWeight.SemiBold,
+                ),
                 color = TvDesignTokens.TextPrimary
             )
             Spacer(modifier = Modifier.height(12.dp))
@@ -98,7 +103,7 @@ fun AudioTrackDialog(
             if (!hasAudio || items.isEmpty()) {
                 Text(
                     text = tr("当前频道没有可选音轨", "No selectable audio tracks"),
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = MaterialTheme.typography.bodyMedium.copy(fontSize = (14f * textScale).sp),
                     color = TvDesignTokens.TextSecondary,
                     modifier = Modifier.padding(vertical = 12.dp).testTag("audio_empty")
                 )
@@ -112,6 +117,7 @@ fun AudioTrackDialog(
                     items.forEachIndexed { index, item ->
                         AudioRow(
                             item = item,
+                            textScale = textScale,
                             focusRequester = requesters.getOrNull(index),
                             onClick = { onSelect(item) }
                         )
@@ -126,6 +132,7 @@ fun AudioTrackDialog(
 @Composable
 private fun AudioRow(
     item: AudioTrackUi.Item,
+    textScale: Float,
     focusRequester: FocusRequester?,
     onClick: () -> Unit,
 ) {
@@ -154,6 +161,7 @@ private fun AudioRow(
         Text(
             text = if (item.selected) "▶ ${item.text}" else item.text,
             style = MaterialTheme.typography.bodyLarge.copy(
+                fontSize = (15.5f * textScale).sp,
                 fontWeight = if (focused || item.selected) FontWeight.SemiBold else FontWeight.Normal
             ),
             color = when {

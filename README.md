@@ -44,36 +44,36 @@
     <td width="50%" align="center">
       <img src="assets/screenshots/player-infocard.png" alt="底部信息栏与快捷控制" />
       <br />
-      <sub><b>底部信息栏与快捷控制</b>：显示当前频道台标、名称、节目进度与画质参数；向下或再按一次确认键即可展开最近观看列表及收藏、换源、画面比例、音轨、字幕、多画面与设置入口。</sub>
+      <sub><b>底部信息栏与快捷控制</b></sub>
     </td>
     <td width="50%" align="center">
       <img src="assets/screenshots/channel-drawer.png" alt="频道列表与节目单" />
       <br />
-      <sub><b>频道列表与节目单</b>：直观展示台标与正在播出的节目，右侧同步列出多日节目预告；选中带有回看标识的历史节目可直接点播回看。</sub>
+      <sub><b>频道列表与节目单</b></sub>
     </td>
   </tr>
   <tr>
     <td width="50%" align="center">
-      <img src="assets/screenshots/drawer-groups-sources.png" alt="频道分组与播放源切换" />
+      <img src="assets/screenshots/drawer-groups-sources.png" alt="频道分组与多源切换" />
       <br />
-      <sub><b>频道分组与多源切换</b>：在选台列表按左键可切换不同频道分组与收藏夹，接入多个播放源时可继续向左快速切换列表。</sub>
+      <sub><b>频道分组与多源切换</b></sub>
     </td>
     <td width="50%" align="center">
-      <img src="assets/screenshots/settings.png" alt="电视端设置中心" />
+      <img src="assets/screenshots/settings.png" alt="分类设置中心" />
       <br />
-      <sub><b>分类设置中心</b>：包含通用、节目列表、节目预告、外观、播放解码、遥控设置、关于与更新七大板块，所有功能均可使用电视遥控器直接设置。</sub>
+      <sub><b>分类设置中心</b></sub>
     </td>
   </tr>
   <tr>
     <td width="50%" align="center">
-      <img src="assets/screenshots/webui-qr.png" alt="手机扫码网页配置" />
+      <img src="assets/screenshots/webui-qr.png" alt="手机扫码配置" />
       <br />
-      <sub><b>手机扫码配置</b>：在设置内打开二维码并用手机浏览器扫码，即可直接输入订阅链接、批量设置请求头、自定义按键映射以及导出或恢复配置备份。</sub>
+      <sub><b>手机扫码配置</b></sub>
     </td>
     <td width="50%" align="center">
       <img src="assets/screenshots/about-updates.png" alt="关于与在线更新" />
       <br />
-      <sub><b>关于与在线更新</b>：查看当前软件版本，支持一键检查并下载安装最新版本，保持播放器持续更新。</sub>
+      <sub><b>关于与在线更新</b></sub>
     </td>
   </tr>
 </table>
@@ -145,7 +145,7 @@ X-Custom-Token: your-token
 
 | 选项名称 | 默认状态 | 功能说明 | 使用建议 |
 | --- | --- | --- | --- |
-| **4K 切台防花屏重建** | 开启 | 切换到 4K 超高清频道时自动重置视频解码器，避免部分老旧机顶盒在切换高分辨率画面时出现绿屏或花屏。 | 仅在确认当前设备切换 4K 永不花屏且追求极致切台速度时关闭。 |
+| **4K 切台防花屏** | 关闭 | 切换到 4K 超高清频道时自动重置视频解码器，解决部分老旧机顶盒切台花屏或绿屏问题。 | 仅在切换 4K 频道出现花屏或绿屏时开启。 |
 | **预连接相邻频道** | 关闭 | 观看当前频道时在后台提前建立上/下一台的连接，缩短连续按上下键换台的等待时间。 | 若所用直播源对同一 IP 或 Token 的同时连接数有限制，请保持关闭。 |
 | **组播预热** | 关闭 | 针对家庭宽带 IPTV 组播源（`udp://` / `rtp://`）提前加入相邻组播流以加速内网换台。 | 普通公网 HTTP/HLS 直播源请保持关闭。 |
 | **码流兼容模式** | 关闭 | 针对部分时间戳异常、容易只出声不出画或音画逐渐漂移的特殊频道提供兼容播放模式。 | 仅在个别频道播放异常时按需尝试，日常观看保持关闭即可。 |
@@ -154,7 +154,7 @@ X-Custom-Token: your-token
 
 ## 安装与更新
 
-1. 前往 [**Releases 最新版本**](https://github.com/zqs1qiwan/iqtvlite/releases/latest) 下载 `IQTV-Lite-v0.3.0.apk`（或通用最新包 `IQTV-Lite-latest.apk`）。
+1. 前往 [**Releases 最新版本**](https://github.com/zqs1qiwan/iqtvlite/releases/latest) 下载 `IQTV-Lite-v0.3.1.apk`（或通用最新包 `IQTV-Lite-latest.apk`）。
 2. 将安装包传至 Android TV 或电视盒子安装（支持 Android 7.0 及以上系统，兼容 32 位与 64 位设备）。
 3. 之后可在电视端进入「设置 → 关于与更新 → 检查更新」，直接在应用内下载安装新版。
 
@@ -203,36 +203,36 @@ X-Custom-Token: your-token
     <td width="50%" align="center">
       <img src="assets/screenshots/player-infocard.png" alt="Bottom Info Bar & Quick Controls" />
       <br />
-      <sub><b>Bottom Info Bar & Quick Controls</b>: Displays channel logo, live/next program progress, and stream badges. Press ↓ or OK again to reveal recently watched channels along with Favorite, Source, Aspect Ratio, Audio, Subtitles, Multi-Screen, and Settings shortcuts.</sub>
+      <sub><b>Bottom Info Bar & Quick Controls</b></sub>
     </td>
     <td width="50%" align="center">
       <img src="assets/screenshots/channel-drawer.png" alt="Channel List & EPG Guide" />
       <br />
-      <sub><b>Channel List & EPG Guide</b>: Browse channels with logos and live progress alongside a multi-day program schedule; select any past program marked for catch-up to replay it directly.</sub>
+      <sub><b>Channel List & EPG Guide</b></sub>
     </td>
   </tr>
   <tr>
     <td width="50%" align="center">
-      <img src="assets/screenshots/drawer-groups-sources.png" alt="Channel Groups & Sources Switcher" />
+      <img src="assets/screenshots/drawer-groups-sources.png" alt="Groups & Multi-Source Switcher" />
       <br />
-      <sub><b>Groups & Multi-Source Switcher</b>: Press ← inside the channel list to jump between groups or Favorites, and press ← again when multiple playlists are enabled to switch sources seamlessly.</sub>
+      <sub><b>Groups & Multi-Source Switcher</b></sub>
     </td>
     <td width="50%" align="center">
-      <img src="assets/screenshots/settings.png" alt="7-Category TV Settings" />
+      <img src="assets/screenshots/settings.png" alt="Organized TV Settings" />
       <br />
-      <sub><b>Organized TV Settings</b>: Seven clear sections—General, Playlists, EPG, Appearance, Playback, Remote, and About & Updates—designed for comfortable remote-control navigation.</sub>
+      <sub><b>Organized TV Settings</b></sub>
     </td>
   </tr>
   <tr>
     <td width="50%" align="center">
-      <img src="assets/screenshots/webui-qr.png" alt="Phone QR Code Setup" />
+      <img src="assets/screenshots/webui-qr.png" alt="Scan-to-Configure from Phone" />
       <br />
-      <sub><b>Scan-to-Configure from Phone</b>: Open the built-in QR code in Settings and scan it from your phone browser to paste playlist/EPG URLs, edit custom headers, remap keys, or export/restore full JSON backups without typing on the TV.</sub>
+      <sub><b>Scan-to-Configure from Phone</b></sub>
     </td>
     <td width="50%" align="center">
       <img src="assets/screenshots/about-updates.png" alt="About & In-App Updates" />
       <br />
-      <sub><b>About & In-App Updates</b>: View installed version details and check for, download, and install new releases directly on your TV.</sub>
+      <sub><b>About & In-App Updates</b></sub>
     </td>
   </tr>
 </table>
@@ -298,14 +298,14 @@ Under **Settings → Playback → Advanced (Experimental)**, optional tuning swi
 
 | Option | Default | What It Does | When to Adjust |
 | --- | --- | --- | --- |
-| **4K Zap Anti-Artifacting Rebuild** | ON | Resets the hardware video decoder when tuning to 4K UHD channels to prevent green frames or visual artifacts on older TV boxes. | Turn OFF only if your device never shows 4K artifacts and you prefer slightly faster 4K channel switching. |
+| **4K Anti-Artifacting** | OFF | Resets the video decoder when switching to 4K channels to prevent green frames or visual artifacts on older TV boxes. | Turn ON only if your device shows artifacts when switching 4K channels. |
 | **Neighbour Preconnect** | OFF | Pre-connects to the adjacent (`±1`) channels while idle to reduce channel-switch wait times. | Keep OFF if your IPTV provider restricts concurrent connections per IP or token. |
 | **Multicast Prewarm** | OFF | Pre-joins adjacent home ISP IPTV multicast groups (`udp://` / `rtp://`) for faster LAN switching. | Only enable for local multicast IPTV; keep OFF for standard HTTP/HLS streams. |
 | **Stream Compatibility** | OFF | Alternative compatibility modes for unusual broadcast feeds that freeze, lose A/V sync, or play audio without video. | Leave OFF for normal channels; test only if a specific stream fails to play smoothly. |
 
 ## Installation & Updates
 
-1. Download `IQTV-Lite-v0.3.0.apk` (or `IQTV-Lite-latest.apk`) from [**Latest Release**](https://github.com/zqs1qiwan/iqtvlite/releases/latest).
+1. Download `IQTV-Lite-v0.3.1.apk` (or `IQTV-Lite-latest.apk`) from [**Latest Release**](https://github.com/zqs1qiwan/iqtvlite/releases/latest).
 2. Install it on your Android TV or TV box (`Android 7.0+`, compatible with both `arm64-v8a` and `armeabi-v7a` devices).
 3. Update anytime from **Settings → About & Updates → Check for Updates**, or download manually from GitHub Releases.
 

@@ -45,6 +45,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import kotlinx.coroutines.launch
@@ -58,6 +59,7 @@ fun SubtitleTrackDialog(
     onSelect: (SubtitleTrackUi.Item) -> Unit,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
+    textScale: Float = 1f,
 ) {
     val scrollState = rememberScrollState()
     val requesters = remember(items.size) { List(items.size) { FocusRequester() } }
@@ -88,7 +90,10 @@ fun SubtitleTrackDialog(
         ) {
             Text(
                 text = tr("字幕选择", "Subtitles"),
-                style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.SemiBold),
+                style = MaterialTheme.typography.headlineSmall.copy(
+                    fontSize = (22f * textScale).sp,
+                    fontWeight = FontWeight.SemiBold,
+                ),
                 color = TvDesignTokens.TextPrimary
             )
             Spacer(modifier = Modifier.height(12.dp))
@@ -96,7 +101,7 @@ fun SubtitleTrackDialog(
             if (!hasSubtitles || items.isEmpty()) {
                 Text(
                     text = tr("当前频道没有内置字幕轨", "No built-in subtitles in this stream"),
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = MaterialTheme.typography.bodyMedium.copy(fontSize = (14f * textScale).sp),
                     color = TvDesignTokens.TextSecondary,
                     modifier = Modifier.padding(vertical = 12.dp).testTag("subtitle_empty")
                 )
@@ -110,6 +115,7 @@ fun SubtitleTrackDialog(
                     items.forEachIndexed { index, item ->
                         SubtitleRow(
                             item = item,
+                            textScale = textScale,
                             focusRequester = requesters.getOrNull(index),
                             onClick = { onSelect(item) }
                         )
@@ -124,6 +130,7 @@ fun SubtitleTrackDialog(
 @Composable
 private fun SubtitleRow(
     item: SubtitleTrackUi.Item,
+    textScale: Float,
     focusRequester: FocusRequester?,
     onClick: () -> Unit,
 ) {
@@ -152,6 +159,7 @@ private fun SubtitleRow(
         Text(
             text = if (item.selected) "▶ ${item.text}" else item.text,
             style = MaterialTheme.typography.bodyLarge.copy(
+                fontSize = (15.5f * textScale).sp,
                 fontWeight = if (focused || item.selected) FontWeight.SemiBold else FontWeight.Normal
             ),
             color = when {

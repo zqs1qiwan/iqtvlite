@@ -113,4 +113,17 @@ object FirstFrameWatchdogPolicy {
 
     /** Message shown when even the retry produced no frame. */
     const val GIVE_UP_MESSAGE = "该频道暂不可播（网络/源响应慢）"
+
+    fun giveUpMessage(lang: AppLang, rtpLossPercent: Int = 0): String {
+        if (rtpLossPercent >= SEVERE_RTP_LOSS_PERCENT) {
+            return if (lang == AppLang.EN) {
+                "Severe multicast packet loss (${rtpLossPercent}%); use Ethernet or enable router WiFi Multicast-to-Unicast for 4K"
+            } else {
+                "该频道组播丢包严重（丢包 ${rtpLossPercent}%），4K 高码率请改用有线网或开启路由器无线组播增强"
+            }
+        }
+        return if (lang == AppLang.EN) "Channel unavailable right now (network or stream slow)" else GIVE_UP_MESSAGE
+    }
+
+    const val SEVERE_RTP_LOSS_PERCENT = 15
 }

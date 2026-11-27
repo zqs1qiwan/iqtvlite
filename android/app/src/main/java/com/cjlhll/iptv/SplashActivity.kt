@@ -9,8 +9,8 @@ import java.io.File
 
 class SplashActivity : ComponentActivity() {
     companion object {
-        /** t55：开屏可见 800ms，postDelayed 非阻塞；主线程仍绘制 windowBackground 字标。 */
-        const val SPLASH_VISIBLE_MS = 800L
+        /** 开屏短时展示官方字标，同时预热磁盘/网络首选项。 */
+        const val SPLASH_VISIBLE_MS = 260L
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -23,7 +23,7 @@ class SplashActivity : ComponentActivity() {
         val (lastUrl, lastTitle) = if (resumeLast) Prefs.getLastChannel(this) else null to null
         val playlistFileName = Prefs.getPlaylistFileName(this)
 
-        // t55：非阻塞延迟展示正式字标；不 sleep，800ms 后启动目标 Activity 并 finish。
+        // 非阻塞短时展示字标后进入目标 Activity 并 finish。
         Handler(Looper.getMainLooper()).postDelayed({
             if (isFinishing || isDestroyed) return@postDelayed
             if (!Prefs.hasSelectedLanguage(this)) {
@@ -31,7 +31,7 @@ class SplashActivity : ComponentActivity() {
             } else if (liveSource.isNotBlank() && (!lastUrl.isNullOrBlank() || !resumeLast)) {
                 val intent = Intent(this, PlayerActivity::class.java).apply {
                     putExtra("VIDEO_URL", lastUrl ?: "")
-                    putExtra("VIDEO_TITLE", lastTitle ?: "Live")
+                    putExtra("VIDEO_TITLE", if (lastUrl.isNullOrBlank()) "" else (lastTitle ?: "Live"))
                     if (!playlistFileName.isNullOrBlank()) {
                         putExtra("PLAYLIST_FILE_NAME", playlistFileName)
                     }

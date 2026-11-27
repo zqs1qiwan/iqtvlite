@@ -12,8 +12,8 @@ android {
         minSdk = 24
         targetSdk = 35
         resValue("string", "app_name", if (providers.gradleProperty("ISOLATED_TEST_PACKAGE").orNull == "true") "IQTV Lite Validation" else "IQTV Lite")
-        versionCode = providers.gradleProperty("APP_VERSION_CODE").orNull?.toInt() ?: 300
-        versionName = (providers.gradleProperty("APP_VERSION_NAME").orNull ?: "0.3.0") +
+        versionCode = providers.gradleProperty("APP_VERSION_CODE").orNull?.toInt() ?: 301
+        versionName = (providers.gradleProperty("APP_VERSION_NAME").orNull ?: "0.3.1") +
             (if (providers.gradleProperty("ISOLATED_TEST_PACKAGE").orNull == "true") "-validation" else "")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }

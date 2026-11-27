@@ -42,6 +42,7 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import kotlinx.coroutines.launch
@@ -66,6 +67,7 @@ fun QualitySelectorDialog(
     onSelect: (Int) -> Unit,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
+    textScale: Float = 1f,
 ) {
     val scrollState = rememberScrollState()
     val itemRequesters = remember(variants.size) {
@@ -96,14 +98,17 @@ fun QualitySelectorDialog(
         ) {
             Text(
                 text = tr("线路选择", "Select Source"),
-                style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.SemiBold),
+                style = MaterialTheme.typography.headlineSmall.copy(
+                    fontSize = (22f * textScale).sp,
+                    fontWeight = FontWeight.SemiBold,
+                ),
                 color = TvDesignTokens.TextPrimary
             )
             if (channelTitle.isNotBlank()) {
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = channelTitle,
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = MaterialTheme.typography.bodyMedium.copy(fontSize = (14f * textScale).sp),
                     color = TvDesignTokens.TextSecondary
                 )
             }
@@ -123,6 +128,7 @@ fun QualitySelectorDialog(
                             else -> tr("超时", "Timeout")
                         },
                         selected = variant.selected,
+                        textScale = textScale,
                         focusRequester = itemRequesters.getOrNull(index),
                         onClick = { onSelect(index) }
                     )
@@ -140,6 +146,7 @@ private fun SourceOptionItem(
     currentSuffix: String,
     latencyText: String,
     selected: Boolean,
+    textScale: Float,
     focusRequester: FocusRequester?,
     onClick: () -> Unit,
 ) {
@@ -169,6 +176,7 @@ private fun SourceOptionItem(
         Text(
             text = if (selected) "$label$currentSuffix" else label,
             style = MaterialTheme.typography.titleMedium.copy(
+                fontSize = (16f * textScale).sp,
                 fontWeight = if (focused || selected) FontWeight.SemiBold else FontWeight.Normal
             ),
             color = if (selected) BrandFocus.BlueColor else TvDesignTokens.TextPrimary,
@@ -176,7 +184,7 @@ private fun SourceOptionItem(
         )
         Text(
             text = latencyText,
-            style = MaterialTheme.typography.bodyMedium,
+            style = MaterialTheme.typography.bodyMedium.copy(fontSize = (14f * textScale).sp),
             color = when {
                 selected -> BrandFocus.BlueColor
                 focused -> TvDesignTokens.TextPrimary

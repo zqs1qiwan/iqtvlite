@@ -11,7 +11,8 @@ data class ChannelGroup(
     val logoUrl: String?,
     val group: String?,
     val variants: List<ChannelVariant>,
-    val defaultVariantIndex: Int
+    val defaultVariantIndex: Int,
+    val groups: List<String> = emptyList(),
 ) {
     val defaultChannel: Channel get() = variants[defaultVariantIndex].channel
 }
@@ -32,8 +33,12 @@ object ChannelGrouper {
     private val cartoonNameRegex = Regex("""(?i)(金鹰卡通|卡酷|嘉佳|优漫|哈哈|炫动|CCTV14|CCTV-14)""")
     private val otherChannelRegex = Regex("""(?i)^凤凰""")
     private val cctvCartoonNumbers = setOf("14")
-    private val bracketQualityRegex = Regex("""\[(\d{3,4})[pP]?\]""")
-    private val bracketFlagRegex = Regex("""\[([A-Za-z]+)\]""")
+    private val bracketUhdrRegex = Regex("""\[(4K\s*(?:HDR|SDR)|8K|4K|UHD|FHD|HD|SD)\]""", RegexOption.IGNORE_CASE)
+    private val bracketResolutionRegex = Regex("""\[(2160|1440|1080|720|576|480|360)([pi])?\]""", RegexOption.IGNORE_CASE)
+    private val titleEditionSuffixRegex = Regex("""\[(4K\s*(?:HDR|SDR)|8K|4K|UHD)\]""", RegexOption.IGNORE_CASE)
+    private val url1080Regex = Regex("""(?<![0-9])1080[pi](?![0-9])""")
+    private val url720Regex = Regex("""(?<![0-9])720p(?![0-9])""")
+    private val url480Regex = Regex("""(?<![0-9])480p(?![0-9])""")
 
     private val groupSortOrder = listOf("央视频道", "卫视频道", "卡通频道", "其他频道", "未分组")
 
@@ -71,13 +76,17 @@ object ChannelGrouper {
             val defaultChannel = variants[defaultIndex].channel
             val logoUrl = members.firstNotNullOfOrNull { it.logoUrl?.takeIf { url -> url.isNotBlank() } }
             val allKeys = members.flatMap { mergeKeys(it).asIterable() }.toSet()
+            val resolvedGroups = pickGroupTitles(members).ifEmpty {
+                listOfNotNull(pickGroupTitle(members) ?: resolveGroup(defaultChannel))
+            }
             ChannelGroup(
                 key = pickPrimaryKey(allKeys),
                 displayTitle = displayTitleForGroup(members, defaultChannel),
                 logoUrl = logoUrl,
-                group = pickGroupTitle(members) ?: resolveGroup(defaultChannel),
+                group = resolvedGroups.firstOrNull(),
                 variants = variants,
-                defaultVariantIndex = defaultIndex
+                defaultVariantIndex = defaultIndex,
+                groups = resolvedGroups,
             )
         }
     }
@@ -172,17 +181,20 @@ object ChannelGrouper {
     const val FAVORITES_GROUP = "收藏夹"
 
     fun displayGroupName(group: ChannelGroup): String {
-        return group.group?.takeIf { it.isNotBlank() } ?: "未分组"
+        return group.groups.firstOrNull()?.takeIf { it.isNotBlank() }
+            ?: group.group?.takeIf { it.isNotBlank() }
+            ?: "未分组"
     }
+
+    fun groupNames(group: ChannelGroup): List<String> =
+        group.groups.filter { it.isNotBlank() }.ifEmpty { listOf(displayGroupName(group)) }
 
     fun allRawGroupNames(channelGroups: List<ChannelGroup>): List<String> {
         val names = LinkedHashSet<String>()
         for (group in channelGroups) {
-            names.add(displayGroupName(group))
+            names.addAll(groupNames(group))
         }
-        val ordered = groupSortOrder.filter { it in names }
-        val rest = names.filter { it !in groupSortOrder }.sorted()
-        return ordered + rest
+        return names.toList()
     }
 
     fun sortedDrawerGroups(
@@ -194,7 +206,7 @@ object ChannelGrouper {
     ): List<String> {
         val rawNames = LinkedHashSet<String>()
         for (group in channelGroups) {
-            rawNames.add(displayGroupName(group))
+            rawNames.addAll(groupNames(group))
         }
         val visible = rawNames.filter { it !in groupConfig.hiddenGroups }
         val sorted = when (groupConfig.sortMode) {
@@ -204,11 +216,7 @@ object ChannelGrouper {
                 val remaining = visible.filter { it !in ordered }
                 ordered + remaining
             }
-            else -> {
-                val ordered = groupSortOrder.filter { it in visible }
-                val rest = visible.filter { it !in groupSortOrder }.sorted()
-                ordered + rest
-            }
+            else -> visible
         }
         val result = ArrayList<String>(sorted.size + 2)
         if (showAll) result.add(ALL_GROUP)
@@ -253,18 +261,28 @@ object ChannelGrouper {
     fun globalNumberByUrl(groups: List<ChannelGroup>): Map<String, Int> {
         val map = HashMap<String, Int>(groups.size * 2)
         groups.forEachIndexed { index, group ->
-            group.variants.forEach { variant -> map[variant.channel.url] = index + 1 }
+            group.variants.forEach { variant ->
+                map[variant.channel.url] = index + 1
+                if (variant.channel.id != 0L) {
+                    map["id:${variant.channel.id}"] = index + 1
+                }
+            }
         }
         return map
     }
 
-    /** 按分组名过滤后的展示频道，保留全局编号；"全部" 返回全部，"收藏夹" 返回已收藏频道。 */
+    /** 条目唯一标识 key（优先非 0 id，避免同 URL 不同请求头互相覆盖）。 */
+    fun channelIdentityKey(channel: Channel): String =
+        if (channel.id != 0L) "id:${channel.id}" else "url:${channel.url}"
+
+    /** 按分组名过滤后的展示频道，保留全局编号（可传入预计算的 [precomputedAll] 避免重复构造）。 */
     fun numberedDisplayChannelsForGroup(
         groups: List<ChannelGroup>,
         groupName: String,
         favoriteUrls: Set<String> = emptySet(),
+        precomputedAll: List<NumberedChannel>? = null,
     ): List<NumberedChannel> {
-        val all = numberedDisplayChannels(groups)
+        val all = precomputedAll ?: numberedDisplayChannels(groups)
         if (groupName == ALL_GROUP) return all
         if (groupName == FAVORITES_GROUP) {
             return groups.mapIndexedNotNull { index, group ->
@@ -272,7 +290,7 @@ object ChannelGrouper {
             }
         }
         return groups.mapIndexedNotNull { index, group ->
-            if (displayGroupName(group) == groupName) all.getOrNull(index) else null
+            if (groupName in groupNames(group)) all.getOrNull(index) else null
         }
     }
 
@@ -354,9 +372,42 @@ object ChannelGrouper {
     }
 
     private fun displayTitleForGroup(members: List<Channel>, defaultChannel: Channel): String {
-        val raw = members.firstNotNullOfOrNull { it.tvgName?.takeIf { name -> name.isNotBlank() } }
+        val raw = defaultChannel.title.trim().takeIf { it.isNotEmpty() && "://" !in it }
+            ?: members.firstNotNullOfOrNull { it.tvgName?.takeIf { name -> name.isNotBlank() } }
             ?: defaultChannel.title
-        return EpgNormalize.displayName(raw)
+        val cleaned = EpgNormalize.displayName(raw)
+        val editionTag = titleEditionSuffixRegex.find(raw)?.groupValues?.getOrNull(1)
+            ?.replace(Regex("""\s+"""), " ")
+            ?.trim()
+            ?.uppercase()
+        if (editionTag != null && cleaned.isNotEmpty()) {
+            val baseToken = when {
+                editionTag.startsWith("8K") -> "8K"
+                editionTag.startsWith("4K") -> "4K"
+                else -> editionTag
+            }
+            if (!cleaned.contains(baseToken, ignoreCase = true) && !cleaned.contains(editionTag, ignoreCase = true)) {
+                return "$cleaned $editionTag"
+            }
+        }
+        return cleaned
+    }
+
+    private fun pickGroupTitles(members: List<Channel>): List<String> {
+        val out = LinkedHashSet<String>()
+        for (m in members) {
+            val rawList = if (m.groups.isNotEmpty()) m.groups else {
+                m.group?.split(';')?.map { it.trim() }?.filter { it.isNotEmpty() }.orEmpty()
+            }
+            if (rawList.isNotEmpty()) {
+                for (raw in rawList) {
+                    normalizeGroupAlias(raw, m)?.takeIf { it.isNotBlank() }?.let { out.add(it) }
+                }
+            } else {
+                inferGroupFromMetadata(m)?.takeIf { it.isNotBlank() }?.let { out.add(it) }
+            }
+        }
+        return out.toList()
     }
 
     private fun pickGroupTitle(members: List<Channel>): String? {
@@ -440,20 +491,26 @@ object ChannelGrouper {
             }
         }
 
-        bracketQualityRegex.find(channel.title)?.groupValues?.getOrNull(1)?.let { return "${it}p" }
+        bracketUhdrRegex.find(channel.title)?.groupValues?.getOrNull(1)?.let {
+            return it.replace(Regex("""\s+"""), " ").trim().uppercase()
+        }
 
-        bracketFlagRegex.find(channel.title)?.groupValues?.getOrNull(1)?.let { return it.uppercase() }
+        bracketResolutionRegex.find(channel.title)?.let { m ->
+            val height = m.groupValues[1]
+            val scan = m.groupValues[2].lowercase().ifEmpty { "p" }
+            return "$height$scan"
+        }
 
         Regex("""\((\d+[pP]|4[Kk]|HD|SD|FHD|UHD|蓝光|超清|高清|标清)\)""")
             .find(channel.title)?.groupValues?.getOrNull(1)?.let { return it }
 
-        val lowerUrl = channel.url.lowercase()
+        val pathAndQuery = channel.url.substringAfter("://", channel.url).substringAfter('/', "").lowercase()
         when {
-            lowerUrl.contains("/1080p/") || lowerUrl.contains("1080") -> return "1080p"
-            lowerUrl.contains("/720p/") || lowerUrl.contains("720") -> return "720p"
-            lowerUrl.contains("/480p/") || lowerUrl.contains("480") -> return "480p"
-            lowerUrl.contains("hd.m3u8") || lowerUrl.contains("/hd/") -> return "HD"
-            lowerUrl.contains("sd.m3u8") || lowerUrl.contains("/sd/") -> return "SD"
+            url1080Regex.containsMatchIn(pathAndQuery) -> return "1080p"
+            url720Regex.containsMatchIn(pathAndQuery) -> return "720p"
+            url480Regex.containsMatchIn(pathAndQuery) -> return "480p"
+            pathAndQuery.contains("hd.m3u8") || pathAndQuery.contains("/hd/") -> return "HD"
+            pathAndQuery.contains("sd.m3u8") || pathAndQuery.contains("/sd/") -> return "SD"
         }
 
         when {

@@ -73,6 +73,15 @@ fun BindChannelSwitchLoading(
                 }
             }
 
+            override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
+                if (!controller.visible) return
+                val hasAudio = tracks.groups.any { it.type == androidx.media3.common.C.TRACK_TYPE_AUDIO && it.length > 0 }
+                val hasVideo = tracks.groups.any { it.type == androidx.media3.common.C.TRACK_TYPE_VIDEO && it.length > 0 }
+                if (hasAudio && !hasVideo && p.playbackState == Player.STATE_READY) {
+                    controller.hide()
+                }
+            }
+
             override fun onPlayerError(error: PlaybackException) {
                 if (controller.visible) {
                     controller.hide()
@@ -96,7 +105,7 @@ fun BindChannelSwitchLoading(
 fun ChannelSwitchOverlay(
     controller: ChannelSwitchController,
     modifier: Modifier = Modifier,
-    message: String = "加载中...",
+    message: String = tr("加载中…", "Loading…"),
 ) {
     val visible by controller.visibleState
     AnimatedVisibility(
