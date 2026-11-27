@@ -1,12 +1,13 @@
 <div align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/logo-white-transparent.png" />
-    <source media="(prefers-color-scheme: light)" srcset="assets/logo-transparent.png" />
-    <img src="assets/logo-transparent.png" alt="IQTV Lite" width="380" />
-  </picture>
-
-  <p><strong>专为 Android TV 与电视盒子打造的轻量、纯净、极速换台直播电视播放器</strong></p>
-  <p><sub>遥控器优先 · 4K HEVC/HDR 硬解优先 · 原生直连 RTP/UDP 组播 · 家庭局域网免密 WebUI</sub></p>
+  <p>
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="assets/logo-white-transparent.png" />
+      <source media="(prefers-color-scheme: light)" srcset="assets/logo-transparent.png" />
+      <img src="assets/logo-transparent.png" alt="IQTV Lite" width="300" />
+    </picture><br />
+    <strong>专为 Android TV 与电视盒子打造的轻量、纯净、极速换台直播电视播放器</strong><br />
+    <sub>遥控器优先 · 4K HEVC/HDR 硬解优先 · 原生直连 RTP/UDP 组播 · 家庭局域网免密 WebUI</sub>
+  </p>
 
   <p>
     <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPLv3-2563EB.svg?style=flat-square" alt="License: GPLv3" /></a>
@@ -14,13 +15,13 @@
     <a href="https://github.com/zqs1qiwan/iqtvlite/actions/workflows/apk.yml"><img src="https://github.com/zqs1qiwan/iqtvlite/actions/workflows/apk.yml/badge.svg" alt="Android CI" /></a>
     <img src="https://img.shields.io/badge/Android%20TV-7.0%2B-3DDC84?style=flat-square" alt="Android TV 7.0+" />
     <img src="https://img.shields.io/badge/Core-Kotlin%20%2B%20Rust-F97316?style=flat-square" alt="Kotlin + Rust" />
-    <a href="https://zqs1qiwan.github.io/iqtvlite/#zh/getting-started"><img src="https://img.shields.io/badge/%E4%BD%BF%E7%94%A8%E6%96%87%E6%A1%A3-Wiki-0EA5E9?style=flat-square" alt="使用文档 Wiki" /></a>
+    <a href="https://zqs1qiwan.github.io/iqtvlite/#zh/home"><img src="https://img.shields.io/badge/%E4%BD%BF%E7%94%A8%E6%96%87%E6%A1%A3-Wiki-0EA5E9?style=flat-square" alt="使用文档 Wiki" /></a>
   </p>
 
   <p>
     <a href="README.md">English</a> ·
     <b>简体中文</b> ·
-    <a href="https://zqs1qiwan.github.io/iqtvlite/#zh/getting-started">📖 在线使用文档 (GitHub Pages Wiki)</a>
+    <a href="https://zqs1qiwan.github.io/iqtvlite/#zh/home">📖 在线主页与使用文档 (Wiki)</a>
   </p>
 </div>
 
@@ -30,7 +31,7 @@
 
 > ⚠️ **纯播放器声明：** IQTV Lite 不内置任何电视频道、直播源或订阅链接，请自行导入合法的 M3U / TXT 直播源与 XMLTV 节目单。
 
-> ### 📖 完整教程：**[查看交互式在线使用文档 (User Wiki) →](https://zqs1qiwan.github.io/iqtvlite/#zh/getting-started)**
+> ### 📖 完整教程：**[前往项目首页与交互式 Wiki →](https://zqs1qiwan.github.io/iqtvlite/#zh/home)**
 > 收录图文界面导览、组播与 Header 配置规则、AFR/音频调校、DoH、EPG 时区纠偏与常见问题排查（支持站内搜索）。
 
 ---

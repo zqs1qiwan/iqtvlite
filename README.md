@@ -1,12 +1,13 @@
 <div align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/logo-white-transparent.png" />
-    <source media="(prefers-color-scheme: light)" srcset="assets/logo-transparent.png" />
-    <img src="assets/logo-transparent.png" alt="IQTV Lite" width="380" />
-  </picture>
-
-  <p><strong>A clean, lightweight, fast-zapping IPTV player for Android TV &amp; TV boxes</strong></p>
-  <p><sub>D-pad first · Hardware 4K HEVC/HDR · Direct RTP/UDP Multicast · Zero-PIN LAN WebUI</sub></p>
+  <p>
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="assets/logo-white-transparent.png" />
+      <source media="(prefers-color-scheme: light)" srcset="assets/logo-transparent.png" />
+      <img src="assets/logo-transparent.png" alt="IQTV Lite" width="300" />
+    </picture><br />
+    <strong>A clean, lightweight, fast-zapping IPTV player for Android TV &amp; TV boxes</strong><br />
+    <sub>D-pad first · Hardware 4K HEVC/HDR · Direct RTP/UDP Multicast · Zero-PIN LAN WebUI</sub>
+  </p>
 
   <p>
     <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPLv3-2563EB.svg?style=flat-square" alt="License: GPLv3" /></a>
@@ -14,13 +15,13 @@
     <a href="https://github.com/zqs1qiwan/iqtvlite/actions/workflows/apk.yml"><img src="https://github.com/zqs1qiwan/iqtvlite/actions/workflows/apk.yml/badge.svg" alt="Android CI" /></a>
     <img src="https://img.shields.io/badge/Android%20TV-7.0%2B-3DDC84?style=flat-square" alt="Android TV 7.0+" />
     <img src="https://img.shields.io/badge/Core-Kotlin%20%2B%20Rust-F97316?style=flat-square" alt="Kotlin + Rust" />
-    <a href="https://zqs1qiwan.github.io/iqtvlite/#en/getting-started"><img src="https://img.shields.io/badge/User%20Wiki-GitHub%20Pages-0EA5E9?style=flat-square" alt="User Wiki" /></a>
+    <a href="https://zqs1qiwan.github.io/iqtvlite/#en/home"><img src="https://img.shields.io/badge/User%20Wiki-GitHub%20Pages-0EA5E9?style=flat-square" alt="User Wiki" /></a>
   </p>
 
   <p>
     <b>English</b> ·
     <a href="README.zh-CN.md">简体中文</a> ·
-    <a href="https://zqs1qiwan.github.io/iqtvlite/#en/getting-started">📖 User Wiki (GitHub Pages)</a>
+    <a href="https://zqs1qiwan.github.io/iqtvlite/#en/home">📖 User Wiki (GitHub Pages)</a>
   </p>
 </div>
 
@@ -30,7 +31,7 @@
 
 > ⚠️ **Player Only:** IQTV Lite ships **no** built-in channels, playlists, EPG sources, or subscriptions. You bring your own M3U/TXT playlists and XMLTV guides.
 
-> ### 📖 New here? **[Read the Interactive User Wiki →](https://zqs1qiwan.github.io/iqtvlite/#en/getting-started)**
+> ### 📖 New here? **[Open Project Home &amp; User Wiki →](https://zqs1qiwan.github.io/iqtvlite/#en/home)**
 > Full feature guides, multicast setup, remote keymaps, troubleshooting, and diagnostics — searchable in English &amp; Chinese.
 
 ---

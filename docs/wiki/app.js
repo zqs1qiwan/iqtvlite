@@ -1,6 +1,7 @@
 (function () {
-  var state = { lang: "zh", pageId: "getting-started", query: "" };
+  var state = { lang: "zh", pageId: "home", query: "" };
 
+  var brandLink = document.getElementById("brandLink");
   var nav = document.getElementById("sidebarNav");
   var sidebar = document.getElementById("sidebar");
   var menuToggle = document.getElementById("menuToggle");
@@ -41,6 +42,7 @@
   function renderChrome() {
     var meta = window.WIKI_META[state.lang];
     document.documentElement.lang = state.lang === "en" ? "en" : "zh-CN";
+    if (brandLink) brandLink.href = "#" + state.lang + "/home";
     navHeading.textContent = meta.navHeading;
     searchInput.placeholder = meta.searchPlaceholder;
     langToggle.textContent = meta.switchToLabel;
@@ -70,6 +72,7 @@
     var page = pages[idx];
     if (!page) return;
 
+    articleBody.classList.toggle("home-page", page.id === "home");
     articleBody.innerHTML = page.html;
 
     var prev = idx > 0 ? pages[idx - 1] : null;

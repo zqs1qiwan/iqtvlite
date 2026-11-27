@@ -30,6 +30,100 @@ window.WIKI_META = {
 window.WIKI_DATA = {
   zh: [
     {
+      id: "home",
+      icon: "🏠",
+      title: "首页概览",
+      html: `
+        <section class="hero-card">
+          <img src="assets/logo-white-transparent.png" alt="IQTV Lite" class="hero-logo" />
+          <h1 class="hero-title">纯净、轻量、极速换台的 Android TV 直播播放器</h1>
+          <p class="hero-subtitle">专为智能电视与机顶盒（含 512MB–1GB 入门老盒子）打造。遥控器直觉操控 · 4K HDR / AFR 匹配 · 原生直连 RTP/UDP 组播 · 手机扫码免密配置。</p>
+          <div class="hero-badges">
+            <span class="hero-badge">最新版本 v0.3.3</span>
+            <span class="hero-badge">Android TV 7.0+ (API 24+)</span>
+            <span class="hero-badge">双架构安装包 ~8.7 MB</span>
+            <span class="hero-badge">Kotlin + Rust Core</span>
+            <span class="hero-badge">GPLv3 开源</span>
+          </div>
+          <div class="hero-actions">
+            <a class="hero-btn primary" href="https://github.com/zqs1qiwan/iqtvlite/releases/latest/download/IQTV-Lite-latest.apk" target="_blank" rel="noopener">⬇ 下载 APK (v0.3.3)</a>
+            <a class="hero-btn secondary" href="#zh/getting-started">🚀 快速开始</a>
+            <a class="hero-btn" href="https://github.com/zqs1qiwan/iqtvlite/releases" target="_blank" rel="noopener">📦 全部版本 Releases</a>
+            <a class="hero-btn" href="https://github.com/zqs1qiwan/iqtvlite" target="_blank" rel="noopener">⭐ GitHub 仓库</a>
+          </div>
+        </section>
+
+        <div class="callout warn">
+          <strong>纯播放器声明：</strong>IQTV Lite 不内置任何电视频道、播放源或订阅服务，用户需自行导入合法的 M3U / TXT 直播源与 XMLTV 节目单。
+        </div>
+
+        <h2>⚡ 3 步快速开始</h2>
+        <div class="quickstart-strip">
+          <div class="qs-step">
+            <div class="qs-num">1</div>
+            <h3>下载并安装 APK</h3>
+            <p>下载 <code>IQTV-Lite-latest.apk</code>（单包内置 <code>arm64-v8a</code> 与 <code>armeabi-v7a</code>），通过 U 盘或 ADB 安装至电视盒子。</p>
+          </div>
+          <div class="qs-step">
+            <div class="qs-num">2</div>
+            <h3>选择语言与导入直播源</h3>
+            <p>首次开机选好中/英界面后，可用手机扫码推送（推送后自动开播）或遥控器手动输入 M3U / TXT 订阅地址。</p>
+          </div>
+          <div class="qs-step">
+            <div class="qs-num">3</div>
+            <h3>开机直达与全遥控畅看</h3>
+            <p>之后每次冷启直进全屏播放上次频道；支持 <code>↑/↓</code> 秒换台、<code>OK</code> 双段控制台、<code>←</code> 分栏与数字键直达。</p>
+          </div>
+        </div>
+
+        <h2>✨ 核心能力一览</h2>
+        <div class="feature-grid">
+          <div class="feature-card">
+            <div class="feature-icon">🎬</div>
+            <h3>硬解优先与 AFR 帧率匹配</h3>
+            <p>优先调度 4K HEVC/HDR 硬件解码并支持单频道强制软/硬解记忆；稳定 1,200ms 后无损匹配电视刷新率。</p>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon">📡</div>
+            <h3>原生直连 RTP/UDP 组播</h3>
+            <p>内置非阻塞套接字与 4MB 环形缓冲区直接收包，同时全面支持 HTTP / HLS / udpxy 单播与多源自动备选故障转移。</p>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon">🌐</div>
+            <h3>双栈 IPv6/IPv4 与加密 DoH</h3>
+            <p>可配双栈优先级并自动回退；内置系统默认、阿里 DoH、腾讯 DNSPod DoH 与 Cloudflare DoH 对抗域名劫持。</p>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon">📱</div>
+            <h3>免密扫码控制台与备份</h3>
+            <p>同 Wi-Fi 手机扫码即可管理多播放源、全局 UA/Header、网络与 EPG 选项，支持完整 JSON 配置导入导出与诊断下载。</p>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon">🔊</div>
+            <h3>分设备音画延迟与音量增益</h3>
+            <p>按本机扬声器、蓝牙音频、HDMI 功放分别记忆 ±500ms 延迟；最高 150% 软限幅响度增强，一键支持纯音频听电视。</p>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon">🗓️</div>
+            <h3>SQLite 节目单与低占用内核</h3>
+            <p>XMLTV 后台建库实现毫秒级 EPG 查询与 ±12h 时区纠偏；针对 512MB–1GB 入门老盒子严控内存与主线程零阻塞。</p>
+          </div>
+        </div>
+
+        <h2>📸 实机界面预览（点击放大 · <a href="#zh/ui-remote">查看全部截图与按键说明 →</a>）</h2>
+        <div class="shot-grid">
+          <figure class="shot-card">
+            <img src="assets/screenshots/first-run-setup.png" alt="首次开机引导与扫码导入" loading="lazy" />
+            <figcaption>首次使用设置 · 手机扫码推送自动开播 / 手动输入源地址</figcaption>
+          </figure>
+          <figure class="shot-card">
+            <img src="assets/screenshots/player-infocard.png" alt="播放器底部两段式信息栏" loading="lazy" />
+            <figcaption>全屏播放与两段式底部控制台 · 最近观看 + 8 项快捷调节</figcaption>
+          </figure>
+        </div>
+      `
+    },
+    {
       id: "getting-started",
       icon: "🚀",
       title: "快速上手与安装",
@@ -264,6 +358,100 @@ rtp://239.3.1.240:8000</code></pre>
     }
   ],
   en: [
+    {
+      id: "home",
+      icon: "🏠",
+      title: "Home",
+      html: `
+        <section class="hero-card">
+          <img src="assets/logo-white-transparent.png" alt="IQTV Lite" class="hero-logo" />
+          <h1 class="hero-title">Clean, Fast-Zapping Live TV Player for Android TV</h1>
+          <p class="hero-subtitle">Built with Jetpack Compose for TV, Media3, and a Rust native core for snappy channel surfing even on 512 MB–1 GB TV boxes — with 4K HDR, native RTP/UDP multicast, and Zero-PIN phone QR setup.</p>
+          <div class="hero-badges">
+            <span class="hero-badge">Latest v0.3.3</span>
+            <span class="hero-badge">Android TV 7.0+ (API 24+)</span>
+            <span class="hero-badge">Universal APK ~8.7 MB</span>
+            <span class="hero-badge">Kotlin + Rust Core</span>
+            <span class="hero-badge">GPLv3 Open Source</span>
+          </div>
+          <div class="hero-actions">
+            <a class="hero-btn primary" href="https://github.com/zqs1qiwan/iqtvlite/releases/latest/download/IQTV-Lite-latest.apk" target="_blank" rel="noopener">⬇ Download APK (v0.3.3)</a>
+            <a class="hero-btn secondary" href="#en/getting-started">🚀 Quick Start</a>
+            <a class="hero-btn" href="https://github.com/zqs1qiwan/iqtvlite/releases" target="_blank" rel="noopener">📦 All Releases</a>
+            <a class="hero-btn" href="https://github.com/zqs1qiwan/iqtvlite" target="_blank" rel="noopener">⭐ GitHub Repo</a>
+          </div>
+        </section>
+
+        <div class="callout warn">
+          <strong>Player Only:</strong> IQTV Lite includes no built-in channels, playlists, EPG feeds, or subscriptions. Bring your own legal M3U/TXT playlists and XMLTV guides.
+        </div>
+
+        <h2>⚡ 3-Step Quick Start</h2>
+        <div class="quickstart-strip">
+          <div class="qs-step">
+            <div class="qs-num">1</div>
+            <h3>Download &amp; Install</h3>
+            <p>Grab <code>IQTV-Lite-latest.apk</code> (universal <code>arm64-v8a</code> + <code>armeabi-v7a</code>) and sideload via USB drive or <code>adb install -r</code>.</p>
+          </div>
+          <div class="qs-step">
+            <div class="qs-num">2</div>
+            <h3>Pick Language &amp; Add Source</h3>
+            <p>Choose English/Chinese on first boot, then scan the QR code from your phone (auto-starts playback) or enter your M3U/TXT URL directly.</p>
+          </div>
+          <div class="qs-step">
+            <div class="qs-num">3</div>
+            <h3>Launch Straight to Live TV</h3>
+            <p>Every subsequent launch boots directly into your last channel with instant <code>↑/↓</code> zapping, two-step <code>OK</code> console, and numeric tuning.</p>
+          </div>
+        </div>
+
+        <h2>✨ Feature Highlights</h2>
+        <div class="feature-grid">
+          <div class="feature-card">
+            <div class="feature-icon">🎬</div>
+            <h3>Hardware 4K HDR &amp; AFR</h3>
+            <p>Hardware-first decoding with per-channel HW/SW overrides and debounced 1,200 ms Auto Frame Rate refresh-rate matching.</p>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon">📡</div>
+            <h3>Native RTP/UDP Multicast</h3>
+            <p>Dedicated non-blocking multicast socket reader with a 4 MB ring buffer, plus HTTP/HLS/udpxy playback and automatic variant failover.</p>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon">🌐</div>
+            <h3>Dual-Stack &amp; Built-In DoH</h3>
+            <p>Configurable IPv6/IPv4 preference with automatic fallback, plus System, AliDNS, Tencent DNSPod, and Cloudflare encrypted DNS.</p>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon">📱</div>
+            <h3>Zero-PIN LAN WebUI &amp; Backup</h3>
+            <p>Scan the QR code from your phone to manage multiple playlists, global headers, settings, full JSON backups, and <code>/api/diag</code> exports.</p>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon">🔊</div>
+            <h3>Audio DSP &amp; Audio-Only Mode</h3>
+            <p>Per-output ±500 ms lip-sync delay (Speaker / Bluetooth / HDMI), 150% soft-clipped loudness boost, and screen-saving Audio-Only radio mode.</p>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon">🗓️</div>
+            <h3>SQLite EPG &amp; Low-RAM Engine</h3>
+            <p>Off-thread XMLTV indexing with instant ±12h timezone offset, tailored for low-RAM TV hardware with zero main-thread jank.</p>
+          </div>
+        </div>
+
+        <h2>📸 Real-Device Previews (Click to zoom · <a href="#en/ui-remote">See Full UI Tour →</a>)</h2>
+        <div class="shot-grid">
+          <figure class="shot-card">
+            <img src="assets/screenshots/first-run-setup.png" alt="First-Run Setup Screen" loading="lazy" />
+            <figcaption>First-Time Setup · Phone QR Auto-Play or Manual Playlist/EPG Entry</figcaption>
+          </figure>
+          <figure class="shot-card">
+            <img src="assets/screenshots/player-infocard.png" alt="Player Info Card & Quick Actions" loading="lazy" />
+            <figcaption>Fullscreen Player · Two-Step Info Banner &amp; 8 Quick Actions</figcaption>
+          </figure>
+        </div>
+      `
+    },
     {
       id: "getting-started",
       icon: "🚀",
