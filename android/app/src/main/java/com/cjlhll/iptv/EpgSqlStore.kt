@@ -264,20 +264,22 @@ object EpgSqlStore {
     /** 单条索引查询所有正在播出的节目（<5ms，零全量反序列化），返回 variant.url -> NowProgramUi。 */
     fun queryNowPrograms(context: Context, groups: List<ChannelGroup>, nowMillis: Long): Map<String, NowProgramUi> {
         if (groups.isEmpty() || knownChannelIds.isEmpty()) return emptyMap()
+        val offsetMs = Prefs.getEpgOffsetMinutes(context).toLong() * 60_000L
+        val dbNow = nowMillis - offsetMs
         return runCatching {
             val d = db(context)
             val nowByChannelId = HashMap<String, EpgProgram>(256)
             d.rawQuery(
                 "SELECT channel_id, start_ms, end_ms, title, offset_sec FROM programs WHERE start_ms <= ? AND end_ms > ?",
-                arrayOf(nowMillis.toString(), nowMillis.toString())
+                arrayOf(dbNow.toString(), dbNow.toString())
             ).use { c ->
                 while (c.moveToNext()) {
                     val chId = c.getString(0)
                     if (!nowByChannelId.containsKey(chId)) {
                         nowByChannelId[chId] = EpgProgram(
                             channelId = chId,
-                            startMillis = c.getLong(1),
-                            endMillis = c.getLong(2),
+                            startMillis = c.getLong(1) + offsetMs,
+                            endMillis = c.getLong(2) + offsetMs,
                             title = c.getString(3),
                             sourceOffsetSeconds = if (c.isNull(4)) null else c.getInt(4),
                         )
@@ -285,15 +287,15 @@ object EpgSqlStore {
                 }
             }
             val nextByChannelId = HashMap<String, Pair<String, Long>>(256)
-            val windowEnd = nowMillis + 6L * 3600_000L
+            val windowEnd = dbNow + 6L * 3600_000L
             d.rawQuery(
                 "SELECT channel_id, start_ms, title FROM programs WHERE start_ms > ? AND start_ms <= ? ORDER BY start_ms ASC",
-                arrayOf(nowMillis.toString(), windowEnd.toString())
+                arrayOf(dbNow.toString(), windowEnd.toString())
             ).use { c ->
                 while (c.moveToNext()) {
                     val chId = c.getString(0)
                     if (!nextByChannelId.containsKey(chId)) {
-                        nextByChannelId[chId] = c.getString(2) to c.getLong(1)
+                        nextByChannelId[chId] = c.getString(2) to (c.getLong(1) + offsetMs)
                     }
                 }
             }
@@ -324,6 +326,7 @@ object EpgSqlStore {
     /** 按需查询单个聚焦频道的完整节目单（<2ms）。 */
     fun queryChannelPrograms(context: Context, channel: Channel): List<EpgProgram> {
         val chId = resolveChannelId(channel) ?: return emptyList()
+        val offsetMs = Prefs.getEpgOffsetMinutes(context).toLong() * 60_000L
         return runCatching {
             val d = db(context)
             val out = ArrayList<EpgProgram>(64)
@@ -335,8 +338,8 @@ object EpgSqlStore {
                     out.add(
                         EpgProgram(
                             channelId = chId,
-                            startMillis = c.getLong(0),
-                            endMillis = c.getLong(1),
+                            startMillis = c.getLong(0) + offsetMs,
+                            endMillis = c.getLong(1) + offsetMs,
                             title = c.getString(2),
                             sourceOffsetSeconds = if (c.isNull(3)) null else c.getInt(3),
                         )

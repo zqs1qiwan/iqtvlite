@@ -698,6 +698,15 @@ object SourceConfigWebPage {
       </div>
 
       <div class="card">
+        <h2 class="card-title" id="dispDnsTitle" style="margin-bottom:10px">加密 DNS (DoH)</h2>
+        <div class="seg-grid" id="dnsModeSeg">
+          <div class="seg-card" data-dns="system"><strong id="dnsSysT">系统默认</strong><span id="dnsSysD">局域网最低延迟</span></div>
+          <div class="seg-card" data-dns="ali"><strong id="dnsAliT">阿里 DoH</strong><span id="dnsAliD">223.5.5.5 防劫持</span></div>
+          <div class="seg-card" data-dns="cloudflare"><strong id="dnsCfT">Cloudflare</strong><span id="dnsCfD">1.1.1.1 加密解析</span></div>
+        </div>
+      </div>
+
+      <div class="card">
         <h2 class="card-title" id="dispBufTitle" style="margin-bottom:10px">起播缓冲与自动更新</h2>
         <div class="seg-grid" id="bufferSeg" style="margin-bottom:14px">
           <div class="seg-card" data-buf="300"><strong id="bufFastT">快</strong><span id="bufFastD">300ms 极速</span></div>
@@ -722,6 +731,24 @@ object SourceConfigWebPage {
             <option value="H6">每 6 小时</option>
             <option value="H12">每 12 小时</option>
             <option value="H24">每 24 小时</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="epgOffsetMinutes" id="lblEpgOffset">EPG 节目单时区偏移</label>
+          <select id="epgOffsetMinutes">
+            <option value="-720">-12 小时</option>
+            <option value="-480">-8 小时</option>
+            <option value="-240">-4 小时</option>
+            <option value="-120">-2 小时</option>
+            <option value="-60">-1 小时</option>
+            <option value="-30">-30 分钟</option>
+            <option value="0">0（原始时间）</option>
+            <option value="30">+30 分钟</option>
+            <option value="60">+1 小时</option>
+            <option value="120">+2 小时</option>
+            <option value="240">+4 小时</option>
+            <option value="480">+8 小时</option>
+            <option value="720">+12 小时</option>
           </select>
         </div>
       </div>
@@ -807,6 +834,7 @@ object SourceConfigWebPage {
         <h2 class="card-title" id="backupTitle" style="margin-bottom:8px">备份与恢复配置</h2>
         <div class="btn-row" style="margin-bottom:10px">
           <a class="btn" href="/api/backup" download="iqtvlite-backup.json" id="btnExportBackup">导出备份 JSON</a>
+          <a class="btn btn-secondary" href="/api/diag" download="iqtvlite-diag.json" id="btnExportDiag">导出播放诊断日志</a>
           <label class="btn btn-secondary" style="cursor:pointer">
             <span id="btnImportFileLabel">选择备份文件恢复</span>
             <input type="file" id="backupFileInput" accept=".json,application/json" style="display:none"/>
@@ -827,6 +855,7 @@ object SourceConfigWebPage {
     var selectedUiScale = "medium";
     var selectedInfoOk = "two_step";
     var selectedIpStack = "ipv6_first";
+    var selectedDnsMode = "system";
     var selectedBuffer = 500;
     var editingSource = false;
     var editingSourceName = "";
@@ -895,12 +924,18 @@ object SourceConfigWebPage {
         dispIpTitle: "网络协议优先级",
         ipV6T: "IPv6 优先（默认）", ipV6D: "优先 IPv6，失败自动回退 IPv4",
         ipV4T: "IPv4 优先", ipV4D: "优先 IPv4，失败自动回退 IPv6",
+        dispDnsTitle: "加密 DNS (DoH)",
+        dnsSysT: "系统默认", dnsSysD: "局域网最低延迟",
+        dnsAliT: "阿里 DoH", dnsAliD: "223.5.5.5 防劫持",
+        dnsCfT: "Cloudflare", dnsCfD: "1.1.1.1 加密解析",
         dispBufTitle: "起播缓冲与自动更新",
         bufFastT: "快", bufFastD: "300ms 极速",
         bufBalT: "均衡", bufBalD: "400ms 平衡",
         bufStbT: "稳", bufStbD: "500ms 抗抖",
         lblAutoPl: "自动更新播放列表",
         lblAutoEpg: "自动更新 EPG",
+        lblEpgOffset: "EPG 节目单时区偏移",
+        btnExportDiag: "导出播放诊断日志",
         intervals: { OFF: "关闭", STARTUP: "启动时", H6: "每 6 小时", H12: "每 12 小时", H24: "每 24 小时" },
         dispLogoTitle: "台标渲染优化",
         lblLogoPrefetch: "台标预取",
@@ -998,12 +1033,18 @@ object SourceConfigWebPage {
         dispIpTitle: "IP Protocol Priority",
         ipV6T: "IPv6 Preferred (Default)", ipV6D: "Try IPv6 first, fall back to IPv4",
         ipV4T: "IPv4 Preferred", ipV4D: "Try IPv4 first, fall back to IPv6",
+        dispDnsTitle: "Encrypted DNS (DoH)",
+        dnsSysT: "System DNS", dnsSysD: "Lowest LAN latency",
+        dnsAliT: "AliDNS DoH", dnsAliD: "223.5.5.5 encrypted",
+        dnsCfT: "Cloudflare", dnsCfD: "1.1.1.1 encrypted",
         dispBufTitle: "Startup Buffer & Auto Update",
         bufFastT: "Fast", bufFastD: "300ms Quick zap",
         bufBalT: "Balanced", bufBalD: "400ms Balanced",
         bufStbT: "Stable", bufStbD: "500ms Steady",
         lblAutoPl: "Auto-update Playlist",
         lblAutoEpg: "Auto-update EPG",
+        lblEpgOffset: "EPG Timezone Offset",
+        btnExportDiag: "Export Playback Diagnostics",
         intervals: { OFF: "Off", STARTUP: "On startup", H6: "Every 6h", H12: "Every 12h", H24: "Every 24h" },
         dispLogoTitle: "Channel Logo Optimization",
         lblLogoPrefetch: "Prefetch Logos",
@@ -1096,12 +1137,31 @@ object SourceConfigWebPage {
       byId("dispIpTitle").textContent = L.dispIpTitle;
       byId("ipV6T").textContent = L.ipV6T; byId("ipV6D").textContent = L.ipV6D;
       byId("ipV4T").textContent = L.ipV4T; byId("ipV4D").textContent = L.ipV4D;
+      byId("dispDnsTitle").textContent = L.dispDnsTitle;
+      byId("dnsSysT").textContent = L.dnsSysT; byId("dnsSysD").textContent = L.dnsSysD;
+      byId("dnsAliT").textContent = L.dnsAliT; byId("dnsAliD").textContent = L.dnsAliD;
+      byId("dnsCfT").textContent = L.dnsCfT; byId("dnsCfD").textContent = L.dnsCfD;
       byId("dispBufTitle").textContent = L.dispBufTitle;
       byId("bufFastT").textContent = L.bufFastT; byId("bufFastD").textContent = L.bufFastD;
       byId("bufBalT").textContent = L.bufBalT; byId("bufBalD").textContent = L.bufBalD;
       byId("bufStbT").textContent = L.bufStbT; byId("bufStbD").textContent = L.bufStbD;
       byId("lblAutoPl").textContent = L.lblAutoPl;
       byId("lblAutoEpg").textContent = L.lblAutoEpg;
+      byId("lblEpgOffset").textContent = L.lblEpgOffset;
+      Array.prototype.forEach.call(byId("epgOffsetMinutes").options, function(opt) {
+        var mins = Number(opt.value);
+        if (mins === 0) {
+          opt.textContent = currentLang === "en" ? "0 (Original)" : "0（原始时间）";
+        } else if (mins % 60 === 0) {
+          var hrs = mins / 60;
+          var signH = hrs > 0 ? "+" : "";
+          opt.textContent = currentLang === "en" ? (signH + hrs + "h") : (signH + hrs + " 小时");
+        } else {
+          var signM = mins > 0 ? "+" : "";
+          opt.textContent = currentLang === "en" ? (signM + mins + " min") : (signM + mins + " 分钟");
+        }
+      });
+      byId("btnExportDiag").textContent = L.btnExportDiag;
       ["autoPlaylist", "autoEpg"].forEach(function(selId) {
         var sel = byId(selId);
         Array.prototype.forEach.call(sel.options, function(opt) {
@@ -1384,6 +1444,7 @@ object SourceConfigWebPage {
       selectedUiScale = (state && state.uiScale) || "medium";
       selectedInfoOk = (state && state.infoOkMode) || "two_step";
       selectedIpStack = (state && state.ipStackPreference) || "ipv6_first";
+      selectedDnsMode = (state && state.dnsMode) || "system";
       selectedBuffer = (state && state.playbackBufferMin) || 300;
       document.querySelectorAll("#uiScaleSeg .seg-card").forEach(function(c) {
         c.classList.toggle("selected", c.getAttribute("data-scale") === selectedUiScale);
@@ -1394,11 +1455,15 @@ object SourceConfigWebPage {
       document.querySelectorAll("#ipStackSeg .seg-card").forEach(function(c) {
         c.classList.toggle("selected", c.getAttribute("data-ip") === selectedIpStack);
       });
+      document.querySelectorAll("#dnsModeSeg .seg-card").forEach(function(c) {
+        c.classList.toggle("selected", c.getAttribute("data-dns") === selectedDnsMode);
+      });
       document.querySelectorAll("#bufferSeg .seg-card").forEach(function(c) {
         c.classList.toggle("selected", Number(c.getAttribute("data-buf")) === selectedBuffer);
       });
       byId("autoPlaylist").value = (state && state.autoUpdatePlaylist) || "STARTUP";
       byId("autoEpg").value = (state && state.autoUpdateEpg) || "STARTUP";
+      byId("epgOffsetMinutes").value = String((state && state.epgOffsetMinutes) || 0);
       byId("logoPrefetch").checked = state ? !!state.logoPrefetch : true;
       byId("logoLoad").checked = state ? !!state.logoLoad : true;
     }
@@ -1420,6 +1485,12 @@ object SourceConfigWebPage {
         document.querySelectorAll("#ipStackSeg .seg-card").forEach(function(x) { x.classList.toggle("selected", x === c); });
       });
     });
+    document.querySelectorAll("#dnsModeSeg .seg-card").forEach(function(c) {
+      c.addEventListener("click", function() {
+        selectedDnsMode = c.getAttribute("data-dns");
+        document.querySelectorAll("#dnsModeSeg .seg-card").forEach(function(x) { x.classList.toggle("selected", x === c); });
+      });
+    });
     document.querySelectorAll("#bufferSeg .seg-card").forEach(function(c) {
       c.addEventListener("click", function() {
         selectedBuffer = Number(c.getAttribute("data-buf"));
@@ -1432,9 +1503,11 @@ object SourceConfigWebPage {
           uiScale: selectedUiScale,
           infoOkMode: selectedInfoOk,
           ipStackPreference: selectedIpStack,
+          dnsMode: selectedDnsMode,
           playbackBufferMin: selectedBuffer,
           autoUpdatePlaylist: byId("autoPlaylist").value,
           autoUpdateEpg: byId("autoEpg").value,
+          epgOffsetMinutes: Number(byId("epgOffsetMinutes").value || 0),
           logoPrefetch: byId("logoPrefetch").checked,
           logoLoad: byId("logoLoad").checked
         });

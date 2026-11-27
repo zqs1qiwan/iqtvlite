@@ -160,6 +160,14 @@ data class SettingsUiState(
     val allGroupNames: List<String> = emptyList(),
     val activeGroupConfig: Prefs.SourceGroupConfig = Prefs.SourceGroupConfig(),
     val ipStackPreference: IpStackPreference = IpStackPreference.IPV6_FIRST,
+    val dnsMode: DnsMode = DnsMode.SYSTEM,
+    val epgOffsetMinutes: Int = 0,
+    val currentChannelTitle: String = "",
+    val channelDecoderOverride: String = "auto",
+    val autoFrameRateEnabled: Boolean = false,
+    val audioOutputRoute: AudioOutputRoute = AudioOutputRoute.SPEAKER,
+    val audioBoostPct: Int = AudioPcmMath.DEFAULT_BOOST_PCT,
+    val audioDelayMs: Int = 0,
 )
 
 /** 设置抽屉动作集合。 */
@@ -227,6 +235,12 @@ data class SettingsActions(
     val onWebPushSource: (String, String) -> Unit = { _, _ -> },
     val onResetAllSettings: () -> Unit = {},
     val onSelectIpStackPreference: (IpStackPreference) -> Unit = {},
+    val onSelectDnsMode: (DnsMode) -> Unit = {},
+    val onSelectEpgOffsetMinutes: (Int) -> Unit = {},
+    val onSelectChannelDecoderOverride: (String) -> Unit = {},
+    val onToggleAutoFrameRate: (Boolean) -> Unit = {},
+    val onSelectAudioBoostPct: (Int) -> Unit = {},
+    val onSelectAudioDelayMs: (Int) -> Unit = {},
     val onResetCustomBindings: () -> Unit = {},
 )
 
@@ -502,6 +516,7 @@ fun SettingsDrawer(
                         homePipEnabled = state.homePipEnabled,
                         doubleBackExitEnabled = state.doubleBackExitEnabled,
                         ipStackPreference = state.ipStackPreference,
+                        dnsMode = state.dnsMode,
                         globalUserAgent = state.globalUserAgent,
                         globalCustomHeaders = state.globalCustomHeaders,
                         onToggleAutoStart = actions.onToggleAutoStart,
@@ -509,6 +524,7 @@ fun SettingsDrawer(
                         onToggleHomePip = actions.onToggleHomePip,
                         onToggleDoubleBackExit = actions.onToggleDoubleBackExit,
                         onOpenIpStackPicker = { actions.onOpenPicker(PICKER_IP_STACK) },
+                        onOpenDnsModePicker = { actions.onOpenPicker(PICKER_DNS_MODE) },
                         onOpenGlobalUaPicker = { actions.onOpenPicker(PICKER_GLOBAL_UA) },
                         onOpenGlobalHeadersPicker = { actions.onOpenPicker(PICKER_GLOBAL_HEADERS) },
                         onSourceConfigClick = actions.onSourceConfigClick,
@@ -538,10 +554,12 @@ fun SettingsDrawer(
                         lang = lang,
                         epgRetentionDays = state.epgRetentionDays,
                         autoUpdateEpgLabel = state.autoUpdateEpg.localizedLabel(lang),
+                        epgOffsetMinutes = state.epgOffsetMinutes,
                         epgUpdateOnPlaylistChange = state.epgUpdateOnPlaylistChange,
                         lastUpdateSummary = state.lastUpdateSummary,
                         onOpenRetentionPicker = { actions.onOpenPicker(PICKER_EPG_RETENTION) },
                         onOpenEpgIntervalPicker = { actions.onOpenPicker(PICKER_AUTO_EPG) },
+                        onOpenOffsetPicker = { actions.onOpenPicker(PICKER_EPG_OFFSET) },
                         onToggleEpgOnPlaylistChange = actions.onToggleEpgOnPlaylistChange,
                         onRefreshEpgNow = actions.onRefreshEpgNow,
                         textScale = textScale,
@@ -586,26 +604,37 @@ fun SettingsDrawer(
                         lang = lang,
                         bufferLabel = playbackBufferLabel,
                         videoDecoderMode = state.videoDecoderMode,
+                        currentChannelTitle = state.currentChannelTitle,
+                        channelDecoderOverride = state.channelDecoderOverride,
+                        autoFrameRateEnabled = state.autoFrameRateEnabled,
                         rebuildOn4kZap = state.rebuildOn4kZap,
                         defaultSubtitlesEnabled = state.defaultSubtitlesEnabled,
                         subtitlePreferredLang = state.subtitlePreferredLang,
                         audioSummary = state.audioSummary,
                         audioEntryLabel = state.audioEntryLabel,
                         audioSelectable = state.audioSelectable,
+                        audioOutputRoute = state.audioOutputRoute,
+                        audioBoostPct = state.audioBoostPct,
+                        audioDelayMs = state.audioDelayMs,
                         qualityMenuEnabled = state.qualityMenuEnabled,
                         zapPreconnectEnabled = state.zapPreconnectEnabled,
                         multicastPrewarmEnabled = state.multicastPrewarmEnabled,
                         jingcaiLabel = state.jingcaiExperiment.localizedLabel(lang),
                         onOpenBufferPicker = { actions.onOpenPicker(PICKER_PLAYBACK_BUFFER) },
                         onOpenVideoDecoderPicker = { actions.onOpenPicker(PICKER_VIDEO_DECODER) },
+                        onOpenChannelDecoderPicker = { actions.onOpenPicker(PICKER_CHANNEL_DECODER) },
+                        onToggleAutoFrameRate = actions.onToggleAutoFrameRate,
                         onToggleRebuild4kZap = actions.onToggleRebuild4kZap,
                         onToggleDefaultSubtitles = actions.onToggleDefaultSubtitles,
                         onOpenSubtitleLangPicker = { actions.onOpenPicker(PICKER_SUBTITLE_LANG) },
                         onAudioTrackClick = actions.onAudioTrackClick,
+                        onOpenAudioBoostPicker = { actions.onOpenPicker(PICKER_AUDIO_BOOST) },
+                        onOpenAudioDelayPicker = { actions.onOpenPicker(PICKER_AUDIO_DELAY) },
                         onQualityMenuClick = actions.onQualityMenuClick,
                         onToggleZapPreconnect = actions.onToggleZapPreconnect,
                         onToggleMulticastPrewarm = actions.onToggleMulticastPrewarm,
                         onOpenJingcaiPicker = { actions.onOpenPicker(PICKER_JINGCAI) },
+                        onOpenStreamDiag = { actions.onOpenPicker(PICKER_STREAM_DIAG) },
                         textScale = textScale,
                         scroll = scrollFor(SettingsPage.PLAYBACK),
                         requesterOf = ::requesterOf,
@@ -703,6 +732,12 @@ private const val PICKER_GROUP_MANAGE = "group_manage"
 private const val PICKER_GROUP_SORT = "group_sort"
 private const val PICKER_WEB_QR = "web_qr"
 private const val PICKER_IP_STACK = "ip_stack"
+private const val PICKER_DNS_MODE = "dns_mode"
+private const val PICKER_EPG_OFFSET = "epg_offset"
+private const val PICKER_CHANNEL_DECODER = "channel_decoder"
+private const val PICKER_AUDIO_BOOST = "audio_boost"
+private const val PICKER_AUDIO_DELAY = "audio_delay"
+private const val PICKER_STREAM_DIAG = "stream_diag"
 private const val PICKER_ABOUT_PROJECT = "about_project"
 private const val PICKER_RESET_DEFAULTS = "reset_defaults"
 
@@ -751,6 +786,16 @@ private fun SettingsPickerRouter(
     }
     if (pickerId == PICKER_ABOUT_PROJECT) {
         SettingsAboutProjectView(
+            lang = lang,
+            textScale = textScale,
+            scroll = scroll,
+            requesterOf = requesterOf,
+            onClose = actions.onClosePicker,
+        )
+        return
+    }
+    if (pickerId == PICKER_STREAM_DIAG) {
+        SettingsStreamDiagView(
             lang = lang,
             textScale = textScale,
             scroll = scroll,
@@ -917,6 +962,89 @@ private fun SettingsPickerRouter(
                     actions.onClosePicker()
                 },
             )
+        }
+        PICKER_DNS_MODE -> t("加密 DNS (DoH)", "Encrypted DNS (DoH)") to DnsMode.entries.map { mode ->
+            SettingsPickerOption(
+                id = mode.id,
+                title = mode.shortLabel(lang),
+                description = mode.description(lang),
+                selected = state.dnsMode == mode,
+                onSelect = {
+                    actions.onSelectDnsMode(mode)
+                    actions.onClosePicker()
+                },
+            )
+        }
+        PICKER_EPG_OFFSET -> t("EPG 时区偏移", "EPG Timezone Offset") to listOf(
+            -720, -480, -240, -120, -60, -30, 0, 30, 60, 120, 240, 480, 720
+        ).map { mins ->
+            SettingsPickerOption(
+                id = "epg_off_$mins",
+                title = formatEpgOffsetLabel(mins, lang),
+                description = if (mins == 0) t("使用节目单原始时间戳", "Use original EPG timestamps") else t("整体平移 EPG 显示与当前节目匹配窗口", "Shift displayed EPG schedule times"),
+                selected = state.epgOffsetMinutes == mins,
+                onSelect = {
+                    actions.onSelectEpgOffsetMinutes(mins)
+                    actions.onClosePicker()
+                },
+            )
+        }
+        PICKER_CHANNEL_DECODER -> {
+            val chName = state.currentChannelTitle.ifBlank { t("当前频道", "Current Channel") }
+            val opts = listOf(
+                Triple("auto", t("跟随全局设置", "Follow Global Setting"), t("使用「视频解码器」全局偏好（默认硬件优先）", "Use global decoder setting (HW preferred)")),
+                Triple("HARDWARE", t("仅此频道强制硬解", "Force Hardware (This Channel)"), t("即使失败也不降级，直接优先 MediaCodec 硬解", "Prefer MediaCodec hardware decoder for this channel")),
+                Triple("SOFTWARE", t("仅此频道强制软解", "Force Software (This Channel)"), t("切到此频道立即启用软件/FFmpeg 解码，免除等待", "Use software/FFmpeg decoder directly for this channel")),
+            ).map { (modeId, titleTxt, descTxt) ->
+                SettingsPickerOption(
+                    id = "ch_dec_$modeId",
+                    title = titleTxt,
+                    description = descTxt,
+                    selected = state.channelDecoderOverride.equals(modeId, ignoreCase = true),
+                    onSelect = {
+                        actions.onSelectChannelDecoderOverride(modeId)
+                        actions.onClosePicker()
+                    },
+                )
+            }
+            t("当前频道解码：$chName", "Channel Decoder: $chName") to opts
+        }
+        PICKER_AUDIO_BOOST -> t("人声/音量增益", "Audio Volume Boost") to listOf(100, 110, 120, 135, 150).map { pct ->
+            SettingsPickerOption(
+                id = "boost_$pct",
+                title = if (pct == 100) t("100%（原声旁路）", "100% (Bypass)") else "$pct%",
+                description = if (pct == 100) t("零额外音频处理开销", "Zero DSP overhead bypass") else t("软限幅响度增强，防止爆音", "Soft-clipped PCM gain boost"),
+                selected = state.audioBoostPct == pct,
+                onSelect = {
+                    actions.onSelectAudioBoostPct(pct)
+                    actions.onClosePicker()
+                },
+            )
+        }
+        PICKER_AUDIO_DELAY -> {
+            val routeTitle = state.audioOutputRoute.localizedLabel(lang)
+            val delays = listOf(-500, -300, -200, -100, -50, 0, 50, 100, 150, 200, 300, 500)
+            t("音画同步延迟 ($routeTitle)", "Audio Delay ($routeTitle)") to delays.map { ms ->
+                val label = when {
+                    ms == 0 -> t("0 ms（关闭）", "0 ms (Off)")
+                    ms > 0 -> "+$ms ms"
+                    else -> "$ms ms"
+                }
+                SettingsPickerOption(
+                    id = "delay_$ms",
+                    title = label,
+                    description = when {
+                        ms > 0 -> t("音频延后输出（声音比画面快时选正值）", "Delay audio playback")
+                        ms < 0 -> t("音频提前输出（蓝牙音画滞后时选负值）", "Advance audio playback")
+                        else -> t("保持原始音画同步时间轴", "Keep original A/V sync")
+                    },
+                    selected = state.audioDelayMs == ms,
+                    onSelect = {
+                        actions.onSelectAudioDelayMs(ms)
+                        actions.onClosePicker()
+                    },
+                )
+            }
         }
         PICKER_JINGCAI -> t("码流兼容模式", "Stream Compatibility") to JingcaiExperiment.Mode.entries
             .filter { mode ->
@@ -1715,6 +1843,80 @@ private fun SettingsRemoteActionPickerView(
     }
 }
 
+@Composable
+private fun SettingsStreamDiagView(
+    lang: AppLang,
+    textScale: Float,
+    scroll: ScrollState,
+    requesterOf: (String) -> FocusRequester,
+    onClose: () -> Unit,
+) {
+    val context = LocalContext.current
+    fun t(zh: String, en: String) = if (lang == AppLang.EN) en else zh
+    var tick by remember { androidx.compose.runtime.mutableIntStateOf(0) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            kotlinx.coroutines.delay(1000L)
+            tick++
+        }
+    }
+    val rows = remember(lang, tick) { PlaybackDiagCenter.uiRows(context, lang) }
+    val events = remember(tick) { PlaybackDiagCenter.recentEvents().takeLast(6).reversed() }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(scroll)
+            .testTag(SETTINGS_LIST_TAG)
+    ) {
+        SettingsTopTitle(title = t("实时码流诊断", "Stream Diagnostics"), tag = "settings_picker_title", textScale = textScale)
+        rows.forEach { (k, v) ->
+            Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp)) {
+                Text(
+                    text = k,
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = (11f * textScale).sp),
+                    color = TvDesignTokens.TextMuted,
+                )
+                Text(
+                    text = v,
+                    style = MaterialTheme.typography.bodyMedium.copy(fontSize = (13.5f * textScale).sp),
+                    color = TvDesignTokens.TextPrimary,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        if (events.isNotEmpty()) {
+            SettingsGroupHeader(t("最近事件", "Recent Events"))
+            events.forEach { ev ->
+                HelpText("[${ev.tag}] ${ev.message}", start = 4.dp)
+            }
+        }
+        HelpText(t("也可在手机浏览器打开局域网控制台导出完整 /api/diag JSON 日志。", "Full /api/diag JSON export is also available in LAN WebUI."), start = 4.dp)
+        RowGap()
+        SettingsItem(
+            text = t("返回", "Back"),
+            textScale = textScale,
+            focusRequester = requesterOf("picker_opt_0"),
+            tag = "picker_opt_0",
+            onClick = onClose,
+        )
+    }
+}
+
+private fun formatEpgOffsetLabel(minutes: Int, lang: AppLang): String = when {
+    minutes == 0 -> if (lang == AppLang.EN) "0 (Original)" else "0（原始时间）"
+    minutes % 60 == 0 -> {
+        val h = minutes / 60
+        val sign = if (h > 0) "+" else ""
+        if (lang == AppLang.EN) "$sign${h}h" else "$sign${h} 小时"
+    }
+    else -> {
+        val sign = if (minutes > 0) "+" else ""
+        if (lang == AppLang.EN) "$sign$minutes min" else "$sign$minutes 分钟"
+    }
+}
+
 // ─── 一级根页（含固定置底的大号 [ ← ] / [ → ] 呼出提示） ─────────────────────
 
 @Composable
@@ -1938,6 +2140,7 @@ private fun SettingsGeneralPage(
     homePipEnabled: Boolean,
     doubleBackExitEnabled: Boolean,
     ipStackPreference: IpStackPreference,
+    dnsMode: DnsMode,
     globalUserAgent: String,
     globalCustomHeaders: String,
     onToggleAutoStart: (Boolean) -> Unit,
@@ -1945,6 +2148,7 @@ private fun SettingsGeneralPage(
     onToggleHomePip: (Boolean) -> Unit,
     onToggleDoubleBackExit: (Boolean) -> Unit,
     onOpenIpStackPicker: () -> Unit,
+    onOpenDnsModePicker: () -> Unit,
     onOpenGlobalUaPicker: () -> Unit,
     onOpenGlobalHeadersPicker: () -> Unit,
     onSourceConfigClick: () -> Unit,
@@ -2022,6 +2226,16 @@ private fun SettingsGeneralPage(
             tag = "settings_ip_stack",
             onFocused = onFocused,
             onClick = onOpenIpStackPicker,
+        )
+        RowGap()
+        SettingsChoiceRow(
+            title = t("加密 DNS (DoH)", "Encrypted DNS (DoH)"),
+            value = dnsMode.shortLabel(lang),
+            textScale = textScale,
+            focusRequester = requesterOf("settings_dns_mode"),
+            tag = "settings_dns_mode",
+            onFocused = onFocused,
+            onClick = onOpenDnsModePicker,
         )
         RowGap()
         SettingsChoiceRow(
@@ -2159,10 +2373,12 @@ private fun SettingsEpgPage(
     lang: AppLang,
     epgRetentionDays: Int,
     autoUpdateEpgLabel: String,
+    epgOffsetMinutes: Int,
     epgUpdateOnPlaylistChange: Boolean,
     lastUpdateSummary: String,
     onOpenRetentionPicker: () -> Unit,
     onOpenEpgIntervalPicker: () -> Unit,
+    onOpenOffsetPicker: () -> Unit,
     onToggleEpgOnPlaylistChange: (Boolean) -> Unit,
     onRefreshEpgNow: () -> Unit,
     textScale: Float,
@@ -2199,6 +2415,16 @@ private fun SettingsEpgPage(
                 tag = "settings_auto_epg",
                 onFocused = onFocused,
                 onClick = onOpenEpgIntervalPicker,
+            )
+            RowGap()
+            SettingsChoiceRow(
+                title = t("EPG 时区偏移", "EPG Timezone Offset"),
+                value = formatEpgOffsetLabel(epgOffsetMinutes, lang),
+                textScale = textScale,
+                focusRequester = requesterOf("settings_epg_offset"),
+                tag = "settings_epg_offset",
+                onFocused = onFocused,
+                onClick = onOpenOffsetPicker,
             )
             RowGap()
             SettingsToggleRow(
@@ -2418,26 +2644,37 @@ private fun SettingsPlaybackPage(
     lang: AppLang,
     bufferLabel: String,
     videoDecoderMode: String,
+    currentChannelTitle: String,
+    channelDecoderOverride: String,
+    autoFrameRateEnabled: Boolean,
     rebuildOn4kZap: Boolean,
     defaultSubtitlesEnabled: Boolean,
     subtitlePreferredLang: String,
     audioSummary: String?,
     audioEntryLabel: String,
     audioSelectable: Boolean,
+    audioOutputRoute: AudioOutputRoute,
+    audioBoostPct: Int,
+    audioDelayMs: Int,
     qualityMenuEnabled: Boolean,
     zapPreconnectEnabled: Boolean,
     multicastPrewarmEnabled: Boolean,
     jingcaiLabel: String,
     onOpenBufferPicker: () -> Unit,
     onOpenVideoDecoderPicker: () -> Unit,
+    onOpenChannelDecoderPicker: () -> Unit,
+    onToggleAutoFrameRate: (Boolean) -> Unit,
     onToggleRebuild4kZap: (Boolean) -> Unit,
     onToggleDefaultSubtitles: (Boolean) -> Unit,
     onOpenSubtitleLangPicker: () -> Unit,
     onAudioTrackClick: () -> Unit,
+    onOpenAudioBoostPicker: () -> Unit,
+    onOpenAudioDelayPicker: () -> Unit,
     onQualityMenuClick: () -> Unit,
     onToggleZapPreconnect: () -> Unit,
     onToggleMulticastPrewarm: () -> Unit,
     onOpenJingcaiPicker: () -> Unit,
+    onOpenStreamDiag: () -> Unit,
     textScale: Float,
     scroll: ScrollState,
     requesterOf: (String) -> FocusRequester,
@@ -2445,6 +2682,11 @@ private fun SettingsPlaybackPage(
 ) {
     fun t(zh: String, en: String) = if (lang == AppLang.EN) en else zh
     val decoderLabel = if (videoDecoderMode == "SOFTWARE") t("软件解码", "Software") else t("硬件解码", "Hardware")
+    val chDecLabel = when (channelDecoderOverride.uppercase()) {
+        "HARDWARE" -> t("强制硬解", "Force HW")
+        "SOFTWARE" -> t("强制软解", "Force SW")
+        else -> t("跟随全局", "Follow Global")
+    }
     val subLangLabel = when (subtitlePreferredLang) {
         "zh" -> t("中文", "Chinese")
         "en" -> t("英文", "English")
@@ -2478,6 +2720,27 @@ private fun SettingsPlaybackPage(
                 tag = "settings_video_decoder",
                 onFocused = onFocused,
                 onClick = onOpenVideoDecoderPicker,
+            )
+            RowGap()
+            SettingsChoiceRow(
+                title = if (currentChannelTitle.isNotBlank()) t("本频道解码：$currentChannelTitle", "Channel Decoder: $currentChannelTitle") else t("当前频道解码覆盖", "Channel Decoder Override"),
+                value = chDecLabel,
+                textScale = textScale,
+                focusRequester = requesterOf("settings_channel_decoder_override"),
+                tag = "settings_channel_decoder_override",
+                onFocused = onFocused,
+                onClick = onOpenChannelDecoderPicker,
+            )
+            RowGap()
+            SettingsToggleRow(
+                title = t("自动帧率匹配 (AFR)", "Auto Frame Rate (AFR)"),
+                subtitle = t("防抖后匹配 25/50/60Hz 刷新率（换台略停顿）", "Matches TV refresh rate after stabilize"),
+                checked = autoFrameRateEnabled,
+                textScale = textScale,
+                focusRequester = requesterOf("settings_auto_frame_rate"),
+                tag = "settings_auto_frame_rate",
+                onFocused = onFocused,
+                onClick = { onToggleAutoFrameRate(!autoFrameRateEnabled) },
             )
             RowGap()
             SettingsToggleRow(
@@ -2522,6 +2785,26 @@ private fun SettingsPlaybackPage(
             if (!audioSummary.isNullOrBlank()) {
                 HelpText(t("当前：$audioSummary", "Current: $audioSummary"))
             }
+            RowGap()
+            SettingsChoiceRow(
+                title = t("音量增益 (最大 150%)", "Volume Boost (Max 150%)"),
+                value = if (audioBoostPct == 100) t("100%（关闭）", "100% (Off)") else "$audioBoostPct%",
+                textScale = textScale,
+                focusRequester = requesterOf("settings_audio_boost"),
+                tag = "settings_audio_boost",
+                onFocused = onFocused,
+                onClick = onOpenAudioBoostPicker,
+            )
+            RowGap()
+            SettingsChoiceRow(
+                title = t("音画延迟 (${audioOutputRoute.localizedLabel(lang)})", "Audio Delay (${audioOutputRoute.localizedLabel(lang)})"),
+                value = if (audioDelayMs == 0) "0 ms" else if (audioDelayMs > 0) "+$audioDelayMs ms" else "$audioDelayMs ms",
+                textScale = textScale,
+                focusRequester = requesterOf("settings_audio_delay"),
+                tag = "settings_audio_delay",
+                onFocused = onFocused,
+                onClick = onOpenAudioDelayPicker,
+            )
             if (qualityMenuEnabled) {
                 RowGap()
                 SettingsItem(
@@ -2564,6 +2847,15 @@ private fun SettingsPlaybackPage(
                 tag = "settings_jingcai_experiment",
                 onFocused = onFocused,
                 onClick = onOpenJingcaiPicker,
+            )
+            RowGap()
+            SettingsItem(
+                text = t("实时码流诊断与日志", "Live Stream Diagnostics"),
+                textScale = textScale,
+                focusRequester = requesterOf("settings_stream_diag"),
+                tag = "settings_stream_diag",
+                onFocused = onFocused,
+                onClick = onOpenStreamDiag,
             )
         }
     }

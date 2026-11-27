@@ -154,7 +154,7 @@ X-Custom-Token: your-token
 
 ## 安装与更新
 
-1. 前往 [**Releases 最新版本**](https://github.com/zqs1qiwan/iqtvlite/releases/latest) 下载 `IQTV-Lite-v0.3.1.apk`（或通用最新包 `IQTV-Lite-latest.apk`）。
+1. 前往 [**Releases 最新版本**](https://github.com/zqs1qiwan/iqtvlite/releases/latest) 下载 `IQTV-Lite-v0.3.2.apk`（或通用最新包 `IQTV-Lite-latest.apk`）。
 2. 将安装包传至 Android TV 或电视盒子安装（支持 Android 7.0 及以上系统，兼容 32 位与 64 位设备）。
 3. 之后可在电视端进入「设置 → 关于与更新 → 检查更新」，直接在应用内下载安装新版。
 
@@ -305,7 +305,7 @@ Under **Settings → Playback → Advanced (Experimental)**, optional tuning swi
 
 ## Installation & Updates
 
-1. Download `IQTV-Lite-v0.3.1.apk` (or `IQTV-Lite-latest.apk`) from [**Latest Release**](https://github.com/zqs1qiwan/iqtvlite/releases/latest).
+1. Download `IQTV-Lite-v0.3.2.apk` (or `IQTV-Lite-latest.apk`) from [**Latest Release**](https://github.com/zqs1qiwan/iqtvlite/releases/latest).
 2. Install it on your Android TV or TV box (`Android 7.0+`, compatible with both `arm64-v8a` and `armeabi-v7a` devices).
 3. Update anytime from **Settings → About & Updates → Check for Updates**, or download manually from GitHub Releases.
 

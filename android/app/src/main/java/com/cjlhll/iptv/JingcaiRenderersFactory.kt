@@ -9,6 +9,8 @@ import androidx.media3.decoder.ffmpeg.ExperimentalFfmpegVideoRenderer
 import androidx.media3.decoder.ffmpeg.FfmpegLibrary
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.Renderer
+import androidx.media3.exoplayer.audio.AudioSink
+import androidx.media3.exoplayer.audio.DefaultAudioSink
 import androidx.media3.exoplayer.mediacodec.MediaCodecInfo
 import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 import androidx.media3.exoplayer.video.MediaCodecVideoRenderer
@@ -82,12 +84,26 @@ internal fun <T> selectSoftwareOnlyVideoDecoders(
 class JingcaiRenderersFactory(
     context: Context,
     private val softVideo: Boolean,
+    private val audioProcessor: AudioSyncBoostProcessor? = null,
 ) : DefaultRenderersFactory(context) {
 
     init {
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
             forceEnableMediaCodecAsynchronousQueueing()
         }
+    }
+
+    override fun buildAudioSink(
+        context: Context,
+        enableFloatOutput: Boolean,
+        enableAudioTrackPlaybackParams: Boolean,
+    ): AudioSink {
+        val builder = DefaultAudioSink.Builder(context)
+            .setEnableFloatOutput(enableFloatOutput)
+        if (audioProcessor != null) {
+            builder.setAudioProcessors(arrayOf(audioProcessor))
+        }
+        return builder.build()
     }
 
     override fun buildVideoRenderers(

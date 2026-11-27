@@ -33,10 +33,19 @@ object NetUtil {
     @Volatile
     private var stackPreference: IpStackPreference = IpStackPreference.IPV6_FIRST
 
+    @Volatile
+    private var dnsMode: DnsMode = DnsMode.SYSTEM
+
     fun currentIpStackPreference(): IpStackPreference = stackPreference
 
     fun setIpStackPreference(preference: IpStackPreference) {
         stackPreference = preference
+    }
+
+    fun currentDnsMode(): DnsMode = dnsMode
+
+    fun setDnsMode(mode: DnsMode) {
+        dnsMode = mode
     }
 
     /**
@@ -73,10 +82,14 @@ object NetUtil {
         return ordered
     }
 
-    /** Dual-stack DNS respecting configurable IPv6-first (default) or IPv4-first with fallback. */
+    /** Dual-stack DNS respecting DoH mode (with system fallback) and IPv6-first / IPv4-first ordering. */
     val dualStackDns: Dns = object : Dns {
         override fun lookup(hostname: String): List<InetAddress> {
-            return orderAddresses(InetAddress.getAllByName(hostname).toList(), stackPreference)
+            return DohResolver.resolve(
+                hostname = hostname,
+                mode = dnsMode,
+                pref = stackPreference,
+            )
         }
     }
 

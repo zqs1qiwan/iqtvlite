@@ -208,6 +208,18 @@ class SourceConfigLanServer(
                             IpStackPreference.parse(payload.optString("ipStackPreference"))
                         )
                     }
+                    if (payload.has("dnsMode")) {
+                        Prefs.setDnsMode(
+                            appContext,
+                            DnsMode.parse(payload.optString("dnsMode"))
+                        )
+                    }
+                    if (payload.has("epgOffsetMinutes")) {
+                        Prefs.setEpgOffsetMinutes(
+                            appContext,
+                            payload.optInt("epgOffsetMinutes", 0)
+                        )
+                    }
                     onStateChanged()
                     jsonOk(JSONObject().put("ok", true).put("state", buildStateJson()).toString())
                 }
@@ -267,6 +279,13 @@ class SourceConfigLanServer(
                     val backup = Prefs.exportBackupJson(appContext)
                     cors(newFixedLengthResponse(Response.Status.OK, "application/json; charset=utf-8", backup).apply {
                         addHeader("Content-Disposition", "attachment; filename=\"iqtvlite-backup.json\"")
+                    })
+                }
+
+                session.method == Method.GET && path == "/api/diag" -> {
+                    val diagJson = PlaybackDiagCenter.toExportJson(appContext)
+                    cors(newFixedLengthResponse(Response.Status.OK, "application/json; charset=utf-8", diagJson).apply {
+                        addHeader("Content-Disposition", "attachment; filename=\"iqtvlite-diag.json\"")
                     })
                 }
 
@@ -435,6 +454,8 @@ class SourceConfigLanServer(
 
                 put("uiScale", Prefs.getUiScale(appContext).id)
                 put("ipStackPreference", Prefs.getIpStackPreference(appContext).id)
+                put("dnsMode", Prefs.getDnsMode(appContext).id)
+                put("epgOffsetMinutes", Prefs.getEpgOffsetMinutes(appContext))
                 put("infoOkMode", if (Prefs.getInfoOkMode(appContext) == InfoCardPolicy.InfoOkMode.DIRECT) "direct" else "two_step")
                 put("playbackBufferMin", Prefs.getPlaybackBufferMin(appContext))
                 put("autoUpdatePlaylist", Prefs.getAutoUpdatePlaylist(appContext).name)

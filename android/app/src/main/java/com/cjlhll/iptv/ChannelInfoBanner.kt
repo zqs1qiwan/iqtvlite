@@ -75,6 +75,7 @@ enum class InfoCardQuickActionId {
     FAVORITE,
     ASPECT,
     AUDIO,
+    AUDIO_ONLY,
     SUBTITLE,
     PIP,
     SETTINGS,
@@ -934,6 +935,32 @@ private fun QuickActionGlyph(
                 drawLine(tint, Offset(w * 0.39f, h * 0.72f), Offset(w * 0.39f, h * 0.24f), strokeWidth = stroke.width, cap = StrokeCap.Round)
                 drawLine(tint, Offset(w * 0.81f, h * 0.64f), Offset(w * 0.81f, h * 0.18f), strokeWidth = stroke.width, cap = StrokeCap.Round)
                 drawLine(tint, Offset(w * 0.39f, h * 0.24f), Offset(w * 0.81f, h * 0.18f), strokeWidth = stroke.width, cap = StrokeCap.Round)
+            }
+            InfoCardQuickActionId.AUDIO_ONLY -> {
+                // 耳机图标（纯音频熄画听音模式）
+                drawArc(
+                    color = tint,
+                    startAngle = 180f,
+                    sweepAngle = 180f,
+                    useCenter = false,
+                    topLeft = Offset(w * 0.16f, h * 0.18f),
+                    size = Size(w * 0.68f, h * 0.62f),
+                    style = stroke,
+                )
+                drawRoundRect(
+                    color = tint,
+                    topLeft = Offset(w * 0.12f, h * 0.48f),
+                    size = Size(w * 0.18f, h * 0.34f),
+                    cornerRadius = CornerRadius(2.dp.toPx(), 2.dp.toPx()),
+                    style = stroke,
+                )
+                drawRoundRect(
+                    color = tint,
+                    topLeft = Offset(w * 0.70f, h * 0.48f),
+                    size = Size(w * 0.18f, h * 0.34f),
+                    cornerRadius = CornerRadius(2.dp.toPx(), 2.dp.toPx()),
+                    style = stroke,
+                )
             }
             InfoCardQuickActionId.SUBTITLE -> {
                 // 字幕矩形框 + 两行字幕条

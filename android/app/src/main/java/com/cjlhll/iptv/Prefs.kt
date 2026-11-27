@@ -74,6 +74,14 @@ object Prefs {
     private const val KEY_DEFAULT_SUBTITLES_ENABLED = "pref_default_subtitles_enabled"
     private const val KEY_SUBTITLE_PREFERRED_LANG = "pref_subtitle_preferred_lang"
     private const val KEY_IP_STACK_PREFERENCE = "pref_ip_stack_preference"
+    private const val KEY_DNS_MODE = "pref_dns_mode"
+    private const val KEY_AUTO_FRAME_RATE = "pref_auto_frame_rate"
+    private const val KEY_AUDIO_BOOST_PCT = "pref_audio_boost_pct"
+    private const val KEY_AUDIO_DELAY_SPEAKER_MS = "pref_audio_delay_speaker_ms"
+    private const val KEY_AUDIO_DELAY_BT_MS = "pref_audio_delay_bt_ms"
+    private const val KEY_AUDIO_DELAY_HDMI_MS = "pref_audio_delay_hdmi_ms"
+    private const val KEY_EPG_OFFSET_MINUTES = "pref_epg_offset_minutes"
+    private const val KEY_CHANNEL_DECODER_OVERRIDES = "pref_channel_decoder_overrides_v1"
 
     private fun getPrefs(context: Context): SharedPreferences {
         return context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
@@ -684,6 +692,118 @@ object Prefs {
         NetUtil.setIpStackPreference(preference)
     }
 
+    fun getDnsMode(context: Context): DnsMode =
+        DnsMode.parse(getPrefs(context).getString(KEY_DNS_MODE, null))
+
+    fun setDnsMode(context: Context, mode: DnsMode) {
+        getPrefs(context).edit().putString(KEY_DNS_MODE, mode.id).apply()
+        NetUtil.setDnsMode(mode)
+        DohResolver.clearCache()
+    }
+
+    fun isAutoFrameRateEnabled(context: Context): Boolean =
+        getPrefs(context).getBoolean(KEY_AUTO_FRAME_RATE, false)
+
+    fun setAutoFrameRateEnabled(context: Context, enabled: Boolean) {
+        getPrefs(context).edit().putBoolean(KEY_AUTO_FRAME_RATE, enabled).apply()
+    }
+
+    fun getAudioBoostPct(context: Context): Int =
+        AudioPcmMath.clampBoostPct(getPrefs(context).getInt(KEY_AUDIO_BOOST_PCT, AudioPcmMath.DEFAULT_BOOST_PCT))
+
+    fun setAudioBoostPct(context: Context, pct: Int) {
+        getPrefs(context).edit().putInt(KEY_AUDIO_BOOST_PCT, AudioPcmMath.clampBoostPct(pct)).apply()
+    }
+
+    fun getAudioDelayMs(context: Context, route: AudioOutputRoute): Int {
+        val key = audioDelayKeyFor(route)
+        return AudioPcmMath.clampDelayMs(getPrefs(context).getInt(key, 0))
+    }
+
+    fun setAudioDelayMs(context: Context, route: AudioOutputRoute, delayMs: Int) {
+        getPrefs(context).edit().putInt(audioDelayKeyFor(route), AudioPcmMath.clampDelayMs(delayMs)).apply()
+    }
+
+    private fun audioDelayKeyFor(route: AudioOutputRoute): String = when (route) {
+        AudioOutputRoute.BLUETOOTH -> KEY_AUDIO_DELAY_BT_MS
+        AudioOutputRoute.HDMI -> KEY_AUDIO_DELAY_HDMI_MS
+        AudioOutputRoute.SPEAKER -> KEY_AUDIO_DELAY_SPEAKER_MS
+    }
+
+    fun getEpgOffsetMinutes(context: Context): Int =
+        getPrefs(context).getInt(KEY_EPG_OFFSET_MINUTES, 0).coerceIn(-720, 720)
+
+    fun setEpgOffsetMinutes(context: Context, minutes: Int) {
+        getPrefs(context).edit().putInt(KEY_EPG_OFFSET_MINUTES, minutes.coerceIn(-720, 720)).apply()
+    }
+
+    /** Per-channel decoder override: `"auto"` (follow global), `"HARDWARE"`, or `"SOFTWARE"`. */
+    fun getChannelDecoderOverride(context: Context, channelKey: String): String {
+        if (channelKey.isBlank()) return "auto"
+        val map = readChannelDecoderMap(context)
+        return map[channelKey] ?: "auto"
+    }
+
+    fun setChannelDecoderOverride(context: Context, channelKey: String, mode: String) {
+        if (channelKey.isBlank()) return
+        val normalized = when (mode.uppercase()) {
+            "HARDWARE", "HW" -> "HARDWARE"
+            "SOFTWARE", "SW" -> "SOFTWARE"
+            else -> "auto"
+        }
+        val map = LinkedHashMap(readChannelDecoderMap(context))
+        if (normalized == "auto") {
+            map.remove(channelKey)
+        } else {
+            map.remove(channelKey)
+            map[channelKey] = normalized
+            while (map.size > 128) {
+                val eldest = map.entries.firstOrNull()?.key ?: break
+                map.remove(eldest)
+            }
+        }
+        val obj = org.json.JSONObject()
+        for ((k, v) in map) obj.put(k, v)
+        channelDecoderCache = map.toMap()
+        getPrefs(context).edit().putString(KEY_CHANNEL_DECODER_OVERRIDES, obj.toString()).apply()
+    }
+
+    fun resolveEffectiveSoftVideo(
+        globalDecoderMode: String,
+        channelOverride: String,
+    ): Boolean = when (channelOverride.uppercase()) {
+        "SOFTWARE", "SW" -> true
+        "HARDWARE", "HW" -> false
+        else -> globalDecoderMode == "SOFTWARE"
+    }
+
+    @Volatile
+    private var channelDecoderCache: Map<String, String>? = null
+
+    private fun readChannelDecoderMap(context: Context): Map<String, String> {
+        channelDecoderCache?.let { return it }
+        val raw = getPrefs(context).getString(KEY_CHANNEL_DECODER_OVERRIDES, null).orEmpty()
+        val parsed = if (raw.isBlank()) {
+            emptyMap()
+        } else {
+            runCatching {
+                val obj = org.json.JSONObject(raw)
+                val out = LinkedHashMap<String, String>(obj.length())
+                val keys = obj.keys()
+                while (keys.hasNext()) {
+                    val k = keys.next()
+                    val v = obj.optString(k)
+                    if (k.isNotBlank() && (v == "HARDWARE" || v == "SOFTWARE")) {
+                        out[k] = v
+                    }
+                }
+                out.toMap()
+            }.getOrDefault(emptyMap())
+        }
+        channelDecoderCache = parsed
+        return parsed
+    }
+
     private val VOLATILE_BACKUP_KEYS = setOf(
         KEY_SOURCE_VERSION,
         KEY_PLAYLIST_FILE_NAME,
@@ -714,6 +834,7 @@ object Prefs {
         KEY_SHOW_ALL_CHANNELS_GROUP,
         KEY_REBUILD_ON_4K_ZAP,
         KEY_DEFAULT_SUBTITLES_ENABLED,
+        KEY_AUTO_FRAME_RATE,
         KEY_RECENT_CLEARED,
     )
 
@@ -722,6 +843,11 @@ object Prefs {
         KEY_EPG_RETENTION_DAYS,
         KEY_UI_TRANSPARENCY_PCT,
         KEY_INFO_PANEL_TIMEOUT_SEC,
+        KEY_AUDIO_BOOST_PCT,
+        KEY_AUDIO_DELAY_SPEAKER_MS,
+        KEY_AUDIO_DELAY_BT_MS,
+        KEY_AUDIO_DELAY_HDMI_MS,
+        KEY_EPG_OFFSET_MINUTES,
     )
 
     private val STRING_SET_BACKUP_KEYS = setOf(
@@ -750,7 +876,10 @@ object Prefs {
             }
         }
         editor.commit()
+        channelDecoderCache = null
         NetUtil.setIpStackPreference(IpStackPreference.IPV6_FIRST)
+        NetUtil.setDnsMode(DnsMode.SYSTEM)
+        DohResolver.clearCache()
     }
 
     fun exportBackupJson(context: Context): String {
@@ -810,8 +939,11 @@ object Prefs {
         }
         val ok = editor.commit()
         if (ok) {
+            channelDecoderCache = null
             AppStrings.set(getAppLanguage(context))
             NetUtil.setIpStackPreference(getIpStackPreference(context))
+            NetUtil.setDnsMode(getDnsMode(context))
+            DohResolver.clearCache()
         }
         ok
     }.getOrDefault(false)

@@ -49,6 +49,13 @@ object StreamPlayback {
     fun onUserZap() {
         rebuildLadder.clear()
     }
+
+    /** Cancels any armed first-frame watchdog (e.g. when entering audio-only mode). */
+    fun cancelWatchdog(player: ExoPlayer?) {
+        player ?: return
+        watchdogJobs.remove(player)?.forEach { it.cancel() }
+        watchdogs.remove(player)?.cancel()
+    }
     private val sessions = java.util.WeakHashMap<ExoPlayer, Metrics>()
 
     /** t40：当前 player 的渲染帧间隔推断 fps（无数据返回 null）。供信息卡帧率回退使用。 */
@@ -246,13 +253,15 @@ object StreamPlayback {
             )
         }
         // t225/t228: arm BEFORE prepare — a fast first frame must never arrive un-armed (ARM-01).
-        // Radio/audio-only channels do not produce video frames and must skip the video watchdog.
-        if (!channel.radio) {
+        // Radio/audio-only channels and explicit Audio-Only mode do not produce video frames.
+        val videoDisabled = player.trackSelectionParameters.disabledTrackTypes.contains(androidx.media3.common.C.TRACK_TYPE_VIDEO)
+        if (!channel.radio && !videoDisabled) {
             armWatchdog(player, context, channelId, experiment)
         } else {
             watchdogJobs.remove(player)?.forEach { it.cancel() }
             watchdogs.remove(player)?.cancel()
         }
+        PlaybackDiagCenter.onTune(channel.title, streamUrl)
         if (zapTracking) ZapTrace.onPrepare(android.os.SystemClock.elapsedRealtime())
         player.prepare()
         // t27（冷启 rebuffer 实验③）：默认 0 = 立即 play（旧行为）；>0 时先攒缓冲再 play。
@@ -284,9 +293,8 @@ object StreamPlayback {
             // t228 (RELEASE-01/PAUSE-01): check ownership BEFORE touching the player, so a stale
             // generation can neither use a released player nor cancel the newer channel's watchdog.
             if (!watchdog.isCurrent(gen)) return@launch
-            // Pausing sets playWhenReady = false; a paused zap must not be retried. (A rebuffer keeps
-            // playWhenReady true, so buffering still counts as "should be playing".)
-            if (!player.playWhenReady) {
+            // Pausing or disabling video (audio-only mode) must not trigger video watchdog retries.
+            if (!player.playWhenReady || player.trackSelectionParameters.disabledTrackTypes.contains(androidx.media3.common.C.TRACK_TYPE_VIDEO)) {
                 watchdog.cancel()
                 return@launch
             }
@@ -595,6 +603,7 @@ object StreamPlayback {
         override fun onPlayerError(eventTime: AnalyticsListener.EventTime, error: androidx.media3.common.PlaybackException) {
             // The Analytics event timeline identifies the media that failed, not the later consumer's current row.
             if (!matches(eventTime)) return
+            PlaybackDiagCenter.recordError("EXO", error.errorCodeName)
             binding?.let { onFailure(PlaybackFailure(it)) }
         }
         override fun onLoadCompleted(eventTime: AnalyticsListener.EventTime, loadEventInfo: androidx.media3.exoplayer.source.LoadEventInfo, mediaLoadData: androidx.media3.exoplayer.source.MediaLoadData) {
@@ -621,14 +630,23 @@ object StreamPlayback {
             emit("first_frame", "ttff_ms=${SystemClock.elapsedRealtime()-preparedAt} rendered_at=$renderTimeMs")
         }
         override fun onVideoDecoderInitialized(eventTime: AnalyticsListener.EventTime, decoderName: String, initializedTimestampMs: Long, initializationDurationMs: Long) {
-            if (matches(eventTime)) emit("decoder", "name=$decoderName init_ms=$initializationDurationMs")
+            if (matches(eventTime)) {
+                emit("decoder", "name=$decoderName init_ms=$initializationDurationMs")
+                val isHw = !decoderName.startsWith("OMX.google.", ignoreCase = true) &&
+                    !decoderName.startsWith("c2.android.", ignoreCase = true) &&
+                    !decoderName.contains("ffmpeg", ignoreCase = true)
+                PlaybackDiagCenter.updateDecoder(decoderName, isHw)
+            }
             // t213: stage mark for the first-frame breakdown (debug only).
             if (android.util.Log.isLoggable("IQTV-ZAP", android.util.Log.DEBUG)) {
                 ZapTrace.onVideoDecoderInitialized(android.os.SystemClock.elapsedRealtime())
             }
         }
         override fun onVideoInputFormatChanged(eventTime: AnalyticsListener.EventTime, format: androidx.media3.common.Format, decoderReuseEvaluation: androidx.media3.exoplayer.DecoderReuseEvaluation?) {
-            if (matches(eventTime)) emit("format", "mime=${format.sampleMimeType} width=${format.width} height=${format.height} fps=${format.frameRate}")
+            if (matches(eventTime)) {
+                emit("format", "mime=${format.sampleMimeType} width=${format.width} height=${format.height} fps=${format.frameRate}")
+                PlaybackDiagCenter.updateVideoFormat(format.sampleMimeType, format.width, format.height, format.frameRate)
+            }
             if (android.util.Log.isLoggable("IQTV-ZAP", android.util.Log.DEBUG)) {
                 ZapTrace.onInputFormatChanged(android.os.SystemClock.elapsedRealtime())
             }

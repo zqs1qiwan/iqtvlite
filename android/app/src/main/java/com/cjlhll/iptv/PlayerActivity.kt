@@ -14,6 +14,7 @@ import android.util.Log
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.LayoutInflater
+import android.view.SurfaceView
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
@@ -1067,6 +1068,41 @@ fun VideoPlayerScreen(
     var defaultSubtitlesEnabled by remember { mutableStateOf(Prefs.isDefaultSubtitlesEnabled(context)) }
     var subtitlePreferredLang by remember { mutableStateOf(Prefs.getSubtitlePreferredLang(context)) }
     var ipStackPreference by remember { mutableStateOf(Prefs.getIpStackPreference(context)) }
+    var dnsMode by remember { mutableStateOf(Prefs.getDnsMode(context)) }
+    var epgOffsetMinutes by remember { mutableIntStateOf(Prefs.getEpgOffsetMinutes(context)) }
+    var autoFrameRateEnabled by remember { mutableStateOf(Prefs.isAutoFrameRateEnabled(context)) }
+    var audioOutputRoute by remember { mutableStateOf(AudioOutputRoute.detect(context)) }
+    var audioBoostPct by remember { mutableIntStateOf(Prefs.getAudioBoostPct(context)) }
+    var audioDelayMs by remember { mutableIntStateOf(Prefs.getAudioDelayMs(context, audioOutputRoute)) }
+    var audioOnlyMode by remember { mutableStateOf(false) }
+    var channelDecoderVersion by remember { mutableIntStateOf(0) }
+    val audioProcessor = remember { AudioSyncBoostProcessor() }
+    val frameRateController = remember { FrameRateController() }
+
+    fun resolveChannelDecoderKey(ch: Channel?): String {
+        ch ?: return ""
+        val gIdx = ChannelGrouper.findGroupIndexByUrl(channelGroups, ch.url)
+        return (if (gIdx != null) channelGroups[gIdx].key else null)
+            ?: ch.url.substringBefore('|').trim()
+    }
+
+    fun syncAudioProcessorConfig() {
+        val route = AudioOutputRoute.detect(context)
+        audioOutputRoute = route
+        val delay = Prefs.getAudioDelayMs(context, route)
+        val boost = Prefs.getAudioBoostPct(context)
+        audioDelayMs = delay
+        audioBoostPct = boost
+        audioProcessor.updateConfig(delay, boost)
+        PlaybackDiagCenter.updateAudio(route, delay, boost)
+    }
+
+    fun applyAudioOnlyTrackSelection(p: ExoPlayer?, enabled: Boolean) {
+        p ?: return
+        p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
+            .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, enabled)
+            .build()
+    }
     LaunchedEffect(globalUserAgent, globalCustomHeaders, sources, activeSourceId) {
         val activeUa = sources.firstOrNull { it.id == activeSourceId }?.userAgent?.takeIf { it.isNotBlank() } ?: globalUserAgent
         SourceLatencyProber.updateRequestDefaults(activeUa, PlaylistSources.parseCustomHeaders(globalCustomHeaders))
@@ -1184,8 +1220,16 @@ fun VideoPlayerScreen(
             .setPrioritizeTimeOverSizeThresholds(true)
             .build()
 
-        val effectiveSoftVideo = softVideoOverride || Prefs.getVideoDecoderMode(context) == "SOFTWARE"
-        val renderersFactory = JingcaiRenderersFactory(context, softVideo = effectiveSoftVideo)
+        syncAudioProcessorConfig()
+        val initKey = resolveChannelDecoderKey(if (catchupRequest == null) selectedLiveNow() else currentChannel)
+        val chOverride = Prefs.getChannelDecoderOverride(context, initKey)
+        val effectiveSoftVideo = softVideoOverride ||
+            Prefs.resolveEffectiveSoftVideo(Prefs.getVideoDecoderMode(context), chOverride)
+        val renderersFactory = JingcaiRenderersFactory(
+            context = context,
+            softVideo = effectiveSoftVideo,
+            audioProcessor = audioProcessor,
+        )
             .setEnableDecoderFallback(true)
             .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
 
@@ -1207,6 +1251,9 @@ fun VideoPlayerScreen(
 
         playerView.setKeepContentOnPlayerReset(true)
         playerUsesSoftVideo = effectiveSoftVideo
+        if (audioOnlyMode) {
+            applyAudioOnlyTrackSelection(newPlayer, true)
+        }
         if (!prepareNow) {
             playerView.player = newPlayer
             player = newPlayer
@@ -1230,6 +1277,7 @@ fun VideoPlayerScreen(
     }
 
     fun releasePlayer() {
+        frameRateController.restoreDefault(context as? Activity, playerView.videoSurfaceView as? SurfaceView)
         playbackIntent.suspendPlayer()
         playerView.player = null
         player?.let { StreamPlayback.release(it) }
@@ -1242,8 +1290,10 @@ fun VideoPlayerScreen(
         val request = rebuildState[0] ?: return
         rebuildBusy[0] = true
         try {
+            val chOverride = Prefs.getChannelDecoderOverride(context, resolveChannelDecoderKey(request.channel))
+            val effectiveSoft = if (chOverride.equals("HARDWARE", ignoreCase = true)) false else softVideo
             releasePlayer()
-            initializePlayer(softVideoOverride = softVideo, prepareNow = false)
+            initializePlayer(softVideoOverride = effectiveSoft, prepareNow = false)
             val fresh = player ?: return
             StreamPlayback.prepareForRebuild(
                 fresh, context, request, playbackIntent,
@@ -1267,7 +1317,8 @@ fun VideoPlayerScreen(
 
     /** 修复 P0-8 & 4K 花屏：软解降级或 4K/HEVC 切台时重建播放器以清理旧解码器 DPB 残留帧。 */
     fun ensureHardwarePlayerForNewZap(targetChannel: Channel? = null): ExoPlayer? {
-        val wantSoft = Prefs.getVideoDecoderMode(context) == "SOFTWARE"
+        val chOverride = Prefs.getChannelDecoderOverride(context, resolveChannelDecoderKey(targetChannel))
+        val wantSoft = Prefs.resolveEffectiveSoftVideo(Prefs.getVideoDecoderMode(context), chOverride)
         val rebuild4k = Prefs.isRebuildOn4kZap(context) &&
             (isLikely4kChannel(targetChannel) || isFormat4kOrHevc(videoFormat))
         if (player != null && (playerUsesSoftVideo != wantSoft || rebuild4k)) {
@@ -1311,6 +1362,10 @@ fun VideoPlayerScreen(
                     logoLoadEnabled = Prefs.isLogoLoadEnabled(context)
                     LogoLoader.setLogoLoadEnabledRuntime(logoLoadEnabled)
                     ipStackPreference = Prefs.getIpStackPreference(context)
+                    dnsMode = Prefs.getDnsMode(context)
+                    epgOffsetMinutes = Prefs.getEpgOffsetMinutes(context)
+                    autoFrameRateEnabled = Prefs.isAutoFrameRateEnabled(context)
+                    syncAudioProcessorConfig()
                     autoStartOnBoot = Prefs.isAutoStartOnBoot(context)
                     resumeLastChannel = Prefs.isResumeLastChannel(context)
                     homePipEnabled = Prefs.isHomePipEnabled(context)
@@ -1352,7 +1407,17 @@ fun VideoPlayerScreen(
             }
             val listener = object : Player.Listener {
                 override fun onIsPlayingChanged(isPlaying: Boolean) = setScreenOn(isPlaying)
-                override fun onVideoSizeChanged(videoSize: VideoSize) { videoFormat = p.videoFormat }
+                override fun onVideoSizeChanged(videoSize: VideoSize) {
+                    videoFormat = p.videoFormat
+                    val fps = videoFormat?.frameRate?.takeIf { it > 0f }
+                        ?: StreamPlayback.inferredFrameRate(p) ?: 0f
+                    frameRateController.onVideoFormatChanged(
+                        activity = activity,
+                        surfaceView = playerView.videoSurfaceView as? SurfaceView,
+                        enabled = autoFrameRateEnabled,
+                        videoFps = fps,
+                    )
+                }
                 override fun onRenderedFirstFrame() {
                     ZapTrace.onFirstFrame(SystemClock.elapsedRealtime())
                     firstFrameRendered = true
@@ -1362,6 +1427,16 @@ fun VideoPlayerScreen(
                 }
                 override fun onTracksChanged(tracks: Tracks) {
                     videoFormat = p.videoFormat
+                    val fps = videoFormat?.frameRate?.takeIf { it > 0f }
+                        ?: StreamPlayback.inferredFrameRate(p) ?: 0f
+                    if (fps > 0f) {
+                        frameRateController.onVideoFormatChanged(
+                            activity = activity,
+                            surfaceView = playerView.videoSurfaceView as? SurfaceView,
+                            enabled = autoFrameRateEnabled,
+                            videoFps = fps,
+                        )
+                    }
                     audioTracks = TracksFlattening.audioTracks(tracks)
                     subtitleTracks = TracksFlattening.subtitleTracks(tracks)
                     if (subtitleOverrideGroup < 0 && !subtitleDisabled && subtitleTracks.isNotEmpty()) {
@@ -1644,14 +1719,16 @@ fun VideoPlayerScreen(
         }
     }
 
-    // 当前节目批量查询（SQLite 索引查询；仅在 EPG 就绪/数据更新/时间跨越 30s/频道列表变化时执行）
-    LaunchedEffect(epgData, epgVersion, nowMillis, channelGroups) {
+    // 当前节目批量查询（SQLite 索引查询；仅在 EPG 就绪/数据更新/时间跨越 30s/频道列表/偏移变化时执行）
+    LaunchedEffect(epgData, epgVersion, nowMillis, channelGroups, epgOffsetMinutes) {
         val data = epgData
         if (data == null || channelGroups.isEmpty()) {
             nowProgramByUrl = emptyMap()
             return@LaunchedEffect
         }
         val queryNow = System.currentTimeMillis()
+        val offsetMs = epgOffsetMinutes.toLong() * 60_000L
+        val shiftedNow = queryNow - offsetMs
         val map = withContext(Dispatchers.IO) {
             if (EpgRepository.isSqlBacked(data)) {
                 EpgSqlStore.queryNowPrograms(context, channelGroups, queryNow)
@@ -1659,21 +1736,21 @@ fun VideoPlayerScreen(
                 buildMap {
                     for (group in channelGroups) {
                         val displayChannel = group.defaultChannel
-                        val t = data.nowProgramTitle(displayChannel, queryNow)
+                        val t = data.nowProgramTitle(displayChannel, shiftedNow)
                         if (!t.isNullOrBlank()) {
-                            val current = data.nowProgram(displayChannel, queryNow)
-                            val next = data.nextProgram(displayChannel, queryNow)
+                            val current = data.nowProgram(displayChannel, shiftedNow)
+                            val next = data.nextProgram(displayChannel, shiftedNow)
                             val progress = current?.let {
                                 val d = (it.endMillis - it.startMillis).toFloat()
-                                if (d <= 0f) null else ((queryNow - it.startMillis).toFloat() / d).coerceIn(0f, 1f)
+                                if (d <= 0f) null else ((shiftedNow - it.startMillis).toFloat() / d).coerceIn(0f, 1f)
                             }
                             val ui = NowProgramUi(
                                 title = t,
                                 progress = progress,
                                 nextTitle = next?.title,
-                                startMillis = current?.startMillis ?: 0L,
-                                endMillis = current?.endMillis ?: 0L,
-                                nextStartMillis = next?.startMillis ?: 0L,
+                                startMillis = current?.let { it.startMillis + offsetMs } ?: 0L,
+                                endMillis = current?.let { it.endMillis + offsetMs } ?: 0L,
+                                nextStartMillis = next?.let { it.startMillis + offsetMs } ?: 0L,
                             )
                             for (variant in group.variants) put(variant.channel.url, ui)
                         }
@@ -1684,7 +1761,7 @@ fun VideoPlayerScreen(
         nowProgramByUrl = map
     }
 
-    val epgProgramProvider: (suspend (Channel) -> List<EpgProgram>)? = remember(epgData, epgVersion) {
+    val epgProgramProvider: (suspend (Channel) -> List<EpgProgram>)? = remember(epgData, epgVersion, epgOffsetMinutes) {
         val d = epgData
         if (d != null && EpgRepository.isSqlBacked(d)) {
             { ch -> withContext(Dispatchers.IO) { EpgSqlStore.queryChannelPrograms(context, ch) } }
@@ -1718,6 +1795,7 @@ fun VideoPlayerScreen(
         ZapPreconnect.cancel()
         MulticastPrewarm.cancel()
         StreamPlayback.onUserZap()
+        syncAudioProcessorConfig()
         val group = channelGroups.getOrNull(groupIndex) ?: return
         val channel = group.variants.getOrNull(variantIndex)?.channel ?: return
         if (armZap && Log.isLoggable(ZAP_TAG, Log.DEBUG)) {
@@ -1907,7 +1985,7 @@ fun VideoPlayerScreen(
         return true
     }
 
-    val bannerQuickActions = remember(playingGroup, playingVariantIndex, videoAspectMode, appLanguage, inAppPipActive, favoriteUrls, currentChannel) {
+    val bannerQuickActions = remember(playingGroup, playingVariantIndex, videoAspectMode, appLanguage, inAppPipActive, audioOnlyMode, favoriteUrls, currentChannel) {
         buildList {
             val isFav = currentChannel?.url?.let { it in favoriteUrls } == true
             add(
@@ -1943,6 +2021,18 @@ fun VideoPlayerScreen(
                 InfoCardQuickAction(
                     id = InfoCardQuickActionId.AUDIO,
                     label = AppStrings.tr(appLanguage, "音轨", "Audio"),
+                )
+            )
+            add(
+                InfoCardQuickAction(
+                    id = InfoCardQuickActionId.AUDIO_ONLY,
+                    label = if (audioOnlyMode) {
+                        AppStrings.tr(appLanguage, "恢复画面", "Video On")
+                    } else {
+                        AppStrings.tr(appLanguage, "仅听音频", "Audio Only")
+                    },
+                    description = AppStrings.tr(appLanguage, "关闭视频解码仅听音频", "Disable video track (audio only)"),
+                    active = audioOnlyMode,
                 )
             )
             add(
@@ -1988,6 +2078,19 @@ fun VideoPlayerScreen(
                 uiController.noteInfoCardInteraction(promoteManual = true)
             }
             InfoCardQuickActionId.AUDIO -> uiController.openAudioDialog()
+            InfoCardQuickActionId.AUDIO_ONLY -> {
+                val next = !audioOnlyMode
+                audioOnlyMode = next
+                applyAudioOnlyTrackSelection(player, next)
+                if (next) StreamPlayback.cancelWatchdog(player)
+                uiController.noteInfoCardInteraction(promoteManual = true)
+                Toast.makeText(
+                    context,
+                    if (next) AppStrings.tr(appLanguage, "已进入纯音频模式（再点恢复画面）", "Audio-only mode enabled")
+                    else AppStrings.tr(appLanguage, "已恢复视频画面", "Video playback restored"),
+                    Toast.LENGTH_SHORT,
+                ).show()
+            }
             InfoCardQuickActionId.SUBTITLE -> uiController.openSubtitleDialog()
             InfoCardQuickActionId.PIP -> if (pipChannel != null) exitInAppPip() else enterInAppPip()
             InfoCardQuickActionId.SETTINGS -> uiController.openSettings()
@@ -2582,6 +2685,16 @@ fun VideoPlayerScreen(
             allGroupNames = remember(channelGroups) { ChannelGrouper.allRawGroupNames(channelGroups) },
             activeGroupConfig = activeGroupConfig,
             ipStackPreference = ipStackPreference,
+            dnsMode = dnsMode,
+            epgOffsetMinutes = epgOffsetMinutes,
+            currentChannelTitle = playingGroup?.displayTitle ?: currentChannel?.title.orEmpty(),
+            channelDecoderOverride = remember(currentChannel, channelGroups, channelDecoderVersion) {
+                Prefs.getChannelDecoderOverride(context, resolveChannelDecoderKey(currentChannel))
+            },
+            autoFrameRateEnabled = autoFrameRateEnabled,
+            audioOutputRoute = audioOutputRoute,
+            audioBoostPct = audioBoostPct,
+            audioDelayMs = audioDelayMs,
         )
 
         val settingsActions = remember(
@@ -2623,6 +2736,13 @@ fun VideoPlayerScreen(
             defaultSubtitlesEnabled,
             subtitlePreferredLang,
             ipStackPreference,
+            dnsMode,
+            epgOffsetMinutes,
+            autoFrameRateEnabled,
+            audioOutputRoute,
+            audioBoostPct,
+            audioDelayMs,
+            channelDecoderVersion,
             groupConfigsVersion,
         ) {
             SettingsActions(
@@ -2938,6 +3058,90 @@ fun VideoPlayerScreen(
                         ),
                     )
                 },
+                onSelectDnsMode = { mode ->
+                    dnsMode = mode
+                    Prefs.setDnsMode(context, mode)
+                    notifySettings(
+                        AppStrings.tr(
+                            appLanguage,
+                            "DNS 解析模式：${mode.shortLabel(appLanguage)}",
+                            "DNS Mode: ${mode.shortLabel(appLanguage)}",
+                        ),
+                    )
+                },
+                onSelectEpgOffsetMinutes = { mins ->
+                    epgOffsetMinutes = mins
+                    Prefs.setEpgOffsetMinutes(context, mins)
+                    notifySettings(
+                        AppStrings.tr(
+                            appLanguage,
+                            "EPG 时区偏移已调整并立即生效",
+                            "EPG timezone offset updated",
+                        ),
+                    )
+                },
+                onSelectChannelDecoderOverride = { mode ->
+                    val ch = currentChannel ?: selectedLiveNow()
+                    val key = resolveChannelDecoderKey(ch)
+                    if (key.isNotBlank()) {
+                        Prefs.setChannelDecoderOverride(context, key, mode)
+                        channelDecoderVersion++
+                        val wantSoft = Prefs.resolveEffectiveSoftVideo(videoDecoderMode, mode)
+                        if (player != null && playerUsesSoftVideo != wantSoft && rebuildState[0] != null) {
+                            rebuildPlayer(wantSoft)
+                        }
+                        notifySettings(
+                            AppStrings.tr(appLanguage, "已保存本频道解码偏好并应用", "Saved channel decoder preference"),
+                        )
+                    }
+                },
+                onToggleAutoFrameRate = { enabled ->
+                    autoFrameRateEnabled = enabled
+                    Prefs.setAutoFrameRateEnabled(context, enabled)
+                    if (!enabled) {
+                        frameRateController.restoreDefault(context as? Activity, playerView.videoSurfaceView as? SurfaceView)
+                        PlaybackDiagCenter.updateAfr(enabled = false, activeHz = 0f, matchedFps = 0f)
+                    } else {
+                        val fps = videoFormat?.frameRate?.takeIf { it > 0f }
+                            ?: StreamPlayback.inferredFrameRate(player) ?: 0f
+                        frameRateController.onVideoFormatChanged(
+                            activity = context as? Activity,
+                            surfaceView = playerView.videoSurfaceView as? SurfaceView,
+                            enabled = true,
+                            videoFps = fps,
+                        )
+                    }
+                },
+                onSelectAudioBoostPct = { pct ->
+                    val prevActive = audioProcessor.currentDelayMs() != 0 || audioProcessor.currentBoostPct() != AudioPcmMath.DEFAULT_BOOST_PCT
+                    Prefs.setAudioBoostPct(context, pct)
+                    syncAudioProcessorConfig()
+                    val nowActive = audioProcessor.currentDelayMs() != 0 || audioProcessor.currentBoostPct() != AudioPcmMath.DEFAULT_BOOST_PCT
+                    if (player != null && catchupRequest == null && prevActive != nowActive) {
+                        runCatching { player?.seekToDefaultPosition() }
+                    }
+                    notifySettings(
+                        AppStrings.tr(appLanguage, "音量增益已调整为 $pct%", "Audio volume boost: $pct%"),
+                    )
+                },
+                onSelectAudioDelayMs = { delay ->
+                    val prevDelay = audioProcessor.currentDelayMs()
+                    val prevActive = prevDelay != 0 || audioProcessor.currentBoostPct() != AudioPcmMath.DEFAULT_BOOST_PCT
+                    Prefs.setAudioDelayMs(context, audioOutputRoute, delay)
+                    syncAudioProcessorConfig()
+                    val nowDelay = audioProcessor.currentDelayMs()
+                    val nowActive = nowDelay != 0 || audioProcessor.currentBoostPct() != AudioPcmMath.DEFAULT_BOOST_PCT
+                    if (player != null && catchupRequest == null && (prevActive != nowActive || prevDelay != nowDelay)) {
+                        runCatching { player?.seekToDefaultPosition() }
+                    }
+                    notifySettings(
+                        AppStrings.tr(
+                            appLanguage,
+                            "${audioOutputRoute.localizedLabel(appLanguage)}延迟：$delay ms",
+                            "${audioOutputRoute.localizedLabel(appLanguage)} delay: $delay ms",
+                        ),
+                    )
+                },
                 onSelectEpgRetentionDays = { days ->
                     epgRetentionDays = days
                     Prefs.setEpgRetentionDays(context, days)
@@ -3019,6 +3223,11 @@ fun VideoPlayerScreen(
                     autoUpdateEpg = Prefs.getAutoUpdateEpg(context)
                     favoriteUrls = Prefs.getFavoriteUrls(context)
                     ipStackPreference = Prefs.getIpStackPreference(context)
+                    dnsMode = Prefs.getDnsMode(context)
+                    epgOffsetMinutes = Prefs.getEpgOffsetMinutes(context)
+                    autoFrameRateEnabled = Prefs.isAutoFrameRateEnabled(context)
+                    syncAudioProcessorConfig()
+                    channelDecoderVersion++
                     autoStartOnBoot = Prefs.isAutoStartOnBoot(context)
                     resumeLastChannel = Prefs.isResumeLastChannel(context)
                     homePipEnabled = Prefs.isHomePipEnabled(context)
@@ -3068,6 +3277,14 @@ fun VideoPlayerScreen(
                     globalCustomHeaders = Prefs.getGlobalCustomHeaders(context)
                     videoAspectMode = Prefs.getVideoAspectMode(context)
                     ipStackPreference = Prefs.getIpStackPreference(context)
+                    dnsMode = Prefs.getDnsMode(context)
+                    epgOffsetMinutes = Prefs.getEpgOffsetMinutes(context)
+                    autoFrameRateEnabled = Prefs.isAutoFrameRateEnabled(context)
+                    frameRateController.restoreDefault(context as? Activity, playerView.videoSurfaceView as? SurfaceView)
+                    audioOnlyMode = false
+                    applyAudioOnlyTrackSelection(player, false)
+                    syncAudioProcessorConfig()
+                    channelDecoderVersion++
                     autoStartOnBoot = Prefs.isAutoStartOnBoot(context)
                     resumeLastChannel = Prefs.isResumeLastChannel(context)
                     homePipEnabled = Prefs.isHomePipEnabled(context)
@@ -3104,6 +3321,45 @@ fun VideoPlayerScreen(
                     notifySettings(AppStrings.tr(appLanguage, "已接收手机推送播放源", "Received WebUI playlist"))
                 },
             )
+        }
+
+        if (audioOnlyMode && !playback.isInPipMode) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .background(ComposeColor(0xD90E131D), RoundedCornerShape(14.dp))
+                    .border(1.dp, ComposeColor.White.copy(alpha = 0.14f), RoundedCornerShape(14.dp))
+                    .padding(horizontal = 28.dp, vertical = 18.dp),
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text = playingGroup?.displayTitle ?: currentChannel?.title.orEmpty(),
+                        style = TextStyle(
+                            fontSize = 22.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = ComposeColor(0xFFF3F6FA),
+                        ),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        text = AppStrings.tr(appLanguage, "纯音频收听模式（视频解码已关闭）", "Audio-Only Mode (Video Decoding Disabled)"),
+                        style = TextStyle(
+                            fontSize = 13.5.sp,
+                            color = ComposeColor(0xFF9EB4CC),
+                        ),
+                        modifier = Modifier.padding(top = 6.dp),
+                    )
+                    Text(
+                        text = AppStrings.tr(appLanguage, "按 OK 打开底部快捷栏即可恢复画面", "Press OK and toggle Audio Only to restore video"),
+                        style = TextStyle(
+                            fontSize = 12.sp,
+                            color = ComposeColor(0xFF7D8FA8),
+                        ),
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
+                }
+            }
         }
 
         SettingsDrawer(state = settingsState, actions = settingsActions)
