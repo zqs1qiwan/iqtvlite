@@ -129,7 +129,7 @@
 
 ## 📦 Installation &amp; Quick Start
 
-1. Download **`IQTV-Lite-v0.3.3.apk`** (or **`IQTV-Lite-latest.apk`**) from [**GitHub Releases**](https://github.com/zqs1qiwan/iqtvlite/releases/latest) (~8.7 MB universal `arm64-v8a` + `armeabi-v7a`, Android 7.0+).
+1. Download [**`IQTV-Lite-latest.apk`**](https://github.com/zqs1qiwan/iqtvlite/releases/latest/download/IQTV-Lite-latest.apk) (or check [**GitHub Releases**](https://github.com/zqs1qiwan/iqtvlite/releases/latest), ~8.7 MB universal `arm64-v8a` + `armeabi-v7a`, Android 7.0+).
 2. Sideload onto your Android TV or box via USB drive or `adb install -r IQTV-Lite-latest.apk`.
 3. **2-Step First-Run Setup**: On first launch, choose **English / 简体中文**, then on the streamlined **First-Time Setup** screen either **scan the QR code with your phone** on the same Wi-Fi (playback starts automatically once pushed) or **manually enter your Playlist URL (`M3U` / `TXT`) and optional EPG URL** and press **Save &amp; Start Watching**.
 4. Once inside the player, open **Settings → General → Phone QR Setup &amp; Backup** anytime to manage multiple sources, custom headers, DoH, AFR, `/api/diag`, and full JSON backups, or browse the [**Interactive User Wiki**](https://zqs1qiwan.github.io/iqtvlite/#en/getting-started).

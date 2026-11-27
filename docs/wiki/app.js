@@ -2,6 +2,7 @@
   var state = { lang: "zh", pageId: "home", query: "" };
 
   var brandLink = document.getElementById("brandLink");
+  var versionPill = document.getElementById("versionPill");
   var nav = document.getElementById("sidebarNav");
   var sidebar = document.getElementById("sidebar");
   var menuToggle = document.getElementById("menuToggle");
@@ -18,6 +19,11 @@
   var lightboxImg = document.getElementById("lightboxImg");
   var lightboxCaption = document.getElementById("lightboxCaption");
   var lightboxClose = document.getElementById("lightboxClose");
+
+  var latestVersion = "";
+  try {
+    latestVersion = window.sessionStorage ? (sessionStorage.getItem("iqtvlite_latest_ver") || "") : "";
+  } catch (e) {}
 
   function parseHash() {
     var raw = (window.location.hash || "").replace(/^#/, "");
@@ -50,6 +56,36 @@
     altReadmeLink.textContent = meta.readmeLabel;
     altReadmeLink.href = meta.readmeHref;
     footerDisclaimer.textContent = meta.disclaimer;
+    applyLatestVersion();
+  }
+
+  function applyLatestVersion() {
+    if (!latestVersion) return;
+    if (versionPill) versionPill.textContent = latestVersion + " Wiki";
+    articleBody.querySelectorAll('[data-latest-version="badge"]').forEach(function (el) {
+      el.textContent = state.lang === "zh" ? ("最新版本 " + latestVersion) : ("Latest " + latestVersion);
+    });
+    articleBody.querySelectorAll('[data-latest-version="paren"]').forEach(function (el) {
+      el.textContent = "(" + latestVersion + ")";
+    });
+  }
+
+  function syncLatestVersion() {
+    if (latestVersion || !window.fetch) return;
+    fetch("https://api.github.com/repos/zqs1qiwan/iqtvlite/releases/latest", {
+      headers: { Accept: "application/vnd.github+json" }
+    })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (data) {
+        var tag = data && typeof data.tag_name === "string" ? data.tag_name.trim() : "";
+        if (!/^v?\d+\.\d+/.test(tag)) return;
+        latestVersion = tag;
+        try {
+          if (window.sessionStorage) sessionStorage.setItem("iqtvlite_latest_ver", tag);
+        } catch (e) {}
+        applyLatestVersion();
+      })
+      .catch(function () {});
   }
 
   function renderNav() {
@@ -74,6 +110,7 @@
 
     articleBody.classList.toggle("home-page", page.id === "home");
     articleBody.innerHTML = page.html;
+    applyLatestVersion();
 
     var prev = idx > 0 ? pages[idx - 1] : null;
     var next = idx < pages.length - 1 ? pages[idx + 1] : null;
@@ -163,4 +200,5 @@
 
   parseHash();
   renderAll();
+  syncLatestVersion();
 })();

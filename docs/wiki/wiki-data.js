@@ -39,14 +39,14 @@ window.WIKI_DATA = {
           <h1 class="hero-title">纯净、轻量、极速换台的 Android TV 直播播放器</h1>
           <p class="hero-subtitle">专为智能电视与机顶盒（含 512MB–1GB 入门老盒子）打造。遥控器直觉操控 · 4K HDR / AFR 匹配 · 原生直连 RTP/UDP 组播 · 手机扫码免密配置。</p>
           <div class="hero-badges">
-            <span class="hero-badge">最新版本 v0.3.3</span>
+            <span class="hero-badge" data-latest-version="badge">最新版本 Latest</span>
             <span class="hero-badge">Android TV 7.0+ (API 24+)</span>
             <span class="hero-badge">双架构安装包 ~8.7 MB</span>
             <span class="hero-badge">Kotlin + Rust Core</span>
             <span class="hero-badge">GPLv3 开源</span>
           </div>
           <div class="hero-actions">
-            <a class="hero-btn primary" href="https://github.com/zqs1qiwan/iqtvlite/releases/latest/download/IQTV-Lite-latest.apk" target="_blank" rel="noopener">⬇ 下载 APK (v0.3.3)</a>
+            <a class="hero-btn primary" href="https://github.com/zqs1qiwan/iqtvlite/releases/latest/download/IQTV-Lite-latest.apk" target="_blank" rel="noopener">⬇ 下载最新 APK <span data-latest-version="paren"></span></a>
             <a class="hero-btn secondary" href="#zh/getting-started">🚀 快速开始</a>
             <a class="hero-btn" href="https://github.com/zqs1qiwan/iqtvlite/releases" target="_blank" rel="noopener">📦 全部版本 Releases</a>
             <a class="hero-btn" href="https://github.com/zqs1qiwan/iqtvlite" target="_blank" rel="noopener">⭐ GitHub 仓库</a>
@@ -141,7 +141,7 @@ window.WIKI_DATA = {
         </ul>
         <h2>安装与首次开机引导</h2>
         <ol>
-          <li>前往 <a href="https://github.com/zqs1qiwan/iqtvlite/releases/latest" target="_blank" rel="noopener">GitHub Releases 最新版本</a> 下载 <code>IQTV-Lite-v0.3.3.apk</code>（或 <code>IQTV-Lite-latest.apk</code>）。</li>
+          <li>前往 <a href="https://github.com/zqs1qiwan/iqtvlite/releases/latest" target="_blank" rel="noopener">GitHub Releases 最新版本</a> 下载最新版 <code>IQTV-Lite-latest.apk</code>（或对应版本号安装包）。</li>
           <li>通过 U 盘安装或使用 <code>adb install -r IQTV-Lite-latest.apk</code> 推送到电视/盒子。</li>
           <li>后续更新可直接在电视端进入 <strong>「设置 → 关于与更新 → 检查更新」</strong>，自动在应用内下载并拉起系统安装。</li>
         </ol>
@@ -372,14 +372,14 @@ rtp://239.3.1.240:8000</code></pre>
           <h1 class="hero-title">Clean, Fast-Zapping Live TV Player for Android TV</h1>
           <p class="hero-subtitle">Built with Jetpack Compose for TV, Media3, and a Rust native core for snappy channel surfing even on 512 MB–1 GB TV boxes — with 4K HDR, native RTP/UDP multicast, and Zero-PIN phone QR setup.</p>
           <div class="hero-badges">
-            <span class="hero-badge">Latest v0.3.3</span>
+            <span class="hero-badge" data-latest-version="badge">Latest Release</span>
             <span class="hero-badge">Android TV 7.0+ (API 24+)</span>
             <span class="hero-badge">Universal APK ~8.7 MB</span>
             <span class="hero-badge">Kotlin + Rust Core</span>
             <span class="hero-badge">GPLv3 Open Source</span>
           </div>
           <div class="hero-actions">
-            <a class="hero-btn primary" href="https://github.com/zqs1qiwan/iqtvlite/releases/latest/download/IQTV-Lite-latest.apk" target="_blank" rel="noopener">⬇ Download APK (v0.3.3)</a>
+            <a class="hero-btn primary" href="https://github.com/zqs1qiwan/iqtvlite/releases/latest/download/IQTV-Lite-latest.apk" target="_blank" rel="noopener">⬇ Download Latest APK <span data-latest-version="paren"></span></a>
             <a class="hero-btn secondary" href="#en/getting-started">🚀 Quick Start</a>
             <a class="hero-btn" href="https://github.com/zqs1qiwan/iqtvlite/releases" target="_blank" rel="noopener">📦 All Releases</a>
             <a class="hero-btn" href="https://github.com/zqs1qiwan/iqtvlite" target="_blank" rel="noopener">⭐ GitHub Repo</a>
@@ -474,7 +474,7 @@ rtp://239.3.1.240:8000</code></pre>
         </ul>
         <h2>Installation &amp; Updates</h2>
         <ol>
-          <li>Download <code>IQTV-Lite-v0.3.3.apk</code> (or <code>IQTV-Lite-latest.apk</code>) from <a href="https://github.com/zqs1qiwan/iqtvlite/releases/latest" target="_blank" rel="noopener">GitHub Releases</a>.</li>
+          <li>Download <code>IQTV-Lite-latest.apk</code> (or the versioned release APK) from <a href="https://github.com/zqs1qiwan/iqtvlite/releases/latest" target="_blank" rel="noopener">GitHub Releases</a>.</li>
           <li>Sideload via USB drive or run <code>adb install -r IQTV-Lite-latest.apk</code>.</li>
           <li>Later releases can be checked and installed directly inside <strong>Settings → About &amp; Updates → Check for Updates</strong>.</li>
         </ol>

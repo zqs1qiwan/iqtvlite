@@ -129,7 +129,7 @@
 
 ## 📦 安装与快速开始
 
-1. 前往 [**GitHub Releases 最新版本**](https://github.com/zqs1qiwan/iqtvlite/releases/latest) 下载 **`IQTV-Lite-v0.3.3.apk`**（或 **`IQTV-Lite-latest.apk`**，约 8.7 MB，单包兼容 `arm64-v8a` 与 `armeabi-v7a`，支持 Android 7.0+）。
+1. 直接下载 [**`IQTV-Lite-latest.apk`**](https://github.com/zqs1qiwan/iqtvlite/releases/latest/download/IQTV-Lite-latest.apk) 或前往 [**GitHub Releases 最新版本**](https://github.com/zqs1qiwan/iqtvlite/releases/latest) 下载（约 8.7 MB，单包兼容 `arm64-v8a` 与 `armeabi-v7a`，支持 Android 7.0+）。
 2. 通过 U 盘安装到电视/盒子，或执行 `adb install -r IQTV-Lite-latest.apk`。
 3. **首次开机两步向导**：首次启动先选择界面语言（**简体中文 / English**），随后进入极简 **「首次使用设置」** 引导页——同一 Wi-Fi 下手机扫码推送直播源后电视将**自动加载开播**，也可直接在右侧手动填写 **直播源地址（M3U / TXT）** 与 **EPG 节目单地址（可选）** 后点击「保存并开始播放」。
 4. 进入播放器后，可随时打开 **设置 → 通用 → 手机扫码管理与备份** 管理多源、请求头、DoH 与导出 JSON 备份；详细教程请查阅 [**在线使用文档 (Wiki)**](https://zqs1qiwan.github.io/iqtvlite/#zh/getting-started)。
