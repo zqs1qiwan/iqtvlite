@@ -147,4 +147,10 @@
 | `0–9` | Numeric jump | Real-time top-right match list |
 | `Back` | Close / 2x Exit | Dismisses top layer, or double-Back to exit fullscreen |
 
+<p align="center">
+  <img src="assets/screenshots/numeric-jump.png" alt="Numeric Direct Tuning & Real-Time Candidate List" width="680" />
+  <br />
+  <sub><b>Numeric Direct Tuning · Real-time top-right match list with D-pad candidate selection</b></sub>
+</p>
+
 > Customize per-action short/long press keys under **Settings → Remote Control**, or open the full [**Wiki Remote Guide**](https://zqs1qiwan.github.io/iqtvlite/#en/ui-remote).

@@ -187,6 +187,10 @@ window.WIKI_DATA = {
             <figcaption>按 ← 逐级展开分组列与多播放源列表</figcaption>
           </figure>
           <figure class="shot-card">
+            <img src="assets/screenshots/numeric-jump.png" alt="数字键直达换台" loading="lazy" />
+            <figcaption>数字键直达换台 · 右上角实时匹配候选频道与上下方向键选择</figcaption>
+          </figure>
+          <figure class="shot-card">
             <img src="assets/screenshots/settings.png" alt="设置中心首页" loading="lazy" />
             <figcaption>7 大分类设置中心与首页实时摘要</figcaption>
           </figure>
@@ -514,6 +518,10 @@ rtp://239.3.1.240:8000</code></pre>
           <figure class="shot-card">
             <img src="assets/screenshots/drawer-groups-sources.png" alt="Groups & Multi-Source Columns" loading="lazy" />
             <figcaption>Groups &amp; Multi-Source Switcher (press Left repeatedly)</figcaption>
+          </figure>
+          <figure class="shot-card">
+            <img src="assets/screenshots/numeric-jump.png" alt="Numeric Direct Tuning" loading="lazy" />
+            <figcaption>Numeric Direct Tuning · Real-time top-right match list with D-pad selection</figcaption>
           </figure>
           <figure class="shot-card">
             <img src="assets/screenshots/settings.png" alt="Settings Root" loading="lazy" />

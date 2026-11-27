@@ -147,4 +147,10 @@
 | `0–9` | 数字键直达选台 | 右上角实时显示匹配台名与台号 |
 | `Back` | 收起菜单 / 双击退出 | 有浮层时逐层关闭；全屏双击 Back 退出应用 |
 
+<p align="center">
+  <img src="assets/screenshots/numeric-jump.png" alt="数字键直达换台与右上角实时候选列表" width="680" />
+  <br />
+  <sub><b>数字键直达换台 · 右上角实时匹配候选频道（支持上下方向键高亮直选）</b></sub>
+</p>
+
 > 可在电视端 **「设置 → 遥控设置」** 自由录制任意功能的短按或长按绑定，详细指南见 [**Wiki 遥控器说明**](https://zqs1qiwan.github.io/iqtvlite/#zh/ui-remote)。
